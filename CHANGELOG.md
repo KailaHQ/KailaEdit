@@ -12,6 +12,8 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-09-16
+
 ### Changed
 - **The editor is now called KailaEdit.** Same program, new name — window title,
   icon, installer and all. It was KomfyEdit.
