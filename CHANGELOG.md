@@ -12,6 +12,40 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+### Changed
+- **The editor is now called KailaEdit.** Same program, new name — window title,
+  icon, installer and all. It was KomfyEdit.
+- **Your projects come with you. Your settings do not.** KailaEdit keeps its files in
+  a folder of its own, and it still knows where KomfyEdit kept yours, so everything
+  you have edited opens exactly as before. What does not follow the move: keyboard
+  shortcuts you remapped, saved layouts and layout presets, favourite filters, and
+  any templates you made yourself. Those start fresh. Nothing was deleted — your old
+  templates are still sitting in the KomfyEdit folder, ready to be copied across if
+  you want them.
+- **KailaEdit installs beside KomfyEdit rather than replacing it.** Your computer
+  treats it as a separate program, so after installing you will have both. Letting
+  KomfyEdit update itself leaves you with two copies as well, so it is cleaner to
+  install KailaEdit once by hand and then uninstall KomfyEdit when you are happy.
+- **The AI assistant is now called CoEdit.** EditPilot became CoEdit — the side
+  panel, the launcher, its settings and its messages. Anything it wrote for you
+  before still works.
+
+### Added
+- **Updates without leaving the app.** KailaEdit watches for a new version in the
+  background and puts a button in the window header when one is ready. You can watch
+  it download and restart once to finish.
+- **A better speed slider.** Changing a clip's speed feels smoother, and the timeline
+  shows the clip's new length while you drag instead of after you let go.
+- **Clearer keyframes.** The keyframe row and the diamond toggles are easier to read
+  across the property panels, so motion, opacity and audio curves are easier to follow.
+
+### Fixed
+- **CoEdit could not start after the rename.** The helper it talks to had moved, so
+  asking it to do anything failed. It works again, and a setup you configured under
+  the old name keeps working.
+- **CoEdit losing track of the open project mid-edit.** It could stop following the
+  timeline part-way through a job; it now stays in step.
+
 ## [1.0.4] - 2026-09-13
 
 ### Added
