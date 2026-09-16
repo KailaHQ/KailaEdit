@@ -12,8 +12,8 @@ directories:
 # Release. Public repo, so no token is needed by the client.
 publish:
   provider: github
-  owner: tuyenhm68
-  repo: KomfyEdit
+  owner: KailaHQ
+  repo: KailaEdit
   # Draft by default: a bad release that is already public cannot be recalled
   # from clients that started downloading it. The release workflow rewrites
   # this single line to `release` when a tag is marked [live], so keep the

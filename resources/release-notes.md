@@ -30,4 +30,4 @@ xattr -dr com.apple.quarantine /Applications/KailaEdit.app
 
 **Linux** — `chmod +x` the AppImage, or install the .deb with `sudo apt install ./<file>.deb`.
 
-Full instructions: [English](https://github.com/tuyenhm68/KomfyEdit/blob/main/docs/en/user-guide/01-getting-started.md) · [Tiếng Việt](https://github.com/tuyenhm68/KomfyEdit/blob/main/docs/vi/user-guide/01-getting-started.md)
+Full instructions: [English](https://github.com/KailaHQ/KailaEdit/blob/main/docs/en/user-guide/01-getting-started.md) · [Tiếng Việt](https://github.com/KailaHQ/KailaEdit/blob/main/docs/vi/user-guide/01-getting-started.md)

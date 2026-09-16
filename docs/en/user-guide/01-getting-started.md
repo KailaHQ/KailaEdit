@@ -24,7 +24,7 @@
 
 ### Option 1: Prebuilt Packages (Recommended)
 
-Download the build for your machine from the [GitHub Releases](https://github.com/tuyenhm68/KomfyEdit/releases) page:
+Download the build for your machine from the [GitHub Releases](https://github.com/KailaHQ/KailaEdit/releases) page:
 
 | Platform | File |
 |---|---|
@@ -83,7 +83,7 @@ If you are a developer or prefer running the latest edge build:
 
 2. **Clone the Repository**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   git clone https://github.com/KailaHQ/KailaEdit.git kailaedit
    cd kailaedit
    ```
 

@@ -16,7 +16,7 @@ const path = require('path')
 
 const tagName = process.env.GITHUB_REF_NAME || process.argv[2] || ''
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
-const repo = process.env.GITHUB_REPOSITORY || 'tuyenhm68/KomfyEdit'
+const repo = process.env.GITHUB_REPOSITORY || 'KailaHQ/KailaEdit'
 
 async function githubRequest(url, method = 'GET', body) {
   const res = await fetch(url, {

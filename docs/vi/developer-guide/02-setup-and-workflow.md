@@ -21,7 +21,7 @@ Trước khi bắt đầu, hãy đảm bảo máy tính của bạn đã cài đ
 
 1. **Sao chép mã nguồn về máy**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   git clone https://github.com/KailaHQ/KailaEdit.git kailaedit
    cd kailaedit
    ```
 

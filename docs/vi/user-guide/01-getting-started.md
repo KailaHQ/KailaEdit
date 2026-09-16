@@ -24,7 +24,7 @@
 
 ### Cách 1: Sử dụng bản cài đặt phát hành sẵn (Khuyên dùng)
 
-Tải bản dựng phù hợp với máy của bạn tại trang [GitHub Releases](https://github.com/tuyenhm68/KomfyEdit/releases):
+Tải bản dựng phù hợp với máy của bạn tại trang [GitHub Releases](https://github.com/KailaHQ/KailaEdit/releases):
 
 | Hệ điều hành | Tệp cần tải |
 |---|---|
@@ -82,7 +82,7 @@ sudo apt install ./KailaEdit-*-linux-amd64.deb
 
 2. **Tải mã nguồn (Clone repository)**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   git clone https://github.com/KailaHQ/KailaEdit.git kailaedit
    cd kailaedit
    ```
 

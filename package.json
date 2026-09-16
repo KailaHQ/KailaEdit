@@ -10,10 +10,10 @@
     "name": "KailaEdit",
     "email": "tuyenhm68@users.noreply.github.com"
   },
-  "homepage": "https://github.com/tuyenhm68/KomfyEdit",
+  "homepage": "https://github.com/KailaHQ/KailaEdit",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tuyenhm68/KomfyEdit.git"
+    "url": "git+https://github.com/KailaHQ/KailaEdit.git"
   },
   "private": true,
   "packageManager": "pnpm@10.30.3",
