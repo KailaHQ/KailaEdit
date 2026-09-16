@@ -3,9 +3,9 @@ name: auto-edit
 description: End-to-end automated video editing orchestrator coordinating silence removal, smart captions, B-roll overlays, dynamic zoom pacing, quality control, and human confirmation.
 ---
 
-# KomfyEdit Skill: Auto Edit (`auto-edit`)
+# KailaEdit Skill: Auto Edit (`auto-edit`)
 
-This skill defines the master orchestration workflow for automatically editing an entire talking-head / raw footage video into a polished, engaging final cut using existing KomfyEdit MCP tools and edit-patch operations.
+This skill defines the master orchestration workflow for automatically editing an entire talking-head / raw footage video into a polished, engaging final cut using existing KailaEdit MCP tools and edit-patch operations.
 
 It acts as the single coordinator ("người chỉ huy") uniting the 4 specialized workflows:
 1. **`cut-silence`** (detect and cut pauses/dead air)
@@ -19,7 +19,7 @@ It acts as the single coordinator ("người chỉ huy") uniting the 4 specializ
 
 1. **NO DIRECT FFMPEG CALLS**:
    - Never invoke raw `ffmpeg` or `ffprobe` commands via CLI / shell / bash.
-   - All measurements, edits, and checks must go through KomfyEdit MCP tools (`timeline_describe`, `observe_silence`, `suggest_broll`, `edit_propose`, `render_preview`, `qc_check`, `ask_confirm`, `edit_apply`).
+   - All measurements, edits, and checks must go through KailaEdit MCP tools (`timeline_describe`, `observe_silence`, `suggest_broll`, `edit_propose`, `render_preview`, `qc_check`, `ask_confirm`, `edit_apply`).
 2. **REUSE STORED TRANSCRIPT (DO NOT RE-TRANSCRIBE)**:
    - Always check if the project already contains transcript data (`transcripts` in project model / assets, or existing subtitle cues).
    - Only call `transcribe` if no transcript exists. Re-transcribing existing footage wastes API credits, time, and computational resources.

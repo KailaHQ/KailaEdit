@@ -1,11 +1,11 @@
-# Sprint Plan — Tính năng AI Edit cho KomfyEdit
+# Sprint Plan — Tính năng AI Edit cho KailaEdit
 
 **Ngày lập:** 2026-09-04 · **Nhánh gốc:** `strip-to-video-editor`
 
 **Tài liệu nền (đọc trước khi nhận ticket):**
 [architecture-assessment.md](./architecture-assessment.md) · [ai-agent-integration-plan.md](./ai-agent-integration-plan.md)
 
-**Hướng đã chốt:** biến thể **A — "Bring Your Own Agent"**. KomfyEdit phát hành MCP server + skill; người dùng chạy Claude Code / Codex / Antigravity bằng credential của chính họ. KomfyEdit không giữ token, không bán credit, không trung gian hoá usage.
+**Hướng đã chốt:** biến thể **A — "Bring Your Own Agent"**. KailaEdit phát hành MCP server + skill; người dùng chạy Claude Code / Codex / Antigravity bằng credential của chính họ. KailaEdit không giữ token, không bán credit, không trung gian hoá usage.
 
 ---
 
@@ -254,7 +254,7 @@ Thumbnail trong clip từng khởi động drag ảnh gốc, drop ra bị hiểu
 
 ### S3-4 · MCP server, profile `read`
 **Mục tiêu.** Agent bên ngoài đọc được project.
-**Yêu cầu.** Package `komfyedit-mcp`, transport **stdio**, không cần app chạy (đọc file project từ S1-5). Tool: `project.list`, `project.open`, `timeline.describe`, `timeline.summary`, `media.list`, `media.probe`, `observe.*`, `qc.check`. **Không có tool ghi nào trong sprint này.**
+**Yêu cầu.** Package `kailaedit-mcp`, transport **stdio**, không cần app chạy (đọc file project từ S1-5). Tool: `project.list`, `project.open`, `timeline.describe`, `timeline.summary`, `media.list`, `media.probe`, `observe.*`, `qc.check`. **Không có tool ghi nào trong sprint này.**
 **Điều kiện chấp nhận.**
 - [x] Khởi động được bằng một lệnh, không cần app mở
 - [x] Kết nối thành công từ **cả ba**: Claude Code, Codex CLI, Antigravity CLI — kèm ảnh chụp mỗi cái trong PR
@@ -289,7 +289,7 @@ Thumbnail trong clip từng khởi động drag ảnh gốc, drop ra bị hiểu
 - [x] Ba stub trỏ đúng đường dẫn tương đối (khác nhau theo độ sâu thư mục — lỗi thường gặp)
 - [x] Nội dung skill nêu rõ trình tự trên, có ngưỡng cụ thể, có quy tắc dừng
 - [x] Chạy thử end-to-end trên fixture với **cả ba** CLI, đính kèm transcript trong PR
-- [x] Skill **không** hướng dẫn gọi ffmpeg trực tiếp (phải đi qua tool của KomfyEdit)
+- [x] Skill **không** hướng dẫn gọi ffmpeg trực tiếp (phải đi qua tool của KailaEdit)
 
 ### S4-4 · Eval cho skill
 **Mục tiêu.** Biết được sửa skill làm nó tốt lên hay tệ đi.

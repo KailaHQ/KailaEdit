@@ -34,17 +34,15 @@ export interface EditPilotStreamView {
   tasks: EditPilotTask[]
 }
 
-const PLAN_OPEN = '<komfyedit:plan>'
-
-const PLAN_BLOCK_RE = /<komfyedit:plan>[\s\S]*?<\/komfyedit:plan>/i
-const PLAN_BODY_RE = /<komfyedit:plan>([\s\S]*?)<\/komfyedit:plan>/i
-const STEP_RE = /<komfyedit:step>\s*(\d+)\s*<\/komfyedit:step>/gi
-const STEP_SELF_CLOSING_RE = /<komfyedit:step\s+n=["']?(\d+)["']?\s*\/?>/gi
-const DONE_RE = /<komfyedit:done\s*\/?>/gi
+const PLAN_BLOCK_RE = /<(?:coedit|kailaedit|komfyedit):plan>[\s\S]*?<\/(?:coedit|kailaedit|komfyedit):plan>/i
+const PLAN_BODY_RE = /<(?:coedit|kailaedit|komfyedit):plan>([\s\S]*?)<\/(?:coedit|kailaedit|komfyedit):plan>/i
+const STEP_RE = /<(?:coedit|kailaedit|komfyedit):step>\s*(\d+)\s*<\/(?:coedit|kailaedit|komfyedit):step>/gi
+const STEP_SELF_CLOSING_RE = /<(?:coedit|kailaedit|komfyedit):step\s+n=["']?(\d+)["']?\s*\/?>/gi
+const DONE_RE = /<(?:coedit|kailaedit|komfyedit):done\s*\/?>/gi
 /** Non-global twin: `.test` on a /g regex carries `lastIndex` between calls. */
-const DONE_TEST_RE = /<komfyedit:done\s*\/?>/i
+const DONE_TEST_RE = /<(?:coedit|kailaedit|komfyedit):done\s*\/?>/i
 /** A marker the stream has only half-delivered; hiding it avoids flicker. */
-const PARTIAL_MARKER_RE = /<\/?k(?:o(?:m(?:f(?:y(?:e(?:d(?:i(?:t(?::[^>]*)?)?)?)?)?)?)?)?)?$/i
+const PARTIAL_MARKER_RE = /<\/?(?:c(?:o(?:e(?:d(?:i(?:t(?::[^>]*)?)?)?)?)?)?|k(?:a(?:i(?:l(?:a(?:e(?:d(?:i(?:t(?::[^>]*)?)?)?)?)?)?)?)?)?|k(?:o(?:m(?:f(?:y(?:e(?:d(?:i(?:t(?::[^>]*)?)?)?)?)?)?)?)?)?)$/i
 
 /** Strips the bullet or number an agent naturally writes in front of a task. */
 function cleanTaskLabel(line: string): string {
@@ -68,15 +66,15 @@ function splitPlanLines(body: string): string[] {
     .filter(line => line.length > 0)
 }
 
-/** Task labels from an explicit `<komfyedit:plan>` block, open or closed. */
+/** Task labels from an explicit `<kailaedit:plan>` or `<komfyedit:plan>` block, open or closed. */
 function readDeclaredPlan(raw: string): string[] | null {
   const closed = raw.match(PLAN_BODY_RE)
   if (closed) return splitPlanLines(closed[1])
 
   // Still streaming: show the items that have arrived rather than nothing.
-  const openAt = raw.toLowerCase().indexOf(PLAN_OPEN)
-  if (openAt === -1) return null
-  const lines = raw.slice(openAt + PLAN_OPEN.length).split(/\r?\n/)
+  const openMatch = raw.match(/<(?:kailaedit|komfyedit):plan>/i)
+  if (!openMatch || openMatch.index === undefined) return null
+  const lines = raw.slice(openMatch.index + openMatch[0].length).split(/\r?\n/)
   // The trailing line may be half-typed, so it is not a task yet.
   lines.pop()
   const parsed = splitPlanLines(lines.join('\n'))
@@ -132,8 +130,8 @@ function stripMarkers(raw: string, streaming: boolean): string {
   let text = removeMarker(raw, PLAN_BLOCK_RE)
 
   // An unterminated plan block would otherwise leak its raw tag into the chat.
-  const openAt = text.toLowerCase().indexOf(PLAN_OPEN)
-  if (openAt !== -1) text = text.slice(0, openAt)
+  const openMatch = text.match(/<(?:kailaedit|komfyedit):plan>/i)
+  if (openMatch && openMatch.index !== undefined) text = text.slice(0, openMatch.index)
 
   text = removeMarker(text, STEP_RE)
   text = removeMarker(text, STEP_SELF_CLOSING_RE)

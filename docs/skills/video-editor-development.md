@@ -1,13 +1,13 @@
 ---
 name: video-editor-development
-description: Use this skill when implementing, refactoring, or reviewing code in the KomfyEdit video editor, especially files under frontend/views/VideoEditor.tsx and frontend/views/editor/** that touch the editor store, selectors, actions, undo/history, persistence, keyboard/menu wiring, playback, timeline interactions, or other editor-specific UI behavior.
+description: Use this skill when implementing, refactoring, or reviewing code in the KailaEdit video editor, especially files under frontend/views/VideoEditor.tsx and frontend/views/editor/** that touch the editor store, selectors, actions, undo/history, persistence, keyboard/menu wiring, playback, timeline interactions, or other editor-specific UI behavior.
 ---
 
-# KomfyEdit Video Editor Development
+# KailaEdit Video Editor Development
 
 ## Overview
 
-The KomfyEdit video editor uses a dedicated editor store with domain selectors and actions. Use this skill for any work inside the editor runtime so changes stay aligned with the current architecture and do not regress undo, persistence, keyboard behavior, timeline semantics, or hot-path performance.
+The KailaEdit video editor uses a dedicated editor store with domain selectors and actions. Use this skill for any work inside the editor runtime so changes stay aligned with the current architecture and do not regress undo, persistence, keyboard behavior, timeline semantics, or hot-path performance.
 
 ## When To Use
 
@@ -187,8 +187,8 @@ Use this checklist before merging editor changes:
 - Is this a hot path that should remain imperative?
 - Is there an external side effect that should stay outside the store?
 - Should this logic be extracted into a self-contained hook with a single responsibility?
-- **Can EditPilot reach this in autopilot?** A capability with no MCP counterpart is invisible to
-  the agent. See "EditPilot and the MCP server" in `AGENTS.md`: a timeline capability needs an
+- **Can CoEdit reach this in autopilot?** A capability with no MCP counterpart is invisible to
+  the agent. See "CoEdit and the MCP server" in `AGENTS.md`: a timeline capability needs an
   operation in `core/src/edit-patch.ts` (schema, execute, describe, validate) and needs to show up
   in `timeline_describe` so the agent can see the result of its own edit.
 

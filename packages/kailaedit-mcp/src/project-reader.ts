@@ -18,8 +18,9 @@ export function resolveProjectsDir(customDir?: string): string {
     return path.resolve(customDir)
   }
 
-  if (process.env.KOMFYEDIT_PROJECTS_DIR && fs.existsSync(process.env.KOMFYEDIT_PROJECTS_DIR)) {
-    return path.resolve(process.env.KOMFYEDIT_PROJECTS_DIR)
+  const envProjectsDir = process.env.KAILAEDIT_PROJECTS_DIR || process.env.KOMFYEDIT_PROJECTS_DIR
+  if (envProjectsDir && fs.existsSync(envProjectsDir)) {
+    return path.resolve(envProjectsDir)
   }
 
   // Single shared definition — see core/src/app-paths.ts. Computing this

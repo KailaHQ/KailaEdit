@@ -4,7 +4,7 @@
   <img src="../../images/export-pipeline.png" alt="Fast Offline Desktop Video Export Pipeline" width="85%">
 </p>
 
-KomfyEdit produces pristine master renders completely offline using an embedded, high-performance FFmpeg transcode engine. There are no watermarks, no server queues, and no cloud file uploads.
+KailaEdit produces pristine master renders completely offline using an embedded, high-performance FFmpeg transcode engine. There are no watermarks, no server queues, and no cloud file uploads.
 
 ---
 
@@ -64,7 +64,7 @@ Select from standard resolution presets or match your timeline sequence dimensio
 
 ## ⚡ 5. GPU Hardware Acceleration
 
-KomfyEdit automatically detects and routes rendering through dedicated GPU hardware encoders:
+KailaEdit automatically detects and routes rendering through dedicated GPU hardware encoders:
 - **NVIDIA GPU**: Hardware-accelerated `h264_nvenc` rendering provides 4–8x faster export speeds compared to CPU encoding.
 - **Intel CPU / Arc Graphics**: Leverages Intel QuickSync Video (`h264_qsv`).
 - **Apple Silicon (M1/M2/M3/M4)**: Uses Apple VideoToolbox (`h264_videotoolbox` and `prores_videotoolbox`) for ultra-efficient, thermal-throttling-free exports.
@@ -86,7 +86,7 @@ flowchart LR
 
 1. **Proxy Manager**:
    - Right-click any video clip in the Asset Bin → select **Generate Proxy**.
-   - KomfyEdit generates an optimized, lightweight 720p/360p proxy file in the background.
+   - KailaEdit generates an optimized, lightweight 720p/360p proxy file in the background.
    - Playback, scrubbing, and slicing run with zero latency.
    - When you click **Export**, the pipeline **automatically relinks the original full-resolution 4K/8K files**—you never have to manually swap media files!
 2. **Real-time Render Cache**:
@@ -106,4 +106,4 @@ flowchart LR
 
 ---
 
-[← Previous: 05. Audio & Subtitles](05-audio-and-subtitles.md) · [Next: 07. EditPilot AI Assistant →](07-editpilot-ai-assistant.md)
+[← Previous: 05. Audio & Subtitles](05-audio-and-subtitles.md) · [Next: 07. CoEdit AI Assistant →](07-coedit-ai-assistant.md)

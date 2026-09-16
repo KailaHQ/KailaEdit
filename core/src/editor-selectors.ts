@@ -43,6 +43,7 @@ import type {
   SubtitleTrackStyleEditorModel,
   TimelineCutPoint,
   TimelineGapSelection,
+  KeyframeSelection,
   TimelineInOutRange,
   TimelineListItem,
 } from './editor-state'
@@ -237,6 +238,10 @@ export function selectEditingSubtitleId(state: EditorState): string | null {
 
 export function selectSelectedGap(state: EditorState): TimelineGapSelection | null {
   return state.session.selection.gap
+}
+
+export function selectSelectedKeyframe(state: EditorState): KeyframeSelection | null {
+  return state.session.selection.selectedKeyframe ?? null
 }
 
 export function selectSelectedClips(state: EditorState): TimelineClip[] {

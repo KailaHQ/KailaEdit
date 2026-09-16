@@ -1,6 +1,6 @@
 # Hướng dẫn đóng góp mã nguồn (Contributing)
 
-Cảm ơn bạn đã quan tâm và muốn chung tay phát triển **KomfyEdit**! Chúng tôi hướng tới mục tiêu xây dựng một phần mềm dựng phim nguồn mở, chạy offline tốc độ cao và tôn trọng quyền riêng tư người dùng.
+Cảm ơn bạn đã quan tâm và muốn chung tay phát triển **KailaEdit**! Chúng tôi hướng tới mục tiêu xây dựng một phần mềm dựng phim nguồn mở, chạy offline tốc độ cao và tôn trọng quyền riêng tư người dùng.
 
 ---
 
@@ -15,7 +15,7 @@ Chúng tôi cam kết duy trì một môi trường cộng đồng văn minh, th
 1. **Báo cáo lỗi (Report Bugs)**: Mở Issue mô tả chi tiết các bước tái hiện lỗi kèm thông tin hệ điều hành.
 2. **Cải thiện tài liệu**: Sửa lỗi chính tả, bổ sung các bài hướng dẫn sử dụng, hoàn thiện bản dịch.
 3. **Đóng góp tính năng & Sửa lỗi**: Tạo nhánh mới và gửi Pull Request (PR) về nhánh `main`.
-4. **Phát triển kỹ năng AI**: Viết thêm các kịch bản kiểm thử (evaluation scenarios) hoặc công cụ MCP mới trong `packages/komfyedit-mcp/`.
+4. **Phát triển kỹ năng AI**: Viết thêm các kịch bản kiểm thử (evaluation scenarios) hoặc công cụ MCP mới trong `packages/kailaedit-mcp/`.
 
 ---
 

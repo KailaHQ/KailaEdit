@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working in this
 
 ## Project Overview
 
-KomfyEdit is an offline Electron desktop video editor. Two layers, no backend server:
+KailaEdit is an offline Electron desktop video editor. Two layers, no backend server:
 
 - **Frontend** (`frontend/`): React 18 + TypeScript + Tailwind CSS renderer
 - **Electron** (`electron/`): Main process managing app lifecycle, IPC, file/media handling, and ffmpeg export
@@ -70,16 +70,16 @@ criteria, the files it touches, and a ready-to-paste prompt), plus `README.md` a
 
 The editor is the bulk of this codebase. Before changing anything under `frontend/views/VideoEditor.tsx` or `frontend/views/editor/**`, read `docs/skills/video-editor-development.md` — it covers the store shape, selector and action rules, undo/persistence, hot paths, and keyboard/menu wiring.
 
-## EditPilot and the MCP server
+## CoEdit and the MCP server
 
-EditPilot is the in-app agent panel (`frontend/views/editor/EditPilotPanel.tsx`). It runs the
+CoEdit is the in-app agent panel (`frontend/views/editor/EditPilotPanel.tsx`). It runs the
 user's own CLI — Claude Code, Codex or Antigravity — and that CLI reaches the editor **only**
-through KomfyEdit's MCP server in `packages/komfyedit-mcp/`. The agent has no other way in: it
+through KailaEdit's MCP server in `packages/kailaedit-mcp/`. The agent has no other way in: it
 cannot click the UI, and `electron/editpilot/agent-runner.ts` blocks the CLI's own file and shell
 tools. Whatever is not exposed as an MCP tool or an edit-patch operation does not exist as far as
 autopilot is concerned.
 
-The surface, in `packages/komfyedit-mcp/src/server.ts`:
+The surface, in `packages/kailaedit-mcp/src/server.ts`:
 
 - **Read** — `project_open`, `timeline_describe`, `timeline_summary`, `subtitle_list`, `media_list`,
   `media_probe`

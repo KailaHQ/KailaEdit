@@ -26,6 +26,29 @@ export type IpcResult<T extends z.ZodRawShape> = z.infer<ReturnType<typeof ipcRe
 
 const emptyResult = ipcResult({})
 
+export const updateStatusSchema = z.enum([
+  'idle',
+  'checking',
+  'available',
+  'downloading',
+  'downloaded',
+  'error',
+  'unsupported',
+])
+
+export const updateStateSchema = z.object({
+  status: updateStatusSchema,
+  version: z.string().optional(),
+  percent: z.number().optional(),
+  bytesPerSecond: z.number().optional(),
+  transferred: z.number().optional(),
+  total: z.number().optional(),
+  error: z.string().optional(),
+  upToDate: z.boolean().optional(),
+})
+
+export type UpdateStateSchema = z.infer<typeof updateStateSchema>
+
 const exportClipTransform = z.object({
   scale: z.number(),
   positionX: z.number(),
@@ -194,12 +217,27 @@ export const electronAPISchemas = {
     output: z.string(),
   },
 
-  // Auto-update against GitHub Releases. Only meaningful in a packaged build;
-  // a dev run answers 'unsupported' because app-update.yml is not there.
+  // Auto-update against GitHub Releases. Only meaningful in a packaged build
+  // or when KOMFYEDIT_FAKE_UPDATE=1 is set.
   checkForUpdates: {
     input: z.object({}),
+    output: updateStateSchema,
+  },
+  updateGetState: {
+    input: z.object({}),
+    output: updateStateSchema,
+  },
+  updateDownload: {
+    input: z.object({}),
     output: z.object({
-      status: z.enum(['unsupported', 'checking', 'busy', 'error']),
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  },
+  updateInstallNow: {
+    input: z.object({}),
+    output: z.object({
+      success: z.boolean(),
       error: z.string().optional(),
     }),
   },
@@ -831,6 +869,7 @@ export const electronAPISchemas = {
 // ── Event Schemas (Main Process -> Renderer) ──────────────────────────────
 
 export const electronEventSchemas = {
+  'update:state': updateStateSchema,
   'window:maximize-changed': z.object({
     isMaximized: z.boolean(),
   }),

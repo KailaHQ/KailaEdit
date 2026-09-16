@@ -611,11 +611,12 @@ export const EDIT_TOOLS: Tool[] = [
   },
 ]
 
-export interface KomfyEditMcpServerOptions {
+export interface KailaEditMcpServerOptions {
   profile?: 'read' | 'edit'
 }
+export type KomfyEditMcpServerOptions = KailaEditMcpServerOptions
 
-export class KomfyEditMcpServer {
+export class KailaEditMcpServer {
   private server: Server
   private profile: 'read' | 'edit'
   private activeProject: Project | null = null
@@ -638,11 +639,12 @@ export class KomfyEditMcpServer {
     description: string
   }> = []
 
-  constructor(options: KomfyEditMcpServerOptions = {}) {
-    this.profile = options.profile || (process.env.KOMFYEDIT_MCP_PROFILE === 'edit' ? 'edit' : 'read')
+  constructor(options: KailaEditMcpServerOptions = {}) {
+    const envProfile = process.env.KAILAEDIT_MCP_PROFILE || process.env.KOMFYEDIT_MCP_PROFILE
+    this.profile = options.profile || (envProfile === 'edit' ? 'edit' : 'read')
     this.server = new Server(
       {
-        name: 'komfyedit-mcp',
+        name: 'kailaedit-mcp',
         version: '1.0.0',
       },
       {
@@ -669,7 +671,7 @@ export class KomfyEditMcpServer {
   }
 
   private resolveProject(projectId?: string): Project {
-    const targetId = projectId || process.env.KOMFYEDIT_ACTIVE_PROJECT_ID
+    const targetId = projectId || process.env.KAILAEDIT_ACTIVE_PROJECT_ID || process.env.KOMFYEDIT_ACTIVE_PROJECT_ID
     if (targetId) {
       const res = readProject(targetId)
       this.activeProject = res.project
@@ -1921,10 +1923,13 @@ export class KomfyEditMcpServer {
     const transport = new StdioServerTransport()
     await this.server.connect(transport)
     // Log to stderr only so stdout remains pure JSON-RPC for MCP protocol
-    process.stderr.write(`[komfyedit-mcp] MCP Server running on stdio transport (profile: ${this.profile})\n`)
+    process.stderr.write(`[kailaedit-mcp] MCP Server running on stdio transport (profile: ${this.profile})\n`)
   }
 
   public async close(): Promise<void> {
     await this.server.close()
   }
 }
+
+export const KomfyEditMcpServer = KailaEditMcpServer
+export type KomfyEditMcpServer = KailaEditMcpServer

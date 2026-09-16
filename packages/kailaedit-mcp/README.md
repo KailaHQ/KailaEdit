@@ -1,6 +1,6 @@
-# KomfyEdit MCP Server (`komfyedit-mcp`)
+# KailaEdit MCP Server (`kailaedit-mcp`)
 
-Model Context Protocol (MCP) server for KomfyEdit desktop video editor.
+Model Context Protocol (MCP) server for KailaEdit desktop video editor.
 Allows external AI agents (Claude Code, OpenAI Codex CLI, Antigravity CLI) to inspect projects, timelines, media, and analyze audio/video offline via `stdio` transport **without needing the Electron app running**.
 
 ## Features
@@ -13,7 +13,7 @@ Allows external AI agents (Claude Code, OpenAI Codex CLI, Antigravity CLI) to in
 
 | Tool | Purpose |
 |---|---|
-| `project_list` | List all saved KomfyEdit projects on disk with metadata |
+| `project_list` | List all saved KailaEdit projects on disk with metadata |
 | `project_open` | Load a project into memory by ID or file path |
 | `timeline_describe` | Detailed breakdown of tracks, clips, durations, and transitions |
 | `timeline_summary` | Compact token-efficient summary (<= 16KB) for LLM context |
@@ -36,7 +36,7 @@ Allows external AI agents (Claude Code, OpenAI Codex CLI, Antigravity CLI) to in
 Add to your project's `.mcp.json` or run via CLI:
 
 ```bash
-claude mcp add komfyedit node /path/to/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js
+claude mcp add kailaedit node /path/to/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js
 ```
 
 Or configure in `.mcp.json`:
@@ -44,11 +44,11 @@ Or configure in `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "komfyedit": {
+    "kailaedit": {
       "command": "node",
-      "args": ["H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js"],
+      "args": ["H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js"],
       "env": {
-        "KOMFYEDIT_PROJECTS_DIR": "H:/WorkSpace/vibe-project/KomfyEdit/.komfyedit-data/projects"
+        "KAILAEDIT_PROJECTS_DIR": "H:/WorkSpace/vibe-project/KailaEdit/.kailaedit-data/projects"
       }
     }
   }
@@ -62,9 +62,9 @@ Add to your Codex CLI configuration (`~/.codex/config.json` or project-local con
 ```json
 {
   "mcpServers": {
-    "komfyedit": {
+    "kailaedit": {
       "command": "node",
-      "args": ["H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js"]
+      "args": ["H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js"]
     }
   }
 }
@@ -72,7 +72,7 @@ Add to your Codex CLI configuration (`~/.codex/config.json` or project-local con
 
 Or launch directly:
 ```bash
-codex --mcp-server "node H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js"
+codex --mcp-server "node H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js"
 ```
 
 ### 3. Google Antigravity CLI (`agy`)
@@ -82,9 +82,9 @@ Add to `mcp_config.json` in your Antigravity workspace root or configuration roo
 ```json
 {
   "mcpServers": {
-    "komfyedit": {
+    "kailaedit": {
       "command": "node",
-      "args": ["H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js"]
+      "args": ["H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js"]
     }
   }
 }
@@ -92,21 +92,21 @@ Add to `mcp_config.json` in your Antigravity workspace root or configuration roo
 
 Or connect via AGY CLI:
 ```bash
-agy mcp add komfyedit -- node H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/bin/komfyedit-mcp.js
+agy mcp add kailaedit -- node H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/bin/kailaedit-mcp.js
 ```
 
 ---
 
 ## Profiles & Safety Invariants
 
-KomfyEdit MCP supports two operational profiles:
+KailaEdit MCP supports two operational profiles:
 
 1. **`read` (Default)**:
    - Exposes only read and observation tools (`project.*`, `timeline.*`, `media.*`, `observe.*`, `qc_check`).
    - Zero project files, clip properties, or timeline tracks can be mutated.
    - Cache isolation: no persistent files written outside the OS temp directory (`os.tmpdir()`).
 
-2. **`edit` (`--profile edit` or `KOMFYEDIT_MCP_PROFILE=edit`)**:
+2. **`edit` (`--profile edit` or `KAILAEDIT_MCP_PROFILE=edit`)**:
    - Exposes transactional editing tools (`edit_propose`, `edit_apply`, `edit_undo`, `render_preview`, `render_cancel`).
    - All mutations pass through the atomic Edit Patch transaction gate (`validateEditPatch`).
    - Invariant enforcement: magnetic V1 contiguity, locked track protection, and fail-closed validation.

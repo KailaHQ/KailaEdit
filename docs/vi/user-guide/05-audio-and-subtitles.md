@@ -4,7 +4,7 @@
   <img src="../../images/overview-ui.png" alt="Xử lý Âm thanh và Phụ đề" width="85%">
 </p>
 
-Chất lượng âm thanh trong trẻo và phụ đề rõ ràng là hai yếu tố then chốt tạo nên một video chuyên nghiệp. KomfyEdit hỗ trợ trộn âm đa track, vẽ biểu đồ sóng âm (waveform) thời gian thực và quản lý phụ đề linh hoạt.
+Chất lượng âm thanh trong trẻo và phụ đề rõ ràng là hai yếu tố then chốt tạo nên một video chuyên nghiệp. KailaEdit hỗ trợ trộn âm đa track, vẽ biểu đồ sóng âm (waveform) thời gian thực và quản lý phụ đề linh hoạt.
 
 ---
 
@@ -41,7 +41,7 @@ flowchart LR
 
 ## 🎙️ 2. Tạo phụ đề tự động bằng AI Whisper (Offline 100%)
 
-KomfyEdit tích hợp mô hình nhận dạng giọng nói **OpenAI Whisper chạy trực tiếp trên máy tính** thông qua nhân xử lý cục bộ:
+KailaEdit tích hợp mô hình nhận dạng giọng nói **OpenAI Whisper chạy trực tiếp trên máy tính** thông qua nhân xử lý cục bộ:
 
 ```mermaid
 flowchart LR
@@ -60,7 +60,7 @@ flowchart LR
 
 ## 💬 3. Quản lý Phụ đề & Mẫu chữ (Text Presets)
 
-KomfyEdit hỗ trợ tạo track phụ đề chuyên dụng, hiển thị đẹp mắt và cho phép tùy chọn khắc cứng (burn-in) trực tiếp vào video khi xuất file.
+KailaEdit hỗ trợ tạo track phụ đề chuyên dụng, hiển thị đẹp mắt và cho phép tùy chọn khắc cứng (burn-in) trực tiếp vào video khi xuất file.
 
 ### Thao tác với Track phụ đề
 1. Nhấn nút **`Subs`** trên đầu track timeline để tạo một Track Subtitle mới (hoặc dùng tính năng Auto-Transcribe ở trên).

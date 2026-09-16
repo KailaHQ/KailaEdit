@@ -30,14 +30,20 @@ if (!process.execArgv.some(arg => arg.includes('tsx'))) {
   console.info = (...args) => console.error(...args)
   console.debug = (...args) => console.error(...args)
 
-  const { KomfyEditMcpServer } = await import('../src/server.ts')
+  const { KailaEditMcpServer, KomfyEditMcpServer } = await import('../src/server.ts')
+  const ServerClass = KailaEditMcpServer || KomfyEditMcpServer
   const profileIndex = process.argv.indexOf('--profile')
   const profileArg = profileIndex !== -1 ? process.argv[profileIndex + 1] : undefined
-  const profile = profileArg === 'edit' || process.env.KOMFYEDIT_MCP_PROFILE === 'edit' ? 'edit' : 'read'
+  const profile =
+    profileArg === 'edit' ||
+    process.env.KAILAEDIT_MCP_PROFILE === 'edit' ||
+    process.env.KOMFYEDIT_MCP_PROFILE === 'edit'
+      ? 'edit'
+      : 'read'
 
-  const server = new KomfyEditMcpServer({ profile })
+  const server = new ServerClass({ profile })
   server.startStdio().catch(err => {
-    process.stderr.write(`[komfyedit-mcp] Fatal: ${err.message || err}\n`)
+    process.stderr.write(`[kailaedit-mcp] Fatal: ${err.message || err}\n`)
     process.exit(1)
   })
 }

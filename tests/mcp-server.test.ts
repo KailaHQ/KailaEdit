@@ -3,11 +3,11 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { spawn, ChildProcess } from 'child_process'
-import { READ_ONLY_TOOLS, KomfyEditMcpServer } from '../packages/komfyedit-mcp/src/server'
+import { READ_ONLY_TOOLS, KomfyEditMcpServer } from '../packages/kailaedit-mcp/src/server'
 
 const FIXTURES_DIR = path.resolve(__dirname, 'fixtures')
 const SYNTHETIC_MEDIA = path.join(FIXTURES_DIR, 'synthetic_media.mp4')
-const CLI_PATH = path.resolve(__dirname, '../packages/komfyedit-mcp/bin/komfyedit-mcp.js')
+const CLI_PATH = path.resolve(__dirname, '../packages/kailaedit-mcp/bin/kailaedit-mcp.js')
 
 describe('S3-4 · MCP Server (profile: read)', () => {
   it('defines only read tools and zero write tools in READ_ONLY_TOOLS', () => {
@@ -46,7 +46,7 @@ describe('S3-4 · MCP Server (profile: read)', () => {
   })
 
   it('contains zero disk write operations outside temporary cache directory', () => {
-    const srcDir = path.resolve(__dirname, '../packages/komfyedit-mcp/src')
+    const srcDir = path.resolve(__dirname, '../packages/kailaedit-mcp/src')
     const files = fs.readdirSync(srcDir)
 
     for (const file of files) {
@@ -181,7 +181,7 @@ describe('S3-4 · MCP Server (profile: read)', () => {
   })
 
   it('README documents host configuration for Claude Code, Codex CLI, and Antigravity CLI', () => {
-    const readmePath = path.resolve(__dirname, '../packages/komfyedit-mcp/README.md')
+    const readmePath = path.resolve(__dirname, '../packages/kailaedit-mcp/README.md')
     expect(fs.existsSync(readmePath)).toBe(true)
 
     const readmeContent = fs.readFileSync(readmePath, 'utf8')

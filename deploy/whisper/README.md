@@ -1,7 +1,7 @@
-# Hướng dẫn triển khai Dịch vụ Nhận dạng Lời nói Whisper (KomfyEdit)
+# Hướng dẫn triển khai Dịch vụ Nhận dạng Lời nói Whisper (KailaEdit)
 # Deploying Standalone Whisper Speech Recognition Service
 
-Tài liệu hướng dẫn triển khai dịch vụ bóc băng / nhận dạng lời nói độc lập cho KomfyEdit theo chuẩn OpenAI Audio API (`POST /v1/audio/transcriptions`).
+Tài liệu hướng dẫn triển khai dịch vụ bóc băng / nhận dạng lời nói độc lập cho KailaEdit theo chuẩn OpenAI Audio API (`POST /v1/audio/transcriptions`).
 
 ---
 
@@ -46,9 +46,9 @@ Tài liệu hướng dẫn triển khai dịch vụ bóc băng / nhận dạng l
 
 ---
 
-## 4. Cấu hình trong KomfyEdit
+## 4. Cấu hình trong KailaEdit
 
-1. Mở KomfyEdit -> Bấm nút **Cài đặt** (Settings).
+1. Mở KailaEdit -> Bấm nút **Cài đặt** (Settings).
 2. Chuyển sang thẻ **Nhận dạng giọng nói (Speech)**.
 3. Chọn một trong hai tùy chọn:
    - **Self-hosted Whisper Service**: Nhập Endpoint `http://localhost:8000/v1` (hoặc IP máy chủ trong mạng LAN `http://192.168.x.x:8000/v1`). Không cần API Key.

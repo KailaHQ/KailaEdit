@@ -13,7 +13,7 @@
    ───────────────────────────────────────── */
 :root {
   /* Accent color (used for buttons, progress, highlights) */
-  --accent: 34 221 221;       /* #22DDDD — KomfyEdit cyan */
+  --accent: 34 221 221;       /* #22DDDD — KailaEdit cyan */
   --accent-dark: 16 191 191;  /* #10BFBF — darker shade for hover states */
 
   /* Surface colors */
@@ -31,6 +31,30 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Disable browser default focus outlines (yellow/orange rings on buttons, sliders, etc.) */
+*:focus,
+*:focus-visible,
+*:focus-within {
+  outline: none !important;
+}
+
+button:focus,
+button:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+[type="range"]:focus,
+[type="range"]:focus-visible,
+[type="range"]::-webkit-slider-thumb:focus,
+[type="range"]::-webkit-slider-thumb:focus-visible,
+[type="range"]::-webkit-slider-runnable-track:focus,
+[type="range"]::-webkit-slider-runnable-track:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -132,4 +156,14 @@ body {
 .dropzone-active {
   border-color: rgb(var(--accent)) !important;
   background-color: rgb(var(--accent) / 0.1) !important;
+}
+
+@keyframes pulse-once {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 0.6s ease-in-out 1;
 }

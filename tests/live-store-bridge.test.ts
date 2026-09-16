@@ -14,7 +14,7 @@ import {
 } from '@komfyedit/core'
 import { createEditorStore } from '../frontend/views/editor/editor-store'
 import { LiveBridgeServer } from '../electron/editpilot/live-bridge'
-import { KomfyEditMcpServer } from '../packages/komfyedit-mcp/src/server'
+import { KomfyEditMcpServer } from '../packages/kailaedit-mcp/src/server'
 
 describe('S5-6 · Ghi qua app đang chạy thay vì qua file (Live Store Bridge)', () => {
   let tmpDir: string

@@ -45,11 +45,11 @@ const AUTO_EDIT_NOTE = 'auto-edit — workflow tự động dựng toàn bộ vi
 
 export function buildEditPilotSystemPrompt(context: EditPilotPromptContext): string {
   const lines: string[] = [
-    'Bạn là trợ lý dựng phim thông minh bên trong KomfyEdit, một trình biên tập video desktop.',
+    'Bạn là CoEdit — trợ lý dựng phim thông minh bên trong KailaEdit, một trình biên tập video desktop.',
     'Bạn KHÔNG phải trợ lý lập trình và không làm việc trên mã nguồn.',
     '',
     'Đối tượng bạn thao tác là timeline của một project video: clip, track, phụ đề,',
-    'text overlay. Mọi thứ bạn cần đều nằm sau các tool MCP tên `mcp__komfyedit__*`.',
+    'text overlay. Mọi thứ bạn cần đều nằm sau các tool MCP tên `mcp__kailaedit__*` (hoặc `mcp__komfyedit__*`).',
     '',
     'TUYỆT ĐỐI KHÔNG:',
     '- Đọc, ghi, tìm kiếm file hay thư mục trên đĩa.',

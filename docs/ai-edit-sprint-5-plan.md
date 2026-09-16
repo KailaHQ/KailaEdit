@@ -169,7 +169,7 @@ Guard chặn tool ghi ở profile `read` từng viết `name.startsWith('edit.')
 *Phát sinh sau khi thử thật: agent nhận câu "sửa chữ hello thành hello agent" và đi
 grep hệ thống file thay vì chạm vào timeline. Không phải thiếu tool — thiếu briefing.*
 
-### S5-7 · Chặn tool ngoài KomfyEdit bằng cơ chế thật sự có hiệu lực
+### S5-7 · Chặn tool ngoài KailaEdit bằng cơ chế thật sự có hiệu lực
 **Mục tiêu.** Agent không đọc/ghi/tìm kiếm được gì trên máy người dùng.
 
 **Bối cảnh.** Ba phần của việc này đã làm xong và có test:
@@ -201,7 +201,7 @@ Hai việc chặn phần chạy thật, cả hai đều cần người dùng tha
 | `claude login` | Token OAuth hết hạn; đã xác minh bằng một lần chạy thật (`401`, `total_cost_usd: 0`) |
 | Quyền `mcp` cho `agy` | Định dạng target chưa rõ. Cách đúng: chạy `agy` **tương tác**, dùng thử một tool komfyedit, **bấm phê duyệt** — CLI tự ghi quy tắc đúng dạng vào `~/.gemini/config/config.json`. Sau đó headless dùng lại được |
 
-Khi có quy tắc đúng, ghi nó vào `packages/komfyedit-mcp/README.md` để lần sau khỏi mò.
+Khi có quy tắc đúng, ghi nó vào `packages/kailaedit-mcp/README.md` để lần sau khỏi mò.
 
 Một chi tiết cần quyết định: `agy` có `--print-timeout` mặc định **5 phút**, còn runner đặt timeout **10 phút** — tác vụ dài sẽ bị `agy` tự cắt trước. Nới cái nào là lựa chọn của bạn.
 
@@ -233,4 +233,4 @@ Không thay đổi so với Sprint 0–4: trộn audio streaming (trần RAM ~1,
 |---|---|
 | MCP cho Codex | Codex có cơ chế cấu hình MCP riêng, chưa nối; hiện chọn Codex thì agent trả lời được nhưng không thao tác được |
 | Bộ chọn `@` cho clip | Hiện lấy theo clip đang chọn trên timeline; bộ chọn tường minh sẽ rõ ràng hơn |
-| Đóng gói `komfyedit-mcp` khi build app | Runner đã có nhánh tìm trong `resources/`, chưa có bước nào chép nó vào đó lúc đóng gói |
+| Đóng gói `kailaedit-mcp` khi build app | Runner đã có nhánh tìm trong `resources/`, chưa có bước nào chép nó vào đó lúc đóng gói |

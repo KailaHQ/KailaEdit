@@ -116,7 +116,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
     window.addEventListener('mouseup', onUp)
   }
 
-  // Drag left/right pill handles to widen / narrow text space (CapCut style)
+  // Drag left/right pill handles to widen / narrow text space
   const handleWidthMouseDown = (e: React.MouseEvent, _side: 'left' | 'right') => {
     e.stopPropagation()
     e.preventDefault()
@@ -303,7 +303,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
         {displayText}
       </div>
 
-      {/* CapCut-style bounding box & handles (only when selected) */}
+      {/* Bounding box & handles (only when selected) */}
       {isSelected && (
         <>
           {/* White border with dark outline */}

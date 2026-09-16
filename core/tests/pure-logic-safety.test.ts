@@ -467,6 +467,17 @@ describe('S1-2: Pure editing logic safety net and trap prevention', () => {
       const result = resolveOverlaps([track0Clip, track1Clip], new Set(['t1']))
       expect(result.find(c => c.id === 't0')?.duration).toBe(10)
     })
+
+    it('preserves intentional overlap when clips are connected by a transition', () => {
+      const clipA = createMockClip({ id: 'a', trackIndex: 0, startTime: 0, duration: 5.5 })
+      const clipB = createMockClip({ id: 'b', trackIndex: 0, startTime: 4.5, duration: 5.5 })
+      const transitions = [{ leftClipId: 'a', rightClipId: 'b', duration: 1.0 }]
+
+      const result = resolveOverlaps([clipA, clipB], new Set(['a']), transitions)
+      const b = result.find(c => c.id === 'b')
+      expect(b?.startTime).toBe(4.5)
+      expect(b?.duration).toBe(5.5)
+    })
   })
 
   // ── 7. splitClipsAtTime ─────────────────────────────────────────────────

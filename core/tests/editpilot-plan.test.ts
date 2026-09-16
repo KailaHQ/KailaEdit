@@ -153,5 +153,26 @@ describe('agents that ignore the protocol', () => {
     expect(view.text).toContain('Đã hoàn thành! Mình đã cắt ngắn video còn 1 phút cho bạn rồi nhé.')
     expect(view.text).not.toContain('komfyedit')
   })
+
+  it('supports <coedit:plan>, <coedit:step>, and <coedit:done>', () => {
+    const rawPlanStream = [
+      'Bắt đầu dựng cùng CoEdit nhé!',
+      '<coedit:plan>',
+      '- Tối ưu màu sắc',
+      '- Chèn hiệu ứng chuyển cảnh',
+      '</coedit:plan>',
+      '<coedit:step>1</coedit:step>',
+      '<coedit:done/>',
+      'Đã hoàn tất chỉnh sửa!',
+    ].join('\n')
+
+    const view = parseEditPilotStream(rawPlanStream, 'finished')
+    expect(view.tasks.map(t => t.label)).toEqual([
+      'Tối ưu màu sắc',
+      'Chèn hiệu ứng chuyển cảnh',
+    ])
+    expect(view.tasks.every(t => t.status === 'done')).toBe(true)
+    expect(view.text).toBe('Bắt đầu dựng cùng CoEdit nhé!\nĐã hoàn tất chỉnh sửa!')
+  })
 })
 

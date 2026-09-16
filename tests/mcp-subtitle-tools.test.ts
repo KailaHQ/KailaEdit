@@ -6,7 +6,7 @@ import {
   KomfyEditMcpServer,
   READ_ONLY_TOOLS,
   EDIT_TOOLS,
-} from '../packages/komfyedit-mcp/src/server'
+} from '../packages/kailaedit-mcp/src/server'
 import { projectSchema, saveProjectAtomic, type Project } from '@komfyedit/core'
 
 describe('S5-4 · Tool MCP cho subtitle & mô tả timeline', () => {

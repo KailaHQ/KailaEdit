@@ -1,4 +1,4 @@
-# Contributing to KomfyEdit
+# Contributing to KailaEdit
 
 Thanks for taking the time to contribute!
 

@@ -49,6 +49,17 @@ export interface UseEditorKeyboardParams {
  * the Premiere-style layout this editor used to have and were dropped along
  * with it — their action ids simply no longer resolve to anything.
  */
+function isTypingInTextInput(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  if (target instanceof HTMLTextAreaElement) return true
+  if (target instanceof HTMLInputElement) {
+    const textTypes = ['text', 'password', 'search', 'email', 'url', 'tel']
+    return textTypes.includes(target.type)
+  }
+  return false
+}
+
 export function useEditorKeyboard(params: UseEditorKeyboardParams) {
   const { refs, context } = params
   const actions = useEditorActions()
@@ -59,7 +70,8 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // Only suppress shortcuts when user is actively typing in text fields
+      if (isTypingInTextInput(e.target)) return
       if (refs.isKbEditorOpenRef.current) return
 
       const context = contextRef.current
@@ -68,10 +80,23 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
       const sel = commandContext.selectedClipIds
       const td = commandContext.totalDuration
 
-      const action: ActionId | null = resolveAction(refs.kbLayoutRef.current, e)
+      let action: ActionId | null = resolveAction(refs.kbLayoutRef.current, e)
+      // Space is always guaranteed to trigger transport.playPause when not in a text field
+      if (!action && (e.code === 'Space' || e.key === ' ')) {
+        action = 'transport.playPause'
+      }
       if (!action) return
 
       e.preventDefault()
+
+      // When Space or transport play/pause is triggered, release focus from whatever slider or button
+      // was active so controls don't retain focus, outline or swallow keys.
+      if (action === 'transport.playPause') {
+        if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+          document.activeElement.blur()
+        }
+      }
+
       const editorActions = actionsRef.current
 
       switch (action) {
@@ -143,6 +168,9 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
           editorActions.selectAllClips()
           break
         case 'edit.deselect':
+          if (state.session.selection.selectedKeyframe) {
+            editorActions.clearSelectedKeyframe()
+          }
           if (refs.selectedGapRef.current) {
             refs.clearSelectedGapRef.current()
           } else {
@@ -241,7 +269,47 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
           break
         }
 
-        case 'edit.delete':
+        case 'keyframe.prev':
+        case 'keyframe.next': {
+          const allClips = selectClips(state)
+          const time = commandContext.currentTime
+          const spans = (c: (typeof allClips)[number]) =>
+            time >= c.startTime && time <= c.startTime + c.duration
+
+          const candidate = (sel.size > 0
+            ? allClips.find(c => sel.has(c.id) && spans(c)) ?? allClips.find(c => sel.has(c.id))
+            : allClips.find(spans))
+
+          if (!candidate || !candidate.keyframes || candidate.keyframes.length === 0) break
+
+          const times = Array.from(
+            new Set(candidate.keyframes.flatMap(k => k.points.map(p => candidate.startTime + p.t)))
+          ).sort((a, b) => a - b)
+
+          if (times.length === 0) break
+
+          const EPSILON = 0.04
+          if (action === 'keyframe.prev') {
+            const prevTimes = times.filter(t => t < time - EPSILON)
+            if (prevTimes.length > 0) {
+              editorActions.setCurrentTime(prevTimes[prevTimes.length - 1])
+            }
+          } else {
+            const nextTimes = times.filter(t => t > time + EPSILON)
+            if (nextTimes.length > 0) {
+              editorActions.setCurrentTime(nextTimes[0])
+            }
+          }
+          break
+        }
+
+        case 'edit.delete': {
+          const selectedKf = state.session.selection.selectedKeyframe
+          if (selectedKf) {
+            editorActions.removeKeyframeGroupAt(selectedKf.clipId, selectedKf.t)
+            editorActions.clearSelectedKeyframe()
+            break
+          }
           if (sel.size > 0) {
             const deleteIds = new Set<string>()
             for (const id of sel) {
@@ -262,6 +330,7 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
             context.deleteAssetActionRef.current()
           }
           break
+        }
 
         // Timeline
         case 'timeline.zoomIn':

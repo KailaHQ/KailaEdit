@@ -1,6 +1,6 @@
-appId: com.komfyedit.app
-productName: KomfyEdit
-copyright: Copyright © 2026 KomfyEdit
+appId: com.kailaedit.app
+productName: KailaEdit
+copyright: Copyright © 2026 KailaEdit
 
 directories:
   output: release
@@ -72,7 +72,7 @@ nsis:
   installerHeaderIcon: resources/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: KomfyEdit
+  shortcutName: KailaEdit
 
 mac:
   # Hardened Runtime is OFF while the app is unsigned, and turning it back on

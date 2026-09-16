@@ -309,3 +309,5 @@ function AgentRow({ definition, status, detecting, chosen, active, onChoose, onR
 export function agentLabel(id: EditPilotAgentId): string {
   return EDIT_PILOT_AGENTS[id].label
 }
+
+export const CoEditSettings = EditPilotSettings

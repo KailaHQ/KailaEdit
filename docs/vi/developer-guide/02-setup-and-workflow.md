@@ -1,6 +1,6 @@
 # Thiết lập môi trường phát triển & Quy trình làm việc
 
-Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường lập trình cục bộ, chạy mã nguồn ở chế độ phát triển, gỡ lỗi (debug) và đóng gói bản cài đặt hoàn chỉnh cho KomfyEdit.
+Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường lập trình cục bộ, chạy mã nguồn ở chế độ phát triển, gỡ lỗi (debug) và đóng gói bản cài đặt hoàn chỉnh cho KailaEdit.
 
 ---
 
@@ -21,8 +21,8 @@ Trước khi bắt đầu, hãy đảm bảo máy tính của bạn đã cài đ
 
 1. **Sao chép mã nguồn về máy**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git komfyedit
-   cd komfyedit
+   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   cd kailaedit
    ```
 
 2. **Cài đặt các gói phụ thuộc (Dependencies)**:

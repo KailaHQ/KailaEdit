@@ -3,7 +3,12 @@ import path from 'path'
 import fs from 'fs'
 import { handle } from './typed-handle'
 import { getMainWindow } from '../window'
-import { checkForUpdatesManually } from '../updater'
+import {
+  checkForUpdatesManually,
+  getUpdateState,
+  downloadUpdate,
+  installNow,
+} from '../updater'
 
 import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
@@ -24,6 +29,18 @@ export function registerAppHandlers(): void {
 
   handle('checkForUpdates', async () => {
     return checkForUpdatesManually()
+  })
+
+  handle('updateGetState', async () => {
+    return getUpdateState()
+  })
+
+  handle('updateDownload', async () => {
+    return downloadUpdate()
+  })
+
+  handle('updateInstallNow', async () => {
+    return installNow()
   })
 
   handle('getNoticesText', async () => {

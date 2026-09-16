@@ -4,7 +4,7 @@
   <img src="../../images/adjustment-layer-concept.png" alt="Sơ đồ nguyên lý hoạt động của Adjustment Layer" width="85%">
 </p>
 
-KomfyEdit tích hợp bộ công cụ chỉnh màu chuyên nghiệp, thư viện bộ lọc 3D LUT điện ảnh (xử lý trực tiếp bằng WebGL trên GPU) và cơ chế **Lớp điều chỉnh (Adjustment Layer)** tiện lợi.
+KailaEdit tích hợp bộ công cụ chỉnh màu chuyên nghiệp, thư viện bộ lọc 3D LUT điện ảnh (xử lý trực tiếp bằng WebGL trên GPU) và cơ chế **Lớp điều chỉnh (Adjustment Layer)** tiện lợi.
 
 ---
 
@@ -39,7 +39,7 @@ graph TD
   <img src="../../images/adjustment-layer-media-asset.png" alt="Thẻ Adjustment Layer trong khay Media" width="40%">
 </p>
 
-Trong KomfyEdit, Adjustment Layer được lưu trữ như một Asset mẫu trong **khay Media** (có biểu tượng 3 lớp xếp chồng và huy hiệu **`Adj`**):
+Trong KailaEdit, Adjustment Layer được lưu trữ như một Asset mẫu trong **khay Media** (có biểu tượng 3 lớp xếp chồng và huy hiệu **`Adj`**):
 1. **Khi nào nó xuất hiện?**: Khi bạn vô tình hoặc chủ động bấm nút **`Adj`** trên thanh header của timeline (cạnh các nút `+ V`, `+ A`, `Subs`), hoặc chọn từ menu `Clip` → `Thêm lớp điều chỉnh (Add Adjustment Layer)`. Mỗi lần bấm, một thẻ Asset Adjustment Layer mới sẽ được tạo vào danh sách Media.
 2. **Khả năng tái sử dụng**: Bạn có thể kéo thẻ này từ danh sách Media thả lên các track phía trên (`V2`, `V3`...) bao nhiêu lần tùy ý.
 3. **Cách dọn dẹp nếu tạo thừa**: Nếu bạn lỡ tay bấm nhiều lần khiến xuất hiện nhiều thẻ thừa, chỉ cần **rê chuột vào thẻ đó và bấm biểu tượng Thùng rác** ở góc trên bên phải thẻ (hoặc chọn thẻ rồi bấm phím `Delete`). Việc xóa asset trong khay media không ảnh hưởng đến project nếu asset đó chưa được dùng trên timeline.
@@ -74,7 +74,7 @@ Bạn có thể tinh chỉnh màu sắc cho từng clip riêng lẻ hoặc cho t
 
 ## 🎬 3. Thư viện Bộ lọc 3D LUT Điện ảnh (Filters Library)
 
-KomfyEdit sở hữu hệ thống bộ lọc màu 3D LUT tiên tiến được kết nối đồng nhất giữa **Bộ dựng WebGL trên GPU khi xem trước** và **Bộ lọc `lut3d` của FFmpeg khi xuất file**. Điều này đảm bảo **màu sắc khi xuất video khớp 100% từng điểm ảnh với màn hình xem trước**, khắc phục triệt để hiện tượng sai lệch màu thường gặp ở các phần mềm khác.
+KailaEdit sở hữu hệ thống bộ lọc màu 3D LUT tiên tiến được kết nối đồng nhất giữa **Bộ dựng WebGL trên GPU khi xem trước** và **Bộ lọc `lut3d` của FFmpeg khi xuất file**. Điều này đảm bảo **màu sắc khi xuất video khớp 100% từng điểm ảnh với màn hình xem trước**, khắc phục triệt để hiện tượng sai lệch màu thường gặp ở các phần mềm khác.
 
 ```mermaid
 flowchart LR
@@ -102,7 +102,7 @@ Mở tab **Filters** trên bảng Thư viện bên trái:
 5. **Áp dụng cho tất cả (Apply to All)**:
    - Nhấn nút **"Apply to All"** để gán bộ lọc màu đã chọn lên toàn bộ các clip trên timeline chỉ với 1 cú nhấp chuột duy nhất.
 6. **Nhập bộ lọc ngoài (Import Custom .cube LUTs)**:
-   - Bạn có bộ sưu tập LUT cá nhân tải từ mạng hoặc mua từ các colorist? Chỉ cần chọn `Import LUT` hoặc kéo thả các tệp định dạng `.cube` vào khay bộ lọc để sử dụng vĩnh viễn trong KomfyEdit.
+   - Bạn có bộ sưu tập LUT cá nhân tải từ mạng hoặc mua từ các colorist? Chỉ cần chọn `Import LUT` hoặc kéo thả các tệp định dạng `.cube` vào khay bộ lọc để sử dụng vĩnh viễn trong KailaEdit.
 
 ---
 

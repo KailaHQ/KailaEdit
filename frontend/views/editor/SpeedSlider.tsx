@@ -1,22 +1,22 @@
 import React, { useRef, useState, useCallback } from 'react'
 import {
   clampClipSpeed,
-  capcutPositionForSpeed,
-  speedForCapcutPosition,
-  CAPCUT_LANDMARK_POSITIONS,
-  CAPCUT_SPEED_LANDMARKS,
+  piecewisePositionForSpeed,
+  speedForPiecewisePosition,
+  PIECEWISE_LANDMARK_POSITIONS,
+  PIECEWISE_SPEED_LANDMARKS,
   MIN_CLIP_SPEED,
   MAX_CLIP_SPEED,
 } from '@core/clip-speed'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 
-export interface CapCutSpeedSliderProps {
+export interface SpeedSliderProps {
   speed: number
   onChange: (speed: number) => void
   disabled?: boolean
 }
 
-export const CapCutSpeedSlider: React.FC<CapCutSpeedSliderProps> = ({
+export const SpeedSlider: React.FC<SpeedSliderProps> = ({
   speed,
   onChange,
   disabled = false,
@@ -26,7 +26,7 @@ export const CapCutSpeedSlider: React.FC<CapCutSpeedSliderProps> = ({
   const [isEditing, setIsEditing] = useState(false)
   const [typedValue, setTypedValue] = useState('')
 
-  const currentPos = capcutPositionForSpeed(speed)
+  const currentPos = piecewisePositionForSpeed(speed)
   const percent = Math.max(0, Math.min(100, currentPos * 100))
 
   const handlePointer = useCallback(
@@ -35,7 +35,7 @@ export const CapCutSpeedSlider: React.FC<CapCutSpeedSliderProps> = ({
       const rect = trackRef.current.getBoundingClientRect()
       if (rect.width <= 0) return
       const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-      const newSpeed = speedForCapcutPosition(pos, snap)
+      const newSpeed = speedForPiecewisePosition(pos, snap)
       onChange(newSpeed)
     },
     [disabled, onChange]
@@ -108,10 +108,10 @@ export const CapCutSpeedSlider: React.FC<CapCutSpeedSliderProps> = ({
           />
 
           {/* 6 Vertical Landmark Tick Marks */}
-          {CAPCUT_LANDMARK_POSITIONS.map((pos, idx) => {
+          {PIECEWISE_LANDMARK_POSITIONS.map((pos, idx) => {
             const tickPercent = pos * 100
             const isPassed = percent >= tickPercent - 0.5
-            const landmarkSpeed = CAPCUT_SPEED_LANDMARKS[idx]
+            const landmarkSpeed = PIECEWISE_SPEED_LANDMARKS[idx]
             return (
               <div
                 key={pos}
@@ -132,7 +132,7 @@ export const CapCutSpeedSlider: React.FC<CapCutSpeedSliderProps> = ({
         </div>
       </div>
 
-      {/* Value Stepper Box (CapCut style) */}
+      {/* Value Stepper Box */}
       <div className="flex items-center bg-[#1f1f23] hover:bg-zinc-800 border border-zinc-700/80 rounded px-1.5 py-0.5 min-w-[76px] justify-between transition-colors">
         {isEditing ? (
           <input

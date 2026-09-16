@@ -21,6 +21,8 @@
     "baseUrl": ".",
     "paths": {
       "@core/*": ["core/src/*"],
+      "@kailaedit/core": ["core/src/index.ts"],
+      "@kailaedit/core/*": ["core/src/*"],
       "@komfyedit/core": ["core/src/index.ts"],
       "@komfyedit/core/*": ["core/src/*"]
     }

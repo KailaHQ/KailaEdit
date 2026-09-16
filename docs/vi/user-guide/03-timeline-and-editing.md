@@ -4,7 +4,7 @@
   <img src="../../images/overview-ui.png" alt="Timeline và Công cụ Biên tập" width="85%">
 </p>
 
-Timeline đa tầng (multi-track) là trái tim của KomfyEdit. Ứng dụng hỗ trợ xếp chồng linh hoạt các lớp Video, Audio, Adjustment Layer và Phụ đề với đầy đủ các công cụ dựng phim tiêu chuẩn.
+Timeline đa tầng (multi-track) là trái tim của KailaEdit. Ứng dụng hỗ trợ xếp chồng linh hoạt các lớp Video, Audio, Adjustment Layer và Phụ đề với đầy đủ các công cụ dựng phim tiêu chuẩn.
 
 ---
 
@@ -72,7 +72,7 @@ Khi có khoảng trống giữa các clip trên Timeline, bạn có thể tươn
 
 ## 💎 Hoạt ảnh chuyển động với Keyframe (Keyframing)
 
-KomfyEdit hỗ trợ hệ thống **Keyframe chuyên nghiệp** giúp tạo hoạt ảnh chuyển động mượt mà cho bất kỳ thuộc tính nào:
+KailaEdit hỗ trợ hệ thống **Keyframe chuyên nghiệp** giúp tạo hoạt ảnh chuyển động mượt mà cho bất kỳ thuộc tính nào:
 
 ```mermaid
 flowchart LR

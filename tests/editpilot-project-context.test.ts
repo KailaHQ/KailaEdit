@@ -4,7 +4,7 @@ import path from 'path'
 import os from 'os'
 import { writeMcpConfig } from '../electron/editpilot/agent-runner'
 import { getProjectsDir } from '../electron/storage/project-file-storage'
-import { KomfyEditMcpServer } from '../packages/komfyedit-mcp/src/server'
+import { KomfyEditMcpServer } from '../packages/kailaedit-mcp/src/server'
 import { projectSchema, saveProjectAtomic, type Project } from '@komfyedit/core'
 
 describe('S5-2: EditPilot Project Context & Runner Integration', () => {

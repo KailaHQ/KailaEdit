@@ -6,7 +6,7 @@ import { DEFAULT_STICKER_PIXELS } from '../src/stickers'
 import type { Timeline } from '../src/project-model'
 
 /**
- * Where the Add button drops a sticker, CapCut-style.
+ * Where the Add button drops a sticker.
  *
  * At the very start of the timeline every sticker gets its own layer, because
  * they would all begin at 0 and simply cover each other otherwise. Anywhere

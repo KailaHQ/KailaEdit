@@ -1,10 +1,10 @@
 # Giao diện & Không gian làm việc
 
 <p align="center">
-  <img src="../../images/overview-ui.png" alt="Bố cục giao diện KomfyEdit" width="85%">
+  <img src="../../images/overview-ui.png" alt="Bố cục giao diện KailaEdit" width="85%">
 </p>
 
-Giao diện làm việc của KomfyEdit được thiết kế khoa học theo chuẩn các phần mềm dựng phim chuyên nghiệp, chia thành các khu vực trực quan giúp bạn biên tập nhanh chóng.
+Giao diện làm việc của KailaEdit được thiết kế khoa học theo chuẩn các phần mềm dựng phim chuyên nghiệp, chia thành các khu vực trực quan giúp bạn biên tập nhanh chóng.
 
 ---
 
@@ -91,7 +91,7 @@ Mở menu `Edit` → `Preferences` hoặc nhấn biểu tượng bánh răng cà
 - **Ngôn ngữ giao diện (Language)**: Chuyển đổi linh hoạt giữa **Tiếng Việt** và **English**.
 - **Tăng tốc phần cứng (Hardware Acceleration)**: Tự động nhận diện và tận dụng GPU để giải mã và render video tốc độ cao (hỗ trợ NVIDIA NVENC, Intel QuickSync, Apple VideoToolbox).
 - **Cấu hình Proxy & Render Cache**: Thiết lập thư mục lưu trữ các tệp dựng phim nhẹ (Proxy) và bộ nhớ đệm hiệu ứng (Render Cache), kèm nút dọn dẹp giải phóng dung lượng ổ đĩa.
-- **Cấu hình Trợ lý AI EditPilot**: Thiết lập công cụ CLI Agent mặc định (Claude Code, Antigravity, hoặc Codex) cùng danh sách quyền hạn thực thi.
+- **Cấu hình Trợ lý AI CoEdit**: Thiết lập công cụ CLI Agent mặc định (Claude Code, Antigravity, hoặc Codex) cùng danh sách quyền hạn thực thi.
 
 ### Cài đặt Dự án (Project Settings)
 Mở menu `File` → `Project Settings...`:

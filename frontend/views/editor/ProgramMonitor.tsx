@@ -2466,7 +2466,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 />
               ))}
 
-              {/* Text overlay clips with CapCut-style bounding box & resize/scale/width/rotate handles */}
+              {/* Text overlay clips with bounding box & resize/scale/width/rotate handles */}
               {activeTextClips.map(tc => {
                 const isSelected = selectedClipIds.has(tc.id)
                 return (

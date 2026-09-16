@@ -1,4 +1,4 @@
-# Báo cáo đánh giá kiến trúc KomfyEdit
+# Báo cáo đánh giá kiến trúc KailaEdit
 
 **Ngày:** 2026-09-04 · **Nhánh:** `strip-to-video-editor` · **Phạm vi:** toàn bộ `electron/`, `frontend/`, `shared/`
 

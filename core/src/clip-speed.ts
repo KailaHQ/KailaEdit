@@ -1,7 +1,7 @@
 /**
  * The speed range a clip can be played at, and how it maps onto a slider.
  *
- * The range matches what CapCut offers, 0.1x to 100x, which spans three
+ * The speed range spans 0.1x to 100x, three
  * decades. A linear slider over that range is unusable: 1x would land less than
  * one percent along it, and every ordinary speed would be crammed against the
  * left edge. The mapping here is logarithmic, so each decade — 0.1x to 1x, 1x
@@ -112,20 +112,20 @@ export function mediaSecondsForTimelineSeconds(
   return timelineSeconds * clampClipSpeed(speed ?? 1)
 }
 
-export const CAPCUT_SPEED_LANDMARKS = [0.1, 1.0, 2.0, 5.0, 10.0, 100.0] as const
-export const CAPCUT_LANDMARK_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1.0] as const
+export const PIECEWISE_SPEED_LANDMARKS = [0.1, 1.0, 2.0, 5.0, 10.0, 100.0] as const
+export const PIECEWISE_LANDMARK_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1.0] as const
 
 /**
- * Maps a speed value (0.1x - 100x) to a slider position (0 - 1) matching CapCut's layout:
+ * Maps a speed value (0.1x - 100x) to a slider position (0 - 1) matching landmark layout:
  * 0.1x (0%), 1x (20%), 2x (40%), 5x (60%), 10x (80%), 100x (100%).
  */
-export function capcutPositionForSpeed(speed: number): number {
+export function piecewisePositionForSpeed(speed: number): number {
   const clamped = clampClipSpeed(speed)
-  for (let i = 0; i < CAPCUT_SPEED_LANDMARKS.length - 1; i++) {
-    const s0 = CAPCUT_SPEED_LANDMARKS[i]
-    const s1 = CAPCUT_SPEED_LANDMARKS[i + 1]
-    const p0 = CAPCUT_LANDMARK_POSITIONS[i]
-    const p1 = CAPCUT_LANDMARK_POSITIONS[i + 1]
+  for (let i = 0; i < PIECEWISE_SPEED_LANDMARKS.length - 1; i++) {
+    const s0 = PIECEWISE_SPEED_LANDMARKS[i]
+    const s1 = PIECEWISE_SPEED_LANDMARKS[i + 1]
+    const p0 = PIECEWISE_LANDMARK_POSITIONS[i]
+    const p1 = PIECEWISE_LANDMARK_POSITIONS[i + 1]
     if (clamped >= s0 && clamped <= s1) {
       const t = (Math.log10(clamped) - Math.log10(s0)) / (Math.log10(s1) - Math.log10(s0))
       return p0 + t * (p1 - p0)
@@ -137,23 +137,23 @@ export function capcutPositionForSpeed(speed: number): number {
 /**
  * Maps a slider position (0 - 1) back to speed with magnetic snapping to landmark ticks.
  */
-export function speedForCapcutPosition(position: number, snap = true): number {
+export function speedForPiecewisePosition(position: number, snap = true): number {
   const clampedPos = Math.min(1, Math.max(0, position))
 
   if (snap) {
     const SNAP_RADIUS = 0.035 // ~3.5% magnetic snap window around each landmark tick
-    for (let i = 0; i < CAPCUT_LANDMARK_POSITIONS.length; i++) {
-      if (Math.abs(clampedPos - CAPCUT_LANDMARK_POSITIONS[i]) <= SNAP_RADIUS) {
-        return CAPCUT_SPEED_LANDMARKS[i]
+    for (let i = 0; i < PIECEWISE_LANDMARK_POSITIONS.length; i++) {
+      if (Math.abs(clampedPos - PIECEWISE_LANDMARK_POSITIONS[i]) <= SNAP_RADIUS) {
+        return PIECEWISE_SPEED_LANDMARKS[i]
       }
     }
   }
 
-  for (let i = 0; i < CAPCUT_LANDMARK_POSITIONS.length - 1; i++) {
-    const p0 = CAPCUT_LANDMARK_POSITIONS[i]
-    const p1 = CAPCUT_LANDMARK_POSITIONS[i + 1]
-    const s0 = CAPCUT_SPEED_LANDMARKS[i]
-    const s1 = CAPCUT_SPEED_LANDMARKS[i + 1]
+  for (let i = 0; i < PIECEWISE_LANDMARK_POSITIONS.length - 1; i++) {
+    const p0 = PIECEWISE_LANDMARK_POSITIONS[i]
+    const p1 = PIECEWISE_LANDMARK_POSITIONS[i + 1]
+    const s0 = PIECEWISE_SPEED_LANDMARKS[i]
+    const s1 = PIECEWISE_SPEED_LANDMARKS[i + 1]
     if (clampedPos >= p0 && clampedPos <= p1) {
       const t = (clampedPos - p0) / (p1 - p0)
       const raw = Math.pow(10, Math.log10(s0) + t * (Math.log10(s1) - Math.log10(s0)))

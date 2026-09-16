@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TimelineClip, KeyframeProperty } from '../../types/project-model'
 import { getKeyframeTrack } from '@core/keyframes'
 import { selectCurrentTime } from './editor-selectors'
@@ -17,7 +18,7 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
   currentValue,
   className = '',
 }) => {
-  const { setKeyframe, removeKeyframeAt } = useEditorActions()
+  const { setKeyframe, removeKeyframeAt, setCurrentTime } = useEditorActions()
   const getState = useEditorGetState()
   const subscribeToSlice = useEditorSubscribeToSlice()
 
@@ -81,6 +82,27 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
     }
   }
 
+  // Find previous and next keyframe points relative to current playhead
+  const sortedPoints = track?.points ? [...track.points].sort((a, b) => a.t - b.t) : []
+  const prevPoint = sortedPoints
+    .filter(p => p.t < playheadState.timeInClip - 0.04)
+    .pop()
+  const nextPoint = sortedPoints.find(p => p.t > playheadState.timeInClip + 0.04)
+
+  const handlePrevKeyframe = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!prevPoint) return
+    setCurrentTime(clip.startTime + prevPoint.t)
+  }
+
+  const handleNextKeyframe = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!nextPoint) return
+    setCurrentTime(clip.startTime + nextPoint.t)
+  }
+
   const { isInsideClip, isOnKeyframe } = playheadState
 
   const tooltip = !isInsideClip
@@ -91,30 +113,61 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
         ? 'Add keyframe at playhead'
         : 'Enable keyframing for this property'
 
-  return (
+  const diamondButton = (
     <button
       type="button"
       onClick={handleClick}
       disabled={!isInsideClip}
       title={tooltip}
-      className={`inline-flex items-center justify-center w-5 h-5 rounded hover:bg-zinc-800/80 transition-colors ${
+      className={`inline-flex items-center justify-center w-4 h-5 rounded hover:bg-zinc-800/80 transition-colors ${
         !isInsideClip ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
-      } ${className}`}
+      }`}
     >
-      <svg width="12" height="12" viewBox="0 0 12 12" className="flex-shrink-0">
+      <svg width="10" height="10" viewBox="0 0 12 12" className="flex-shrink-0">
         <polygon
           points="6,1 11,6 6,11 1,6"
-          strokeWidth="1.4"
+          strokeWidth="1.5"
           strokeLinejoin="round"
           className={
             isOnKeyframe
-              ? 'fill-amber-400 stroke-amber-400 hover:fill-amber-300 hover:stroke-amber-300'
+              ? 'fill-cyan-400 stroke-cyan-400 hover:fill-cyan-300 hover:stroke-cyan-300'
               : hasTrack
-                ? 'fill-transparent stroke-amber-400 hover:fill-amber-400/30'
-                : 'fill-transparent stroke-zinc-500 hover:stroke-amber-400'
+                ? 'fill-transparent stroke-cyan-400 hover:fill-cyan-400/30'
+                : 'fill-transparent stroke-zinc-500 hover:stroke-cyan-400'
           }
         />
       </svg>
     </button>
   )
+
+  return (
+    <div className={`inline-flex items-center justify-end gap-0.5 rounded px-0.5 select-none ${className}`}>
+      <button
+        type="button"
+        onClick={handlePrevKeyframe}
+        disabled={!prevPoint || !isInsideClip}
+        title={prevPoint ? `Previous keyframe (${(clip.startTime + prevPoint.t).toFixed(2)}s)` : 'No previous keyframe'}
+        className={`inline-flex items-center justify-center w-2.5 h-5 rounded transition-colors ${
+          !prevPoint || !isInsideClip ? 'opacity-20 cursor-default text-zinc-600' : 'cursor-pointer text-zinc-400 hover:text-cyan-400'
+        }`}
+      >
+        <ChevronLeft className="w-2.5 h-2.5" />
+      </button>
+
+      {diamondButton}
+
+      <button
+        type="button"
+        onClick={handleNextKeyframe}
+        disabled={!nextPoint || !isInsideClip}
+        title={nextPoint ? `Next keyframe (${(clip.startTime + nextPoint.t).toFixed(2)}s)` : 'No next keyframe'}
+        className={`inline-flex items-center justify-center w-2.5 h-5 rounded transition-colors ${
+          !nextPoint || !isInsideClip ? 'opacity-20 cursor-default text-zinc-600' : 'cursor-pointer text-zinc-400 hover:text-cyan-400'
+        }`}
+      >
+        <ChevronRight className="w-2.5 h-2.5" />
+      </button>
+    </div>
+  )
 }
+

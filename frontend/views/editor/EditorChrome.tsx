@@ -23,6 +23,7 @@ import {
 import { useView } from '../../contexts/ViewContext'
 import { useTranslation } from '../../i18n/I18nContext'
 import { WindowControls } from '../../components/WindowControls'
+import { UpdateButton } from '../../components/UpdateButton'
 import type { LibraryTab } from './editor-state'
 
 /** One command in the Menu dropdown. */
@@ -94,7 +95,7 @@ export function EditorTitleBar({ menus, projectName, lastSavedAt, isAgentSession
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span className="pr-1 text-[13px] font-semibold tracking-tight text-zinc-100">
-          Komfy<span className="text-accent">Edit</span>
+          Kaila<span className="text-accent">Edit</span>
         </span>
 
         <div className="app-no-drag relative">
@@ -131,6 +132,7 @@ export function EditorTitleBar({ menus, projectName, lastSavedAt, isAgentSession
 
       {/* Right cluster */}
       <div className="flex flex-1 items-center justify-end gap-1.5">
+        <UpdateButton />
         <button className="editor-icon-btn cc-icon-btn app-no-drag" title={t('chrome.layout')}>
           <Layout className="h-4 w-4" />
         </button>

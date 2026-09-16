@@ -9,7 +9,8 @@ interface I18nContextType {
   t: (path: string, params?: Record<string, string | number>) => string
 }
 
-const STORAGE_KEY = 'komfyedit_language'
+const STORAGE_KEY = 'kailaedit_language'
+const LEGACY_STORAGE_KEY = 'komfyedit_language'
 
 const dictionaries: Record<AppLanguage, Record<string, any>> = {
   en,
@@ -27,9 +28,9 @@ export function I18nProvider({
 }) {
   const [language, setLanguageState] = useState<AppLanguage>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
+      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
       if (stored === 'en' || stored === 'vi') return stored
-      const appSettingsStr = localStorage.getItem('komfyedit_app_settings')
+      const appSettingsStr = localStorage.getItem('kailaedit_app_settings') || localStorage.getItem('komfyedit_app_settings')
       if (appSettingsStr) {
         const parsed = JSON.parse(appSettingsStr)
         if (parsed.language === 'en' || parsed.language === 'vi') return parsed.language

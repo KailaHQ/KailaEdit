@@ -4,7 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import {
   KomfyEditMcpServer,
-} from '../packages/komfyedit-mcp/src/server'
+} from '../packages/kailaedit-mcp/src/server'
 import {
   projectSchema,
   saveProjectAtomic,

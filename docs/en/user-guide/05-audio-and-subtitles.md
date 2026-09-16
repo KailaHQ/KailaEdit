@@ -4,7 +4,7 @@
   <img src="../../images/overview-ui.png" alt="Audio and Subtitle Management" width="85%">
 </p>
 
-Crystal-clear sound and accessible captions are critical to every professional video. KomfyEdit provides multi-track audio mixing, visual waveforms, and dedicated subtitle styling tracks.
+Crystal-clear sound and accessible captions are critical to every professional video. KailaEdit provides multi-track audio mixing, visual waveforms, and dedicated subtitle styling tracks.
 
 ---
 
@@ -41,7 +41,7 @@ flowchart LR
 
 ## 🎙️ 2. Auto-Transcription with Local Whisper (100% Offline)
 
-KomfyEdit bundles a local **OpenAI Whisper speech-to-text engine** directly within the desktop app:
+KailaEdit bundles a local **OpenAI Whisper speech-to-text engine** directly within the desktop app:
 
 ```mermaid
 flowchart LR
@@ -60,7 +60,7 @@ flowchart LR
 
 ## 💬 3. Subtitles, Typography & Text Presets
 
-KomfyEdit features a native Subtitle Engine that renders beautiful on-screen text overlays and burns them in cleanly during export.
+KailaEdit features a native Subtitle Engine that renders beautiful on-screen text overlays and burns them in cleanly during export.
 
 ### Working with Subtitle Tracks
 1. Click the **`Subs`** button on the timeline track header to create a dedicated Subtitle track (or generate one via Auto-Transcribe).

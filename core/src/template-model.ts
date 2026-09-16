@@ -40,7 +40,7 @@ export type TemplateSlot = z.infer<typeof templateSlotSchema>
 
 export const TEMPLATE_FORMAT_VERSION = 1
 
-export const komfyTemplateSchema = z.object({
+export const kailaTemplateSchema = z.object({
   format: z.literal(TEMPLATE_FORMAT_VERSION),
   id: z.string(),
   name: z.string(),
@@ -73,17 +73,20 @@ export const komfyTemplateSchema = z.object({
    * Files that travel with the template — the music bed, an overlay PNG.
    *
    * Only media the template owns. The user's footage is never in here: it goes
-   * in the slots, and it belongs to whoever applies the template, not to
-   * whoever wrote it. Names are leaves inside the template's `media/` folder,
-   * so a template is portable between machines.
+   * to a slot.
    */
   bundledMedia: z.array(z.string()).default([]),
 })
 
-export type KomfyTemplate = z.infer<typeof komfyTemplateSchema>
+export const komfyTemplateSchema = kailaTemplateSchema
+
+export type KailaTemplate = z.infer<typeof kailaTemplateSchema>
+export type KomfyTemplate = KailaTemplate
 
 /** The extension a single-file template is saved under. */
-export const TEMPLATE_FILE_EXTENSION = '.komfytemplate'
+export const TEMPLATE_FILE_EXTENSION = '.kailatemplate'
+export const LEGACY_TEMPLATE_FILE_EXTENSION = '.komfytemplate'
+export const TEMPLATE_FILE_EXTENSIONS = ['.kailatemplate', '.komfytemplate'] as const
 
 /** Shelves the built-in templates use. User templates may name anything. */
 export const TEMPLATE_CATEGORIES = ['opener', 'montage', 'compare', 'text'] as const
@@ -207,7 +210,7 @@ export function buildTemplateFromTimeline(
    * A slot's media is the user's footage: personal, and the very thing the
    * next video replaces, so it is stripped. Everything else — the music bed,
    * an overlay PNG — IS the template. Without it a saved edit came back
-   * silent, which was the honest gap against CapCut.
+   * silent, which was an issue in earlier versions.
    *
    * Kept media is rewritten to a name inside the template's own folder, so no
    * absolute path from this machine survives into the file.

@@ -38,6 +38,8 @@ export type ActionId =
   // Keyframes
   | 'keyframe.toggle'
   | 'keyframe.delete'
+  | 'keyframe.prev'
+  | 'keyframe.next'
   // Marking
   | 'mark.setIn'
   | 'mark.setOut'
@@ -117,6 +119,8 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
   { id: 'edit.split',         label: 'Split Clip',         category: 'Editing' },
   { id: 'keyframe.toggle',    label: 'Toggle Keyframe at Playhead', category: 'Editing', description: 'Add or remove keyframe at the current playhead position' },
   { id: 'keyframe.delete',    label: 'Delete Keyframe at Playhead', category: 'Editing', description: 'Delete keyframe at the current playhead position' },
+  { id: 'keyframe.prev',      label: 'Previous Keyframe',           category: 'Editing', description: 'Jump playhead to previous keyframe on selected clip' },
+  { id: 'keyframe.next',      label: 'Next Keyframe',               category: 'Editing', description: 'Jump playhead to next keyframe on selected clip' },
   { id: 'edit.insertEdit',    label: 'Insert Edit',        category: 'Editing' },
   { id: 'edit.overwriteEdit', label: 'Overwrite Edit',     category: 'Editing' },
   { id: 'edit.matchFrame',    label: 'Match Frame',        category: 'Editing', description: 'Load the clip under the playhead into the source monitor at the matching frame' },
@@ -159,9 +163,9 @@ function k(key: string, mods?: { ctrl?: boolean; shift?: boolean; alt?: boolean;
 }
 
 // ═══════════════════════════════════════════
-// ── PRESET: KomfyEdit Default ──
+// ── PRESET: KailaEdit Default ──
 // ═══════════════════════════════════════════
-export const KOMFY_DEFAULT_LAYOUT: KeyboardLayout = {
+export const KAILA_DEFAULT_LAYOUT: KeyboardLayout = {
   // Tools
   'tool.select':       [k('v')],
   'tool.blade':        [k('b')],
@@ -195,6 +199,8 @@ export const KOMFY_DEFAULT_LAYOUT: KeyboardLayout = {
   'edit.split':         [k('b', { ctrl: true })],
   'keyframe.toggle':    [k('k', { alt: true })],
   'keyframe.delete':    [k('k', { alt: true, shift: true })],
+  'keyframe.prev':      [k('[', { alt: true }), k('j', { alt: true })],
+  'keyframe.next':      [k(']', { alt: true }), k('l', { alt: true })],
   'edit.insertEdit':    [k(',')],
   'edit.overwriteEdit': [k('.')],
   'edit.matchFrame':    [k('f')],
@@ -218,6 +224,9 @@ export const KOMFY_DEFAULT_LAYOUT: KeyboardLayout = {
   'view.fullscreen': [k('`'), k('f11')],
   'app.settings': [k(',', { ctrl: true })],
 }
+
+/** Backward compatibility alias */
+export const KOMFY_DEFAULT_LAYOUT = KAILA_DEFAULT_LAYOUT
 
 // ═══════════════════════════════════════════
 // ── PRESET: Adobe Premiere Pro ──
@@ -256,6 +265,8 @@ export const PREMIERE_LAYOUT: KeyboardLayout = {
   'edit.split':         [k('k', { ctrl: true })],
   'keyframe.toggle':    [k('k', { alt: true })],
   'keyframe.delete':    [k('k', { alt: true, shift: true })],
+  'keyframe.prev':      [k('[', { alt: true }), k('j', { alt: true })],
+  'keyframe.next':      [k(']', { alt: true }), k('l', { alt: true })],
   'edit.insertEdit':    [k(',')],         // Premiere: , = insert
   'edit.overwriteEdit': [k('.')],         // Premiere: . = overwrite
   'edit.matchFrame':    [k('f')],         // Premiere: F = match frame
@@ -316,6 +327,8 @@ export const DAVINCI_LAYOUT: KeyboardLayout = {
   'edit.split':         [k('b', { ctrl: true })],
   'keyframe.toggle':    [k('k', { alt: true })],
   'keyframe.delete':    [k('k', { alt: true, shift: true })],
+  'keyframe.prev':      [k('[', { alt: true }), k('j', { alt: true })],
+  'keyframe.next':      [k(']', { alt: true }), k('l', { alt: true })],
   'edit.insertEdit':    [k('f9')],       // DaVinci: F9 = insert
   'edit.overwriteEdit': [k('f10')],      // DaVinci: F10 = overwrite
   'edit.matchFrame':    [k('f')],        // DaVinci: F = match frame
@@ -376,6 +389,8 @@ export const AVID_LAYOUT: KeyboardLayout = {
   'edit.split':         [k('b', { ctrl: true })],
   'keyframe.toggle':    [k('k', { alt: true })],
   'keyframe.delete':    [k('k', { alt: true, shift: true })],
+  'keyframe.prev':      [k('[', { alt: true }), k('j', { alt: true })],
+  'keyframe.next':      [k(']', { alt: true }), k('l', { alt: true })],
   'edit.insertEdit':    [k('v', { shift: true })],  // Avid: Shift+V to avoid conflict with tool.select
   'edit.overwriteEdit': [k('b')],         // Avid: B = overwrite
   'edit.matchFrame':    [k('f')],         // Avid: match frame
@@ -402,10 +417,17 @@ export const AVID_LAYOUT: KeyboardLayout = {
 // ── All Built-in Presets ──
 export const BUILT_IN_PRESETS: KeyboardPreset[] = [
   {
+    id: 'kaila-default',
+    name: 'KailaEdit Default',
+    description: 'Default keyboard layout for KailaEdit',
+    layout: KAILA_DEFAULT_LAYOUT,
+    builtIn: true,
+  },
+  {
     id: 'komfy-default',
-    name: 'KomfyEdit Default',
+    name: 'KomfyEdit Default (Legacy)',
     description: 'Default keyboard layout for KomfyEdit',
-    layout: KOMFY_DEFAULT_LAYOUT,
+    layout: KAILA_DEFAULT_LAYOUT,
     builtIn: true,
   },
   {

@@ -30,7 +30,7 @@
  */
 
 /** Must match `appId` in electron-builder.yml. */
-export const APP_USER_MODEL_ID = 'com.komfyedit.app'
+export const APP_USER_MODEL_ID = 'com.kailaedit.app'
 
 /** What a dev run calls itself, so it stands beside the installed app. */
 export const DEV_APP_USER_MODEL_ID = `${APP_USER_MODEL_ID}.dev`

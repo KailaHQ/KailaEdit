@@ -74,10 +74,10 @@ describe('i18n Dictionaries Parity', () => {
     expect(en.projectSettings.title).toBe('Project / Timeline Settings')
     expect(vi.projectSettings.title).toBe('Cài đặt dự án / Dòng thời gian')
 
-    expect(en.editpilot.title).toBe('EditPilot')
-    expect(vi.editpilot.title).toBe('EditPilot')
-    expect(en.editpilot.settingsTitle).toBe('EditPilot Configuration')
-    expect(vi.editpilot.settingsTitle).toBe('Cấu hình EditPilot')
+    expect(en.editpilot.title).toBe('CoEdit')
+    expect(vi.editpilot.title).toBe('CoEdit')
+    expect(en.editpilot.settingsTitle).toBe('CoEdit Configuration')
+    expect(vi.editpilot.settingsTitle).toBe('Cấu hình CoEdit')
 
     expect(en.timeline.closeGap).toBe('Close Gap')
     expect(vi.timeline.closeGap).toBe('Dồn khoảng trống')

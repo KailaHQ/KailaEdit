@@ -224,7 +224,7 @@ describe('applyTemplate', () => {
  * Phase 2: a template keeps the media it owns.
  *
  * The music bed and the overlays ARE the template; without them a saved edit
- * came back silent, which was the real gap against CapCut. The user's footage
+ * came back silent. The user's footage
  * still never travels — that is what the slots are for.
  */
 describe('bundled media', () => {

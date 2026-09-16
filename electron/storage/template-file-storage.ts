@@ -4,8 +4,11 @@ import { removeEntry } from './remove-entry'
 import { extractVideoFrameToFile } from '../export/ffmpeg-utils'
 import {
   TEMPLATE_FILE_EXTENSION,
+  TEMPLATE_FILE_EXTENSIONS,
   TEMPLATE_MEDIA_DIR,
+  kailaTemplateSchema,
   komfyTemplateSchema,
+  type KailaTemplate,
   type KomfyTemplate,
   type TemplateMediaRef,
 } from '../../core/src/template-model'
@@ -72,7 +75,12 @@ export function getTemplatesDir(presetsDir?: string): string {
     // Running in standalone Node or the test runner.
   }
 
-  const base = userDataPath || path.join(process.cwd(), '.komfyedit-data')
+  const defaultHeadlessDir = fs.existsSync(path.join(process.cwd(), '.kailaedit-data'))
+    ? path.join(process.cwd(), '.kailaedit-data')
+    : (fs.existsSync(path.join(process.cwd(), '.komfyedit-data'))
+        ? path.join(process.cwd(), '.komfyedit-data')
+        : path.join(process.cwd(), '.kailaedit-data'))
+  const base = userDataPath || defaultHeadlessDir
   return path.join(base, 'templates')
 }
 
@@ -96,7 +104,7 @@ export function templateFileName(template: Pick<KomfyTemplate, 'id' | 'name'>): 
 
 /** Rejects any file name that is not a plain leaf inside the templates folder. */
 export function isSafeTemplateFileName(fileName: string): boolean {
-  if (!fileName.endsWith(TEMPLATE_FILE_EXTENSION)) return false
+  if (!TEMPLATE_FILE_EXTENSIONS.some(ext => fileName.endsWith(ext))) return false
   if (fileName.includes('/') || fileName.includes('\\')) return false
   if (fileName.includes('..')) return false
   return path.basename(fileName) === fileName
@@ -122,7 +130,7 @@ export function listTemplates(templatesDir: string): TemplateSummary[] {
 
   const summaries: TemplateSummary[] = []
   for (const fileName of fs.readdirSync(templatesDir)) {
-    if (!fileName.endsWith(TEMPLATE_FILE_EXTENSION)) continue
+    if (!TEMPLATE_FILE_EXTENSIONS.some(ext => fileName.endsWith(ext))) continue
     try {
       const docPath = templateDocPath(templatesDir, fileName)
       if (!docPath) continue
@@ -252,7 +260,7 @@ export function writeTemplate(
     }
     /*
      * The cover is a real frame of the edit as it stood when it was saved —
-     * the same insight that makes CapCut's previews work: a template is taken
+     * the same insight that makes template previews work: a template is taken
      * FROM a finished video, so at save time there is a finished video to
      * photograph. A failure here loses the picture, not the template.
      */

@@ -4,7 +4,7 @@
   <img src="../../images/export-pipeline.png" alt="Quy trình xuất video offline bằng FFmpeg" width="85%">
 </p>
 
-KomfyEdit sử dụng nhân xử lý **FFmpeg nhúng sẵn** cho phép render xuất video với tốc độ cao hoàn toàn offline ngay trên máy tính của bạn. Không đóng dấu watermark, không giới hạn thời lượng và không gửi dữ liệu lên bất kỳ máy chủ nào.
+KailaEdit sử dụng nhân xử lý **FFmpeg nhúng sẵn** cho phép render xuất video với tốc độ cao hoàn toàn offline ngay trên máy tính của bạn. Không đóng dấu watermark, không giới hạn thời lượng và không gửi dữ liệu lên bất kỳ máy chủ nào.
 
 ---
 
@@ -61,7 +61,7 @@ Bạn có thể xuất theo kích thước chuẩn hoặc khớp hoàn toàn v�
 
 ## ⚡ 5. Tăng tốc phần cứng GPU (Hardware Acceleration)
 
-KomfyEdit tự động thăm dò phần cứng và kích hoạt bộ mã hóa chuyên dụng của GPU nếu có:
+KailaEdit tự động thăm dò phần cứng và kích hoạt bộ mã hóa chuyên dụng của GPU nếu có:
 - **NVIDIA GPU**: Sử dụng bộ mã hóa phần cứng `h264_nvenc` giúp tốc độ render nhanh gấp 4–8 lần so với CPU.
 - **Intel CPU / Arc GPU**: Sử dụng công nghệ `h264_qsv` (Intel QuickSync Video).
 - **Apple Silicon (Mac M1/M2/M3/M4)**: Tận dụng phần cứng `h264_videotoolbox` và `prores_videotoolbox` siêu tốc và tiết kiệm pin.
@@ -98,8 +98,8 @@ flowchart LR
   - Hàng đợi cho phép xếp lịch render hàng loạt nhiều dự án hoặc xuất đồng thời một video thành 2 phiên bản (bản 4K cho YouTube và bản 1080p dọc cho TikTok) chạy ngầm trong nền.
 - **Xuất mốc phân đoạn (Chapter Markers)**:
   - Đặt các điểm đánh dấu (Marker) trên timeline và đặt tên chương (ví dụ: *00:00 Mở đầu*, *02:15 Hướng dẫn chi tiết*, *08:30 Kết luận*).
-  - Khi xuất video, KomfyEdit có thể tự động nhúng các mốc chương này vào tệp MP4 hoặc tạo sẵn danh sách timestamp định dạng chuẩn để dán trực tiếp vào phần mô tả video trên YouTube!
+  - Khi xuất video, KailaEdit có thể tự động nhúng các mốc chương này vào tệp MP4 hoặc tạo sẵn danh sách timestamp định dạng chuẩn để dán trực tiếp vào phần mô tả video trên YouTube!
 
 ---
 
-[← Quay lại: 05. Âm thanh & Phụ đề](05-audio-and-subtitles.md) · [Tiếp theo: 07. Trợ lý AI EditPilot →](07-editpilot-ai-assistant.md)
+[← Quay lại: 05. Âm thanh & Phụ đề](05-audio-and-subtitles.md) · [Tiếp theo: 07. Trợ lý AI CoEdit →](07-coedit-ai-assistant.md)

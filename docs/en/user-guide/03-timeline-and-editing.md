@@ -4,7 +4,7 @@
   <img src="../../images/overview-ui.png" alt="Timeline and Editing Controls" width="85%">
 </p>
 
-The multi-track timeline is the creative heart of KomfyEdit. It supports simultaneous video, audio, adjustment, and subtitle tracks with industry-standard editing operations.
+The multi-track timeline is the creative heart of KailaEdit. It supports simultaneous video, audio, adjustment, and subtitle tracks with industry-standard editing operations.
 
 ---
 
@@ -26,7 +26,7 @@ Located on the vertical toolbar to the left of the timeline:
 
 ## 🎞️ Track Architecture & Management
 
-KomfyEdit separates media logically across dedicated tracks:
+KailaEdit separates media logically across dedicated tracks:
 
 ```mermaid
 graph TD
@@ -63,7 +63,7 @@ Each track header contains controls to manage playback and safety:
 
 ## ⚡ Gap Handling & Gap Actions Popover
 
-When blank gaps appear between clips on the timeline, KomfyEdit provides immediate contextual interactions:
+When blank gaps appear between clips on the timeline, KailaEdit provides immediate contextual interactions:
 - **Left / Right-Click on Gaps**: Opens the **Gap Actions Popover**:
   - **Close Gap (Ripple Delete)**: Collapses the blank space, shifting subsequent clips backward (`Shift + Delete`).
   - **Insert Color / Adjustment Layer**: Spans a solid color or an Adjustment Layer precisely matching the gap's duration without manual trimming.
@@ -74,7 +74,7 @@ When blank gaps appear between clips on the timeline, KomfyEdit provides immedia
 
 ## 💎 Motion & Parameter Keyframing
 
-KomfyEdit features an intuitive **Keyframe Animation Engine** allowing smooth parameter interpolation across clips over time:
+KailaEdit features an intuitive **Keyframe Animation Engine** allowing smooth parameter interpolation across clips over time:
 
 ```mermaid
 flowchart LR

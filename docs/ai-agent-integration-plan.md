@@ -1,8 +1,8 @@
-# Kế hoạch tích hợp AI Agent cho KomfyEdit
+# Kế hoạch tích hợp AI Agent cho KailaEdit
 
 **Ngày:** 2026-09-04 · **Tài liệu nền:** [architecture-assessment.md](./architecture-assessment.md)
 
-Tài liệu này khảo sát cách các editor phổ biến và các dự án mã nguồn mở đang cho AI agent điều khiển việc dựng phim, rút ra các mẫu kiến trúc, rồi đề xuất kế hoạch cụ thể cho KomfyEdit.
+Tài liệu này khảo sát cách các editor phổ biến và các dự án mã nguồn mở đang cho AI agent điều khiển việc dựng phim, rút ra các mẫu kiến trúc, rồi đề xuất kế hoạch cụ thể cho KailaEdit.
 
 > **Về nguồn:** phần khảo sát dựa trên tìm kiếm web tháng 9/2026. Con số công cụ của các dự án cộng đồng thay đổi nhanh và các nguồn không thống nhất (fcp-mcp được ghi 88 hoặc 94 tool tuỳ trang) — hãy đọc chúng như *bậc độ lớn*, không phải số liệu chính xác. Tôi chưa cài hay chạy thử bất kỳ MCP server nào trong số này.
 
@@ -39,7 +39,7 @@ Không có NLE nào cả; agent gọi thẳng các thao tác media.
 - **Kinocut** — MCP server + thư viện Python + CLI bọc FFmpeg, 196 tool: cắt/ghép/resize/overlay/phụ đề, xử lý audio (tách stem, chuẩn hoá), phân tích (scene detection, so sánh chất lượng), tái chế nội dung sang Shorts/Reels.
 - **ffmpeg-mcp**, **mcp-video-editor**, **VibeVideo MCP** — cùng ý tưởng ở quy mô nhỏ hơn.
 
-Ưu: tự động hoá hoàn toàn, không cần GUI. Nhược: **không có mô hình timeline** — sản phẩm là file đã render, người dùng không mở ra sửa tiếp được. Đây chính là ranh giới KomfyEdit không nên rơi vào.
+Ưu: tự động hoá hoàn toàn, không cần GUI. Nhược: **không có mô hình timeline** — sản phẩm là file đã render, người dùng không mở ra sửa tiếp được. Đây chính là ranh giới KailaEdit không nên rơi vào.
 
 ### Mẫu D — Biên tập theo ngữ nghĩa (transcript-first)
 
@@ -90,9 +90,9 @@ Bài học: **tách bạch quyền đọc, quyền ghi tài liệu, và quyền 
 
 ---
 
-## 3. KomfyEdit đang ở đâu trên bản đồ này
+## 3. KailaEdit đang ở đâu trên bản đồ này
 
-| Yếu tố | Resolve / Premiere | Editor phổ thông | fcp-mcp | Kinocut | **KomfyEdit** |
+| Yếu tố | Resolve / Premiere | Editor phổ thông | fcp-mcp | Kinocut | **KailaEdit** |
 |---|---|---|---|---|---|
 | API chính thức của nhà sản xuất | Có | **Không có** | Không (dựa FCPXML) | N/A | **Tự quyết định được** |
 | Lớp lệnh sạch, thuần | Phải suy ra từ API ngoại lai | Đảo ngược schema JSON | Thao tác XML | Không có timeline | **Có sẵn 155 reducer thuần** |
@@ -101,9 +101,9 @@ Bài học: **tách bạch quyền đọc, quyền ghi tài liệu, và quyền 
 | Engine render chịu tải | Có | Có | Dùng FCP | Có | **Chưa** (xem báo cáo nền) |
 | Undo tập trung | Có | Có | Backup file | Receipts | **Có, 1 bước/thao tác** |
 
-Ba lợi thế thật sự của KomfyEdit:
+Ba lợi thế thật sự của KailaEdit:
 
-1. **Không phải đảo ngược gì cả.** Các dự án MCP bên thứ ba phải mò schema JSON của người khác; fcp-mcp phải bám đặc tả FCPXML. KomfyEdit sở hữu cả app lẫn định dạng — API tài liệu là *first-party*, không bao giờ vỡ vì bên thứ ba đổi phiên bản.
+1. **Không phải đảo ngược gì cả.** Các dự án MCP bên thứ ba phải mò schema JSON của người khác; fcp-mcp phải bám đặc tả FCPXML. KailaEdit sở hữu cả app lẫn định dạng — API tài liệu là *first-party*, không bao giờ vỡ vì bên thứ ba đổi phiên bản.
 2. **Lớp lệnh đã tồn tại.** `editor-actions.ts` có 155 reducer thuần `(state, args) => state`, đăng ký tự động qua kiểu. Các dự án khác phải *tổng hợp* lớp này từ một API ngoại lai; ở đây chỉ cần phơi bày.
 3. **Đồng nhất ngôn ngữ.** MCP server viết bằng TypeScript, import thẳng type từ `core/`. Schema tool sinh từ chữ ký reducer, không có lớp dịch nào để lệch.
 
@@ -118,7 +118,7 @@ Một bất lợi phải nói thẳng: **engine render chưa chịu được t�
 - **Mẫu B (tài liệu) là trục chính.** Agent làm việc trên project JSON qua `core/`, không cần cửa sổ Electron. Chạy theo lô được, test được, không đụng vào phiên làm việc của người dùng.
 - **Mẫu A (sống) là tuỳ chọn, mặc định tắt.** Cho copilot: agent thao tác trên timeline đang mở, người dùng thấy ngay. Bật bằng cờ, theo đúng cách fcp-mcp làm.
 - **Mẫu D (ngữ nghĩa) là lớp giá trị.** Cắt theo khoảng lặng, dựng theo transcript, tìm highlight — đây là thứ người dùng thực sự muốn, và nó *sinh ra* các lệnh của mẫu B chứ không thay thế.
-- **Không đi theo mẫu C.** Nếu agent chỉ xuất ra file đã render thì KomfyEdit thành một wrapper ffmpeg đắt tiền. Giá trị nằm ở chỗ sau khi agent làm xong, người dùng **mở ra sửa tiếp được**.
+- **Không đi theo mẫu C.** Nếu agent chỉ xuất ra file đã render thì KailaEdit thành một wrapper ffmpeg đắt tiền. Giá trị nằm ở chỗ sau khi agent làm xong, người dùng **mở ra sửa tiếp được**.
 
 ### 4.2 Kiến trúc mục tiêu
 
@@ -127,7 +127,7 @@ Một bất lợi phải nói thẳng: **engine render chưa chịu được t�
 └───────────────────────────┬───────────────────────────────────┘
                             │ MCP (stdio)
 ┌───────────────────────────┴───────────────────────────────────┐
-│  komfyedit-mcp   (package TS riêng, mỏng)                     │
+│  kailaedit-mcp   (package TS riêng, mỏng)                     │
 │   • Sinh schema tool từ chữ ký reducter trong core/           │
 │   • Ba profile quyền: read / edit / live                      │
 └───────────────────────────┬───────────────────────────────────┘
@@ -221,7 +221,7 @@ Sau khi có `observe.*`, bốn công thức sau viết được gần như hoàn
 | **Dựng theo transcript** | Whisper → `subtitle.import` → cắt theo câu |
 | **Tìm highlight → dọc** | `observe.scenes` + `observe.loudness` → chọn đoạn → `clip.setProperty` reframe |
 
-Đây chính là mẫu D. Điểm khác biệt so với Descript/OpusClip: ở KomfyEdit, kết quả là **một timeline sửa được**, không phải một file đã render.
+Đây chính là mẫu D. Điểm khác biệt so với Descript/OpusClip: ở KailaEdit, kết quả là **một timeline sửa được**, không phải một file đã render.
 
 ### 4.6 Lộ trình
 
@@ -247,7 +247,7 @@ Lưu ý thứ tự: **M5 (render chịu tải) không chặn M3 (copilot)** như
 - **Chưa chạy thử MCP server nào** trong số các dự án khảo sát. Đánh giá dựa trên tài liệu công khai của chúng, không phải trải nghiệm.
 - **Con số tool không nhất quán giữa các nguồn** (fcp-mcp: 88 hay 94; Resolve MCP: 34 hay 341 tuỳ cách đếm). Dùng như bậc độ lớn.
 - **Hệ sinh thái MCP cho video biến động rất nhanh.** Phần lớn dự án nêu trên là của cá nhân/nhóm nhỏ, mới vài tháng tuổi. Nên khảo sát lại trước khi khởi động M2.
-- **Chi phí OTIO chưa ước lượng.** Ánh xạ mô hình clip của KomfyEdit sang OTIO có thể lộ ra những khác biệt ngữ nghĩa (đặc biệt là track V1 nam châm — OTIO không có khái niệm này).
+- **Chi phí OTIO chưa ước lượng.** Ánh xạ mô hình clip của KailaEdit sang OTIO có thể lộ ra những khác biệt ngữ nghĩa (đặc biệt là track V1 nam châm — OTIO không có khái niệm này).
 - **Khoảng trống tri giác không biến mất bằng kỹ thuật.** Ngay cả với đủ bộ `observe.*` và vòng lặp preview, agent vẫn không cảm nhận được nhịp phim. Kế hoạch này nhắm vào công việc cơ học của trợ lý dựng — đó là ranh giới mà cả Descript lẫn tài liệu Agent-Driven Editing đều vạch ra, và nên tôn trọng nó thay vì hứa hẹn vượt qua.
 
 ---

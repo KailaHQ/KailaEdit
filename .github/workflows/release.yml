@@ -200,6 +200,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/latest*.yml
+            release/*.blockmap
 
   # Runs once, after every platform has uploaded. Deliberately not part of the
   # matrix: four jobs racing to rewrite the same release body would be four

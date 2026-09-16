@@ -16,14 +16,14 @@
 
 ### First launch / Lần mở đầu tiên
 
-KomfyEdit is not code-signed yet, so every platform warns once. *KomfyEdit chưa được ký số nên hệ điều hành sẽ cảnh báo ở lần đầu.*
+KailaEdit is not code-signed yet, so every platform warns once. *KailaEdit chưa được ký số nên hệ điều hành sẽ cảnh báo ở lần đầu.*
 
 **Windows** — SmartScreen shows "Windows protected your PC": click **More info** → **Run anyway**.
 
-**macOS** — the app is blocked, often with *"KomfyEdit is damaged and can't be opened"*. Nothing is damaged; that is the message macOS uses for unsigned downloads. Drag the app to **Applications**, then run this once in Terminal:
+**macOS** — the app is blocked, often with *"KailaEdit is damaged and can't be opened"*. Nothing is damaged; that is the message macOS uses for unsigned downloads. Drag the app to **Applications**, then run this once in Terminal:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/KomfyEdit.app
+xattr -dr com.apple.quarantine /Applications/KailaEdit.app
 ```
 
 *Ứng dụng không hỏng — đó là thông báo macOS dùng cho app tải về chưa ký. Kéo app vào **Applications** rồi chạy lệnh trên trong Terminal một lần duy nhất.*

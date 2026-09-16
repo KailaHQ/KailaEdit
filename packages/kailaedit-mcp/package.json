@@ -1,14 +1,15 @@
 {
-  "name": "komfyedit-mcp",
+  "name": "kailaedit-mcp",
   "version": "1.0.0",
-  "description": "KomfyEdit Model Context Protocol (MCP) Server",
+  "description": "KailaEdit Model Context Protocol (MCP) Server",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "komfyedit-mcp": "./bin/komfyedit-mcp.js"
+    "kailaedit-mcp": "./bin/kailaedit-mcp.js",
+    "komfyedit-mcp": "./bin/kailaedit-mcp.js"
   },
   "scripts": {
-    "start": "node bin/komfyedit-mcp.js"
+    "start": "node bin/kailaedit-mcp.js"
   },
   "dependencies": {
     "@komfyedit/core": "workspace:*",

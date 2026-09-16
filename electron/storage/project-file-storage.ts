@@ -26,7 +26,12 @@ export function getProjectsDir(customBaseDir?: string): string {
     // Running in standalone Node or test runner
   }
 
-  const base = userDataPath || path.join(process.cwd(), '.komfyedit-data')
+  const defaultHeadlessDir = fs.existsSync(path.join(process.cwd(), '.kailaedit-data'))
+    ? path.join(process.cwd(), '.kailaedit-data')
+    : (fs.existsSync(path.join(process.cwd(), '.komfyedit-data'))
+        ? path.join(process.cwd(), '.komfyedit-data')
+        : path.join(process.cwd(), '.kailaedit-data'))
+  const base = userDataPath || defaultHeadlessDir
   return path.join(base, 'projects')
 }
 

@@ -1,5 +1,5 @@
 /**
- * Automated Evaluation Suite for KomfyEdit Skills (S4-4)
+ * Automated Evaluation Suite for KailaEdit Skills (S4-4)
  * Runs >= 5 scenarios verifying machine-checkable invariants and outputs a summary table.
  */
 import path from 'path'
@@ -18,7 +18,7 @@ import {
   type EditorModel,
 } from '@komfyedit/core'
 import { fileURLToPath } from 'url'
-import { KomfyEditMcpServer } from '../packages/komfyedit-mcp/src/server'
+import { KailaEditMcpServer } from '../packages/kailaedit-mcp/src/server'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = path.resolve(__dirname, '../tests/fixtures')
@@ -40,7 +40,7 @@ export interface ScenarioResult {
 export async function runSkillEvaluations(): Promise<ScenarioResult[]> {
   const results: ScenarioResult[] = []
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'komfyedit-eval-'))
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kailaedit-eval-'))
 
   try {
     // ── SCENARIO 1: Standard speech with clear pauses ───────────────────────
@@ -94,7 +94,7 @@ export async function runSkillEvaluations(): Promise<ScenarioResult[]> {
         })
         saveProjectAtomic(projFile, initialProj)
 
-        const server = new KomfyEditMcpServer({ profile: 'edit' })
+        const server = new KailaEditMcpServer({ profile: 'edit' })
         const callTool = async (name: string, args: any) => {
           const res = await (server as any).server._requestHandlers.get('tools/call')({
             method: 'tools/call',
@@ -243,7 +243,7 @@ export async function runSkillEvaluations(): Promise<ScenarioResult[]> {
         saveProjectAtomic(projFile, initialProj)
 
         // Skill checks silence via observe.silence
-        const server = new KomfyEditMcpServer({ profile: 'edit' })
+        const server = new KailaEditMcpServer({ profile: 'edit' })
         const callTool = async (name: string, args: any) => {
           const res = await (server as any).server._requestHandlers.get('tools/call')({
             method: 'tools/call',
@@ -623,7 +623,7 @@ export async function runSkillEvaluations(): Promise<ScenarioResult[]> {
 
         const srtContent = `1
 00:00:01,000 --> 00:00:04,000
-Chào mừng bạn đến với KomfyEdit
+Chào mừng bạn đến với KailaEdit
 
 2
 00:00:05,000 --> 00:00:08,000
@@ -687,7 +687,7 @@ Quy trình hoàn chỉnh Sprint 5`
         })
         saveProjectAtomic(projFile, initialProj)
 
-        const server = new KomfyEditMcpServer({ profile: 'edit' })
+        const server = new KailaEditMcpServer({ profile: 'edit' })
         const callTool = async (name: string, args: any) => {
           const res = await (server as any).server._requestHandlers.get('tools/call')({
             method: 'tools/call',
@@ -963,7 +963,7 @@ Quy trình hoàn chỉnh Sprint 5`
 
 export function printEvaluationTable(results: ScenarioResult[]): void {
   console.log('\n' + '='.repeat(80))
-  console.log('              KOMFYEDIT SKILL EVALUATION REPORT (S4-4)')
+  console.log('              KAILAEDIT SKILL EVALUATION REPORT (S4-4)')
   console.log('='.repeat(80))
   console.log(
     `${'SCENARIO'.padEnd(34)} | ${'STATUS'.padEnd(8)} | ${'DURATION'.padEnd(10)} | INVARIANTS PASSED`,

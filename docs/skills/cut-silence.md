@@ -1,11 +1,11 @@
 ---
 name: cut-silence
-description: Automated workflow to detect and cut silence/pauses from timeline audio or speech using KomfyEdit observe, edit, preview, and QC tools.
+description: Automated workflow to detect and cut silence/pauses from timeline audio or speech using KailaEdit observe, edit, preview, and QC tools.
 ---
 
-# KomfyEdit Skill: Cut Silence (`cut-silence`)
+# KailaEdit Skill: Cut Silence (`cut-silence`)
 
-This skill defines the strict procedure for detecting and removing silent intervals or pauses from audio/video clips on the KomfyEdit timeline.
+This skill defines the strict procedure for detecting and removing silent intervals or pauses from audio/video clips on the KailaEdit timeline.
 
 ---
 
@@ -13,7 +13,7 @@ This skill defines the strict procedure for detecting and removing silent interv
 
 1. **NO DIRECT FFMPEG CALLS**:
    - Never run raw `ffmpeg` or `ffprobe` commands via CLI / shell / bash.
-   - All operations must strictly go through KomfyEdit tools (`observe_silence`, `edit_propose`, `render_preview`, `qc_check`, `edit_apply`).
+   - All operations must strictly go through KailaEdit tools (`observe_silence`, `edit_propose`, `render_preview`, `qc_check`, `edit_apply`).
 2. **RESPECT LOCKED TRACKS**:
    - Never propose or apply cuts to clips situated on locked tracks (`locked: true`). Any operation attempting to modify clips on locked tracks is rejected by the transaction validator.
 3. **PRESERVE TIMELINE INVARIANTS**:

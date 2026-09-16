@@ -13,6 +13,7 @@ import {
 import { useEditorActions, useEditorGetState, useEditorStore } from './editor-store'
 import { getShortcutLabel } from './video-editor-utils'
 import { useTranslation } from '../../i18n/I18nContext'
+import { useUpdateState } from '../../hooks/useUpdateState'
 
 export interface MenuDepsParams {
   kbLayout: KeyboardLayout
@@ -29,6 +30,7 @@ export interface MenuDepsParams {
 export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
   const actions = useEditorActions()
   const { t } = useTranslation()
+  const { updateState, downloadUpdate, installNow, checkForUpdates } = useUpdateState()
   const menuState = useEditorStore(selectMenuState, shallow)
   const canUseClipboard = useEditorStore(selectCanUseClipboard)
   const canUndo = useEditorStore(selectCanUndo)
@@ -250,10 +252,36 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
         { id: 'sep-updates', label: '', separator: true },
         {
           id: 'check-updates',
-          label: t('menu.checkForUpdates'),
-          // The main process owns the whole flow — it answers with dialogs of
-          // its own, so there is nothing to render back here.
-          action: () => { void window.electronAPI?.checkForUpdates() },
+          label: (() => {
+            switch (updateState.status) {
+              case 'checking':
+                return t('update.menuChecking')
+              case 'available':
+                return t('update.menuAvailable', { version: updateState.version || '' })
+              case 'downloading':
+                return t('update.menuDownloading', { percent: Math.round(updateState.percent ?? 0) })
+              case 'downloaded':
+                return t('update.menuRestart', { version: updateState.version || '' })
+              case 'idle':
+                return updateState.upToDate ? t('update.menuUpToDate') : t('menu.checkForUpdates')
+              default:
+                return t('menu.checkForUpdates')
+            }
+          })(),
+          disabled: updateState.status === 'checking' || updateState.status === 'downloading',
+          action: () => {
+            if (updateState.status === 'available') {
+              void downloadUpdate()
+            } else if (updateState.status === 'downloaded') {
+              void installNow().then(res => {
+                if (!res.success && res.error) {
+                  alert(t('update.exportInProgress'))
+                }
+              })
+            } else {
+              void checkForUpdates()
+            }
+          },
         },
         { id: 'sep-settings', label: '', separator: true },
         { id: 'settings', label: t('menu.settings'), shortcut: 'Ctrl+,', action: () => p.openSettings?.() },
@@ -264,7 +292,10 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
     canRedo,
     canUndo,
     canUseClipboard,
+    checkForUpdates,
+    downloadUpdate,
     getEditorState,
+    installNow,
     menuState,
     p.fileInputRef,
     p.fitToViewRef,
@@ -276,5 +307,6 @@ export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
     p.setKbEditorOpen,
     p.subtitleFileInputRef,
     t,
+    updateState,
   ])
 }

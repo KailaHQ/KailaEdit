@@ -1,23 +1,23 @@
-# Trợ lý AI EditPilot
+# Trợ lý AI CoEdit
 
 <p align="center">
-  <img src="../../images/editpilot-architecture.png" alt="Kiến trúc trợ lý AI EditPilot" width="85%">
+  <img src="../../images/editpilot-architecture.png" alt="Kiến trúc trợ lý AI CoEdit" width="85%">
 </p>
 
-**EditPilot** là bảng điều khiển trợ lý AI tích hợp sẵn trong KomfyEdit. Tính năng này cho phép các mô hình ngôn ngữ lớn (LLM) như Claude Code, Antigravity hoặc Codex giao tiếp trực tiếp với phần mềm thông qua chuẩn mở **Model Context Protocol (MCP)** để tự động hóa các tác vụ dựng phim tốn nhiều thời gian.
+**CoEdit** là bảng điều khiển trợ lý AI tích hợp sẵn trong KailaEdit. Tính năng này cho phép các mô hình ngôn ngữ lớn (LLM) như Claude Code, Antigravity hoặc Codex giao tiếp trực tiếp với phần mềm thông qua chuẩn mở **Model Context Protocol (MCP)** để tự động hóa các tác vụ dựng phim tốn nhiều thời gian.
 
 ---
 
 ## 🤖 1. Nguyên lý hoạt động với Model Context Protocol (MCP)
 
-Khác với các plugin thông thường dễ làm hỏng dự án, EditPilot kiểm soát mọi thao tác của AI thông qua một **Máy chủ MCP nội bộ** (`packages/komfyedit-mcp/`):
+Khác với các plugin thông thường dễ làm hỏng dự án, CoEdit kiểm soát mọi thao tác của AI thông qua một **Máy chủ MCP nội bộ** (`packages/kailaedit-mcp/`):
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Biên tập viên (User)
-    participant Panel as Bảng EditPilot
-    participant MCP as Máy chủ MCP KomfyEdit
+    participant Panel as Bảng CoEdit
+    participant MCP as Máy chủ MCP KailaEdit
     participant Timeline as Kho dữ liệu Timeline
 
     User->>Panel: "Cắt bỏ các đoạn im lặng trên 0.8 giây và áp dụng màu Film Classic"
@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## 🛡️ 2. Các lớp bảo vệ an toàn dữ liệu & Đồng bộ trực tiếp (Live Sync)
 
-EditPilot được thiết kế với các quy chuẩn an toàn khắt khe nhất để đảm bảo AI không bao giờ làm hỏng timeline của bạn:
+CoEdit được thiết kế với các quy chuẩn an toàn khắt khe nhất để đảm bảo AI không bao giờ làm hỏng timeline của bạn:
 
 1. **Một người ghi tại một thời điểm (Single-Writer Safety Lock)**:
    - Tránh xung đột giữa tính năng tự động lưu (Autosave) của ứng dụng và các thao tác ghi của AI. Khi AI thực thi, quyền ghi được kiểm soát tập trung, ngăn chặn triệt để tình trạng mất dữ liệu.
@@ -56,33 +56,33 @@ EditPilot được thiết kế với các quy chuẩn an toàn khắt khe nhấ
 
 ### 1. Tự động cắt bỏ khoảng lặng (Jump-cut thông minh)
 > *"Hãy tìm và cắt bỏ tất cả các đoạn im lặng hoặc ngập ngừng dài hơn 0.7 giây trên Track V1."*
-- EditPilot sử dụng `observe_silence` quét phân tích dạng sóng âm và thực hiện chuỗi cắt ripple dồn timeline lại gọn gàng.
+- CoEdit sử dụng `observe_silence` quét phân tích dạng sóng âm và thực hiện chuỗi cắt ripple dồn timeline lại gọn gàng.
 
 ### 2. Tự động nhận diện cảnh quay (Scene Cut Detection)
 > *"Phân tích video quay liên tục này và cắt rời từng phân cảnh khi có sự chuyển góc máy."*
-- EditPilot gọi `observe_scenes` để phát hiện các bước nhảy ánh sáng giữa các khung hình và cắt chính xác điểm đổi góc quay.
+- CoEdit gọi `observe_scenes` để phát hiện các bước nhảy ánh sáng giữa các khung hình và cắt chính xác điểm đổi góc quay.
 
 ### 3. Trích xuất khoảnh khắc đắt giá (Auto Highlight Extraction)
 > *"Trích xuất cho tôi 30 giây những khoảnh khắc cao trào, giàu năng lượng nhất trong video sự kiện này để làm teaser TikTok."*
-- EditPilot kích hoạt công cụ `extract_highlights`: kết hợp phân tích năng lượng âm thanh, cao độ giọng nói, nhịp độ chuyển động và cảnh quay để lọc ra các đoạn clip ấn tượng nhất.
+- CoEdit kích hoạt công cụ `extract_highlights`: kết hợp phân tích năng lượng âm thanh, cao độ giọng nói, nhịp độ chuyển động và cảnh quay để lọc ra các đoạn clip ấn tượng nhất.
 
 ### 4. Gợi ý chèn B-Roll ngữ cảnh (B-Roll Copilot)
 > *"Tìm trong khay Media và gợi ý các clip B-Roll phù hợp chèn lên Track V2 tương ứng với nội dung người nói đang nhắc tới."*
-- EditPilot dùng `suggest_broll` kết hợp với bản chép lời để đề xuất vị trí chèn hình ảnh minh họa đắt giá.
+- CoEdit dùng `suggest_broll` kết hợp với bản chép lời để đề xuất vị trí chèn hình ảnh minh họa đắt giá.
 
 ### 5. Tự động nhận diện giọng nói & Chèn phụ đề (Whisper Transcribe)
 > *"Hãy bóc băng giọng nói trong video và tạo thành track phụ đề hoàn chỉnh."*
-- EditPilot gọi công cụ `transcribe` để chạy mô hình Whisper offline, tự động tạo các khối phụ đề chuẩn từng giây trên timeline.
+- CoEdit gọi công cụ `transcribe` để chạy mô hình Whisper offline, tự động tạo các khối phụ đề chuẩn từng giây trên timeline.
 
 ### 6. Tự động chọn lọc Bộ lọc màu & Nhãn dán
 > *"Kiểm tra danh sách filter màu và áp dụng tông màu Cinematic cho cảnh quay ngoài trời."*
-- EditPilot truy vấn `filter_list` và `sticker_list` để chọn phong cách phù hợp nhất với yêu cầu của bạn.
+- CoEdit truy vấn `filter_list` và `sticker_list` để chọn phong cách phù hợp nhất với yêu cầu của bạn.
 
 ---
 
 ## 📖 4. Bảng tra cứu 22 Công cụ MCP (MCP Tools Reference)
 
-Máy chủ nội bộ của KomfyEdit phơi bày 22 công cụ tiêu chuẩn cho trợ lý AI:
+Máy chủ nội bộ của KailaEdit phơi bày 22 công cụ tiêu chuẩn cho trợ lý AI:
 
 | Nhóm chức năng | Tên công cụ MCP | Mục đích hoạt động |
 |---|---|---|

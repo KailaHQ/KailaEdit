@@ -57,6 +57,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './frontend'),
       '@core': path.resolve(__dirname, './core/src'),
+      '@kailaedit/core': path.resolve(__dirname, './core/src'),
       '@komfyedit/core': path.resolve(__dirname, './core/src')
     }
   },

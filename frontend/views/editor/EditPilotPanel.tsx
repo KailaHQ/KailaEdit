@@ -45,16 +45,18 @@ export function EditPilotLauncher() {
   return (
     <button
       onClick={() => actions.setShowEditPilot(true)}
-      title="EditPilot"
+      title="CoEdit"
       className="group fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-accent/40 bg-zinc-900/95 py-1.5 pl-2 pr-3.5 shadow-[0_0_18px_rgba(34,211,238,0.18)] backdrop-blur transition-all hover:border-accent/70 hover:shadow-[0_0_24px_rgba(34,211,238,0.3)]"
     >
       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-accent transition-colors group-hover:bg-zinc-700 group-hover:text-cyan-300">
         <Bot className="h-4 w-4" />
       </span>
-      <span className="text-[13px] font-medium text-zinc-100">EditPilot</span>
+      <span className="text-[13px] font-medium text-zinc-100">CoEdit</span>
     </button>
   )
 }
+
+export const CoEditLauncher = EditPilotLauncher
 
 export interface EditPilotPanelProps {
   /** Swapped for the CLI-backed implementation once the main-process adapter lands. */
@@ -474,3 +476,6 @@ export function EditPilotPanel({
     </aside>
   )
 }
+
+export const CoEditPanel = EditPilotPanel
+export type CoEditPanelProps = EditPilotPanelProps

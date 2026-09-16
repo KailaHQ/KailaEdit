@@ -109,20 +109,20 @@ Hai module phân giải thư mục project theo **hai luật khác nhau**:
 
 | Module | Luật |
 |---|---|
-| App ghi: `electron/storage/project-file-storage.ts:20` | `app.getPath('userData')/projects` — mà `electron/app-paths.ts:9` ép userData về **`%LOCALAPPDATA%\KomfyEdit`** |
-| MCP đọc: `packages/komfyedit-mcp/src/project-reader.ts:32-33` | chỉ xét **`%APPDATA%`** (Roaming): `komfyedit/projects`, `KomfyEdit/projects` |
+| App ghi: `electron/storage/project-file-storage.ts:20` | `app.getPath('userData')/projects` — mà `electron/app-paths.ts:9` ép userData về **`%LOCALAPPDATA%\KailaEdit`** |
+| MCP đọc: `packages/kailaedit-mcp/src/project-reader.ts:32-33` | chỉ xét **`%APPDATA%`** (Roaming): `komfyedit/projects`, `KomfyEdit/projects` |
 
 `%LOCALAPPDATA%` **không nằm trong danh sách ứng viên của MCP**. Khi người dùng chạy MCP server từ thư mục bất kỳ (đúng cách dùng thật — agent chạy ở nơi khác), `project.list` sẽ trả về rỗng.
 
-Trong kiểm chứng của tôi nó *có* trả về kết quả, nhưng chỉ vì tôi chạy từ thư mục repo và rơi vào nhánh dự phòng `process.cwd()/.komfyedit-data`. Đó là may mắn, không phải thiết kế.
+Trong kiểm chứng của tôi nó *có* trả về kết quả, nhưng chỉ vì tôi chạy từ thư mục repo và rơi vào nhánh dự phòng `process.cwd()/.kailaedit-data`. Đó là may mắn, không phải thiết kế.
 
 Test đơn vị không bắt được vì chúng luôn bơm thư mục tuỳ chỉnh vào.
 
-**Sửa:** thêm `%LOCALAPPDATA%\KomfyEdit\projects` vào đầu danh sách ứng viên, hoặc tốt hơn — cho cả hai module dùng chung một hàm phân giải đặt trong `core/`.
+**Sửa:** thêm `%LOCALAPPDATA%\KailaEdit\projects` vào đầu danh sách ứng viên, hoặc tốt hơn — cho cả hai module dùng chung một hàm phân giải đặt trong `core/`.
 
-### 4.3 — `.komfyedit-data/` không được gitignore · **Thấp**
+### 4.3 — `.kailaedit-data/` không được gitignore · **Thấp**
 
-Thư mục chứa project của người dùng đang nằm trong repo, chưa được theo dõi (`?? .komfyedit-data/`) và **không có trong `.gitignore`**. Một lệnh `git add -A` sẽ commit dữ liệu cá nhân vào lịch sử. Hiện đã có sẵn một file project thật trong đó.
+Thư mục chứa project của người dùng đang nằm trong repo, chưa được theo dõi (`?? .kailaedit-data/`) và **không có trong `.gitignore`**. Một lệnh `git add -A` sẽ commit dữ liệu cá nhân vào lịch sử. Hiện đã có sẵn một file project thật trong đó.
 
 ### 4.4 — Chưa đo được lợi ích tốc độ của S0-2 · **Cần bổ sung**
 
@@ -136,7 +136,7 @@ Theo thứ tự:
 
 1. **Commit baseline và tách lịch sử** — dù muộn. Tối thiểu: tách đợt refactor strip-to-editor thành một commit, mỗi sprint một commit. Không có việc này thì mọi kiểm chứng về sau đều mù.
 2. **Sửa 4.2** — hợp nhất luật phân giải thư mục project vào một hàm dùng chung, kèm test chạy được trên cả ba nền tảng.
-3. **Thêm `.komfyedit-data/` vào `.gitignore`.**
+3. **Thêm `.kailaedit-data/` vào `.gitignore`.**
 4. **Đo S0-2 trên nguồn dài thật** — quay một video ≥ 30 phút, cắt vài đoạn ở phút 20+, đo thời gian export trước/sau.
 5. **Cân nhắc thêm một test tích hợp** cho đường đi mà 4.2 làm lộ ra: MCP đọc được project do app ghi ra, không bơm biến môi trường.
 

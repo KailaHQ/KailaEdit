@@ -1,6 +1,6 @@
 # Phát hành & Tự động cập nhật
 
-KomfyEdit phát hành bản cài đặt qua **GitHub Releases**, và app tự kiểm tra phiên bản mới bằng [`electron-updater`](https://www.electron.build/auto-update). Trang này mô tả cách cắt một bản phát hành, CI sinh ra những gì, và cơ chế cập nhật trong app hoạt động ra sao.
+KailaEdit phát hành bản cài đặt qua **GitHub Releases**, và app tự kiểm tra phiên bản mới bằng [`electron-updater`](https://www.electron.build/auto-update). Trang này mô tả cách cắt một bản phát hành, CI sinh ra những gì, và cơ chế cập nhật trong app hoạt động ra sao.
 
 ---
 
@@ -56,10 +56,10 @@ Draft **không** tự công bố. Vào tab Releases, kiểm tra đủ artifact r
 
 | Job | Runner | Artifact (ví dụ phiên bản 1.2.0) |
 |---|---|---|
-| `windows-x64` | `windows-latest` | `KomfyEdit-1.2.0-win-x64-Setup.exe` |
-| `macos-arm64-and-x64` | `macos-latest` | `KomfyEdit-1.2.0-mac-arm64.dmg` / `.zip` (Apple Silicon), `KomfyEdit-1.2.0-mac-x64.dmg` / `.zip` (Intel) |
-| `linux-x64` | `ubuntu-latest` | `KomfyEdit-1.2.0-linux-x86_64.AppImage`, `KomfyEdit-1.2.0-linux-amd64.deb` |
-| `linux-arm64` | `ubuntu-24.04-arm` | `KomfyEdit-1.2.0-linux-arm64.AppImage`, `KomfyEdit-1.2.0-linux-arm64.deb` |
+| `windows-x64` | `windows-latest` | `KailaEdit-1.2.0-win-x64-Setup.exe` |
+| `macos-arm64-and-x64` | `macos-latest` | `KailaEdit-1.2.0-mac-arm64.dmg` / `.zip` (Apple Silicon), `KailaEdit-1.2.0-mac-x64.dmg` / `.zip` (Intel) |
+| `linux-x64` | `ubuntu-latest` | `KailaEdit-1.2.0-linux-x86_64.AppImage`, `KailaEdit-1.2.0-linux-amd64.deb` |
+| `linux-arm64` | `ubuntu-24.04-arm` | `KailaEdit-1.2.0-linux-arm64.AppImage`, `KailaEdit-1.2.0-linux-arm64.deb` |
 
 Vì số phiên bản nằm trong tên file, **không còn link cố định** kiểu `releases/latest/download/...` để đưa cho người dùng. Hãy dẫn họ tới trang Releases, GitHub sẽ tự hiển thị bản mới nhất.
 
@@ -102,7 +102,7 @@ Mọi hộp thoại đều do main process dựng bằng `dialog` gốc, rendere
 
 ## 🔏 Tình trạng ký số
 
-KomfyEdit hiện **chưa được ký số**. CI đặt `CSC_IDENTITY_AUTO_DISCOVERY: false` để build không gãy vì thiếu chứng chỉ. Hệ quả theo từng nền tảng:
+KailaEdit hiện **chưa được ký số**. CI đặt `CSC_IDENTITY_AUTO_DISCOVERY: false` để build không gãy vì thiếu chứng chỉ. Hệ quả theo từng nền tảng:
 
 | Nền tảng | Lúc cài đặt | Tự động cập nhật |
 |---|---|---|
@@ -114,7 +114,7 @@ Vì vậy người dùng macOS phải tải thủ công từng bản `.dmg` cho 
 
 ### Hardened Runtime phải tắt cho tới lúc đó
 
-`mac.hardenedRuntime` được đặt `false` một cách có chủ đích. Binary arm64 bắt buộc phải có chữ ký, nên khi không có chứng chỉ, electron-builder lui về chữ ký **ad-hoc** (`macPackager.ts`, `fallBackToAdhoc`). Chữ ký ad-hoc không mang Team ID, trong khi Hardened Runtime bắt buộc kiểm tra library validation — tiến trình chỉ được nạp thư viện ký bởi cùng một team. KomfyEdit nạp binding `.node` của `@resvg/resvg-js` và spawn ffmpeg đi kèm, cả hai được ký riêng, nên app bị giết ngay khi khởi động trên máy Apple Silicon. macOS chỉ hiện hộp thoại chung chung *"Check with the developer to make sure KomfyEdit works with this version of macOS"*, nhưng crash report bên dưới nói rõ nguyên nhân:
+`mac.hardenedRuntime` được đặt `false` một cách có chủ đích. Binary arm64 bắt buộc phải có chữ ký, nên khi không có chứng chỉ, electron-builder lui về chữ ký **ad-hoc** (`macPackager.ts`, `fallBackToAdhoc`). Chữ ký ad-hoc không mang Team ID, trong khi Hardened Runtime bắt buộc kiểm tra library validation — tiến trình chỉ được nạp thư viện ký bởi cùng một team. KailaEdit nạp binding `.node` của `@resvg/resvg-js` và spawn ffmpeg đi kèm, cả hai được ký riêng, nên app bị giết ngay khi khởi động trên máy Apple Silicon. macOS chỉ hiện hộp thoại chung chung *"Check with the developer to make sure KailaEdit works with this version of macOS"*, nhưng crash report bên dưới nói rõ nguyên nhân:
 
 ```
 Termination Reason: Namespace DYLD, Code 1, Library missing

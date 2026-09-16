@@ -76,7 +76,7 @@ export const BLOCKED_TOOLS = [
  * CLI's file-search tools. Real blocking is S5-7 — until then the system prompt
  * is what keeps the agent on the timeline, and that is guidance, not a fence.
  */
-const ALLOWED_TOOLS = 'mcp__komfyedit__*'
+const ALLOWED_TOOLS = 'mcp__kailaedit__*,mcp__komfyedit__*'
 
 interface ActiveRun {
   child: ChildProcess
@@ -90,9 +90,27 @@ function mcpServerEntryPoint(): string {
   // In development the package sits in the repo; when packaged it ships beside
   // the app under resources/.
   const basePath = typeof app !== 'undefined' && app?.getAppPath ? app.getAppPath() : process.cwd()
-  const devPath = path.join(basePath, 'packages', 'komfyedit-mcp', 'bin', 'komfyedit-mcp.js')
-  if (fs.existsSync(devPath)) return devPath
-  return path.join(process.resourcesPath ?? basePath, 'komfyedit-mcp', 'bin', 'komfyedit-mcp.js')
+  const devCandidates = [
+    path.join(basePath, 'packages', 'kailaedit-mcp', 'bin', 'kailaedit-mcp.js'),
+    path.join(basePath, 'packages', 'kailaedit-mcp', 'bin', 'komfyedit-mcp.js'),
+    path.join(basePath, 'packages', 'komfyedit-mcp', 'bin', 'kailaedit-mcp.js'),
+    path.join(basePath, 'packages', 'komfyedit-mcp', 'bin', 'komfyedit-mcp.js'),
+  ]
+  for (const candidate of devCandidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  const resBase = process.resourcesPath ?? basePath
+  const resCandidates = [
+    path.join(resBase, 'kailaedit-mcp', 'bin', 'kailaedit-mcp.js'),
+    path.join(resBase, 'kailaedit-mcp', 'bin', 'komfyedit-mcp.js'),
+    path.join(resBase, 'komfyedit-mcp', 'bin', 'kailaedit-mcp.js'),
+    path.join(resBase, 'komfyedit-mcp', 'bin', 'komfyedit-mcp.js'),
+  ]
+  for (const candidate of resCandidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return devCandidates[0]
 }
 
 /**
@@ -108,10 +126,11 @@ export function buildMcpEnv(
   livePort?: number | null,
 ): Record<string, string> {
   return {
+    KAILAEDIT_MCP_PROFILE: 'edit',
     KOMFYEDIT_MCP_PROFILE: 'edit',
-    ...(projectsDir ? { KOMFYEDIT_PROJECTS_DIR: projectsDir } : {}),
-    ...(projectId ? { KOMFYEDIT_ACTIVE_PROJECT_ID: projectId } : {}),
-    ...(livePort ? { KOMFYEDIT_LIVE_PORT: String(livePort) } : {}),
+    ...(projectsDir ? { KAILAEDIT_PROJECTS_DIR: projectsDir, KOMFYEDIT_PROJECTS_DIR: projectsDir } : {}),
+    ...(projectId ? { KAILAEDIT_ACTIVE_PROJECT_ID: projectId, KOMFYEDIT_ACTIVE_PROJECT_ID: projectId } : {}),
+    ...(livePort ? { KAILAEDIT_LIVE_PORT: String(livePort), KOMFYEDIT_LIVE_PORT: String(livePort) } : {}),
     // Electron's node binary needs this to behave as plain Node.
     ELECTRON_RUN_AS_NODE: '1',
   }
@@ -137,9 +156,14 @@ export function writeMcpConfig(
   projectId?: string | null,
   livePort?: number | null,
 ): string {
-  const configPath = path.join(os.tmpdir(), `komfyedit-mcp-${runId}.json`)
+  const configPath = path.join(os.tmpdir(), `kailaedit-mcp-${runId}.json`)
   const config = {
     mcpServers: {
+      kailaedit: {
+        command: process.execPath,
+        args: [mcpServerEntryPoint()],
+        env: buildMcpEnv(projectsDir, projectId, livePort),
+      },
       komfyedit: {
         command: process.execPath,
         args: [mcpServerEntryPoint()],
@@ -259,19 +283,25 @@ function grantMcpPermission(definition: EditPilotAgentDefinition): string {
   if (!definition.permissionsFilePath || !definition.mcpPermissionRule) return ''
 
   const settingsPath = path.join(os.homedir(), ...definition.permissionsFilePath)
-  const rule = definition.mcpPermissionRule.replace('{name}', MCP_SERVER_NAME)
+  const ruleKaila = definition.mcpPermissionRule.replace('{name}', 'kailaedit')
+  const ruleKomfy = definition.mcpPermissionRule.replace('{name}', 'komfyedit')
 
   try {
     if (!fs.existsSync(path.dirname(settingsPath))) {
       return `Chưa thấy thư mục cấu hình của ${definition.label}; hãy chạy CLI một lần rồi bấm lại.`
     }
     const raw = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : ''
-    const patch = addPermissionRule(raw, rule)
-    if (!patch.added) return `Quyền ${rule} đã có sẵn.`
-    fs.writeFileSync(settingsPath, patch.json, 'utf8')
-    return `Đã thêm quyền ${rule} vào ${settingsPath}.`
+    let currentRaw = raw
+    const patchKaila = addPermissionRule(currentRaw, ruleKaila)
+    if (patchKaila.added) currentRaw = patchKaila.json
+    const patchKomfy = addPermissionRule(currentRaw, ruleKomfy)
+    if (patchKomfy.added) currentRaw = patchKomfy.json
+
+    if (!patchKaila.added && !patchKomfy.added) return `Quyền ${ruleKaila} đã có sẵn.`
+    fs.writeFileSync(settingsPath, currentRaw, 'utf8')
+    return `Đã thêm quyền ${ruleKaila} vào ${settingsPath}.`
   } catch (err) {
-    return `Không thêm được quyền ${rule}: ${String(err)}`
+    return `Không thêm được quyền: ${String(err)}`
   }
 }
 

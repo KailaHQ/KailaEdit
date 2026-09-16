@@ -1,6 +1,7 @@
 import type {
   Asset,
   AssetBins,
+  KeyframeProperty,
   SubtitleClip,
   SubtitleStyle,
   Timeline,
@@ -56,11 +57,18 @@ export interface EditorProjectSyncState {
   isAgentSessionActive?: boolean
 }
 
+export interface KeyframeSelection {
+  clipId: string
+  t: number
+  property?: KeyframeProperty
+}
+
 export interface EditorSelectionState {
   clipIds: Set<string>
   subtitleId: string | null
   editingSubtitleId: string | null
   gap: TimelineGapSelection | null
+  selectedKeyframe: KeyframeSelection | null
 }
 
 export interface EditorTransportState {
@@ -276,6 +284,7 @@ export function createInitialEditorState(
         subtitleId: null,
         editingSubtitleId: null,
         gap: null,
+        selectedKeyframe: null,
       },
       transport: {
         currentTime: 0,

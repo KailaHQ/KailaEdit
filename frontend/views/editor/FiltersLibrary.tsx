@@ -90,7 +90,7 @@ export function FiltersLibrary() {
       }
     }
 
-    // Default (CapCut / Premiere style): add a filter clip on the topmost overlay layer
+    // Default: add a filter clip on the topmost overlay layer
     actions.addFilterClip({
       filterId: filter.id,
       intensity: filter.defaultIntensity,

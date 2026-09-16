@@ -1,6 +1,6 @@
-# Contributing to KomfyEdit
+# Contributing to KailaEdit
 
-Thank you for your interest in contributing to **KomfyEdit**! We are building a truly open, private, and offline desktop video editor, and we welcome bug reports, documentation enhancements, feature proposals, and code contributions.
+Thank you for your interest in contributing to **KailaEdit**! We are building a truly open, private, and offline desktop video editor, and we welcome bug reports, documentation enhancements, feature proposals, and code contributions.
 
 ---
 
@@ -15,7 +15,7 @@ We are committed to providing a friendly, safe, and welcoming environment for ev
 1. **Report Bugs**: Submit detailed issue reports with reproduction steps and your OS version.
 2. **Improve Documentation**: Fix typos, add missing tutorials, translate to other languages.
 3. **Submit Bug Fixes & Features**: Open a Pull Request targeting the `main` branch.
-4. **Develop AI Skills**: Write new evaluation scenarios and MCP tools in `packages/komfyedit-mcp/`.
+4. **Develop AI Skills**: Write new evaluation scenarios and MCP tools in `packages/kailaedit-mcp/`.
 
 ---
 

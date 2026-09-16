@@ -8,7 +8,7 @@ import {
   KomfyEditMcpServer,
   READ_ONLY_TOOLS,
   EDIT_TOOLS,
-} from '../packages/komfyedit-mcp/src/server'
+} from '../packages/kailaedit-mcp/src/server'
 import { projectSchema, type Project, type EditPatch } from '@komfyedit/core'
 
 const FIXTURES_DIR = path.resolve(__dirname, 'fixtures')

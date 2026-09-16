@@ -1,6 +1,6 @@
-# KomfyEdit
+# KailaEdit
 
-KomfyEdit is an open-source desktop video editor. It runs fully offline — no account, no API key, no GPU, no network calls. Import your media, cut it on a multi-track timeline, and export with the bundled ffmpeg.
+KailaEdit is an open-source desktop video editor. It runs fully offline — no account, no API key, no GPU, no network calls. Import your media, cut it on a multi-track timeline, and export with the bundled ffmpeg.
 
 <p align="center">
   <img src="images/video-editor.png" alt="Video Editor" width="70%">
@@ -58,7 +58,7 @@ Two layers, no backend server:
 
 `shared/electron-api-schema.ts` is the single Zod-typed contract between the two; the preload script derives `window.electronAPI` from it.
 
-ffmpeg ships with the app via the `ffmpeg-static` package, and is also used for image thumbnails and dimension probing. If the bundled binary is missing, KomfyEdit falls back to an `ffmpeg` on your `PATH`.
+ffmpeg ships with the app via the `ffmpeg-static` package, and is also used for image thumbnails and dimension probing. If the bundled binary is missing, KailaEdit falls back to an `ffmpeg` on your `PATH`.
 
 ## Development
 
@@ -94,7 +94,7 @@ pnpm build:dir
 
 ## Skill Evaluation Suite (`eval:skills`)
 
-KomfyEdit features an automated evaluation harness for AI editing skills (such as `cut-silence`):
+KailaEdit features an automated evaluation harness for AI editing skills (such as `cut-silence`):
 
 ```bash
 pnpm eval:skills
@@ -133,10 +133,10 @@ To add a new scenario to `scripts/eval-skills.ts`:
 
 ## Acknowledgements & Attribution
 
-KomfyEdit's codebase was referenced and adapted from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd., originally licensed under the Apache License 2.0. We gratefully acknowledge and credit the original creators and contributors of LTX Desktop for their foundational work. Full attribution and notices are preserved in [NOTICES.md](NOTICES.md) and [LICENSE.txt](LICENSE.txt).
+KailaEdit's codebase was referenced and adapted from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd., originally licensed under the Apache License 2.0. We gratefully acknowledge and credit the original creators and contributors of LTX Desktop for their foundational work. Full attribution and notices are preserved in [NOTICES.md](NOTICES.md) and [LICENSE.txt](LICENSE.txt).
 
 ## License & Terms of Use
 
-- **Free for Personal & Non-Commercial Use**: KomfyEdit is provided free of charge for personal, educational, and non-commercial purposes. Commercial use, resale, or distribution for profit is prohibited without explicit prior authorization.
+- **Free for Personal & Non-Commercial Use**: KailaEdit is provided free of charge for personal, educational, and non-commercial purposes. Commercial use, resale, or distribution for profit is prohibited without explicit prior authorization.
 - **Open-Source Core**: Released under the [Apache-2.0 License](LICENSE.txt). All third-party libraries and assets retain their respective licenses (see [NOTICES.md](NOTICES.md)).
 

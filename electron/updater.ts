@@ -1,7 +1,15 @@
-import { app, dialog, shell } from 'electron'
+import { app } from 'electron'
 import type { AppUpdater } from 'electron-updater'
+import {
+  getInitialUpdateState,
+  reduceUpdateState,
+  type UpdateAction,
+  type UpdateState,
+} from '../core/src/update-state'
+import { emitToRenderer } from './ipc/event-emitter'
 import { logger } from './logger'
 import { getMainWindow } from './window'
+import { renderQueue } from './export/render-queue'
 
 /**
  * Auto-update against GitHub Releases.
@@ -9,43 +17,35 @@ import { getMainWindow } from './window'
  * The publish target lives in electron-builder.yml; electron-builder writes it
  * into `app-update.yml` inside the packaged app, which is the only place
  * electron-updater reads it from. That file does not exist in a dev run, so
- * every entry point here is a no-op unless the app is packaged — otherwise
- * electron-updater throws on the first check.
- *
- * Downloads are opt-in: an update that arrives without asking is a surprise
- * download on someone's metered connection, and an editor mid-export is the
- * worst moment to spend bandwidth.
+ * electron-updater is disabled unless the app is packaged, or simulated via
+ * KOMFYEDIT_FAKE_UPDATE=1.
  */
-
-/** `dialog.showMessageBox` is modal to a window when there is one, free-floating otherwise. */
-function showMessageBox(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
-  const window = getMainWindow()
-  return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)
-}
 
 let updaterInstance: AppUpdater | null = null
 let checkInFlight = false
-/** A manual check reports "you are up to date"; the startup check stays quiet. */
-let currentCheckIsManual = false
+let periodicTimer: NodeJS.Timeout | null = null
+let fakeDownloadTimer: NodeJS.Timeout | null = null
 
-export type UpdateCheckStatus =
-  | 'unsupported'
-  | 'checking'
-  | 'busy'
-  | 'error'
+const isFakeMode = process.env.KOMFYEDIT_FAKE_UPDATE === '1'
 
-export interface UpdateCheckResult {
-  status: UpdateCheckStatus
-  error?: string
+export function isUpdateSupported(): boolean {
+  return Boolean(app?.isPackaged || isFakeMode)
 }
 
-/** Packaged builds only — see the note above about app-update.yml. */
-export function isUpdateSupported(): boolean {
-  return app.isPackaged
+let currentUpdateState: UpdateState = getInitialUpdateState(isUpdateSupported())
+
+function transition(action: UpdateAction): UpdateState {
+  currentUpdateState = reduceUpdateState(currentUpdateState, action)
+  emitToRenderer('update:state', currentUpdateState)
+  return currentUpdateState
+}
+
+export function getUpdateState(): UpdateState {
+  return currentUpdateState
 }
 
 async function getUpdater(): Promise<AppUpdater | null> {
-  if (!isUpdateSupported()) return null
+  if (!app.isPackaged) return null
   if (updaterInstance) return updaterInstance
 
   // electron-updater is CommonJS and the main bundle is ESM, so the named
@@ -68,140 +68,197 @@ async function getUpdater(): Promise<AppUpdater | null> {
     debug: (m: unknown) => logger.info(`[updater] ${String(m)}`),
   }
 
+  autoUpdater.on('checking-for-update', () => {
+    logger.info('[updater] Checking for update...')
+    transition({ type: 'START_CHECK' })
+  })
+
   autoUpdater.on('update-available', info => {
-    logger.info(`[updater] Update available: ${info.version} (current ${app.getVersion()})`)
-    void promptDownload(autoUpdater, info.version)
+    logger.info(`[updater] Update available: ${info.version} (current ${app?.getVersion?.() ?? '1.0.4'})`)
+    checkInFlight = false
+    transition({ type: 'UPDATE_AVAILABLE', version: info.version })
   })
 
   autoUpdater.on('update-not-available', () => {
-    logger.info(`[updater] No update available (current ${app.getVersion()})`)
+    logger.info(`[updater] No update available (current ${app?.getVersion?.() ?? '1.0.4'})`)
     checkInFlight = false
-    if (currentCheckIsManual) {
-      currentCheckIsManual = false
-      void showMessageBox({
-        type: 'info',
-        title: 'KomfyEdit',
-        message: `KomfyEdit ${app.getVersion()} is up to date.`,
-        buttons: ['OK'],
-      })
-    }
+    transition({ type: 'UPDATE_NOT_AVAILABLE' })
   })
 
   autoUpdater.on('download-progress', progress => {
-    logger.info(`[updater] Downloading: ${progress.percent.toFixed(1)}%`)
     getMainWindow()?.setProgressBar(progress.percent / 100)
+    transition({
+      type: 'DOWNLOAD_PROGRESS',
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    })
   })
 
   autoUpdater.on('update-downloaded', info => {
     logger.info(`[updater] Update ${info.version} downloaded`)
     getMainWindow()?.setProgressBar(-1)
     checkInFlight = false
-    void promptInstall(autoUpdater, info.version)
+    transition({ type: 'UPDATE_DOWNLOADED', version: info.version })
   })
 
   autoUpdater.on('error', err => {
-    logger.warn(`[updater] Update check failed: ${String(err)}`)
+    logger.warn(`[updater] Update check or download failed: ${String(err)}`)
     getMainWindow()?.setProgressBar(-1)
     checkInFlight = false
-    if (currentCheckIsManual) {
-      currentCheckIsManual = false
-      void showMessageBox({
-        type: 'error',
-        title: 'KomfyEdit',
-        message: 'Could not check for updates.',
-        detail: String(err),
-        buttons: ['OK'],
-      })
-    }
+    transition({ type: 'UPDATE_ERROR', error: String(err) })
   })
 
   updaterInstance = autoUpdater
   return autoUpdater
 }
 
-async function promptDownload(updater: AppUpdater, version: string): Promise<void> {
-  const { response } = await showMessageBox({
-    type: 'info',
-    title: 'KomfyEdit',
-    message: `KomfyEdit ${version} is available.`,
-    detail: `You are running ${app.getVersion()}. Download the update now? The editor keeps running while it downloads.`,
-    buttons: ['Download', 'Release notes', 'Later'],
-    defaultId: 0,
-    cancelId: 2,
-  })
+export async function downloadUpdate(): Promise<{ success: boolean; error?: string }> {
+  if (isFakeMode) {
+    if (fakeDownloadTimer) clearInterval(fakeDownloadTimer)
+    transition({ type: 'START_DOWNLOAD' })
 
-  currentCheckIsManual = false
+    const totalBytes = 99_200_000
+    const bytesPerSecond = 12_400_000
+    let percent = 0
+    // Total duration: 8 seconds (40 steps of 200ms, 2.5% each)
+    fakeDownloadTimer = setInterval(() => {
+      percent += 2.5
+      if (percent >= 100) {
+        if (fakeDownloadTimer) clearInterval(fakeDownloadTimer)
+        fakeDownloadTimer = null
+        getMainWindow()?.setProgressBar(-1)
+        transition({ type: 'UPDATE_DOWNLOADED', version: currentUpdateState.version || '1.0.5' })
+      } else {
+        getMainWindow()?.setProgressBar(percent / 100)
+        transition({
+          type: 'DOWNLOAD_PROGRESS',
+          percent,
+          bytesPerSecond,
+          transferred: Math.round((percent / 100) * totalBytes),
+          total: totalBytes,
+        })
+      }
+    }, 200)
 
-  if (response === 1) {
-    await shell.openExternal(`https://github.com/tuyenhm68/KomfyEdit/releases/tag/v${version}`)
-    checkInFlight = false
-    return
+    return { success: true }
   }
-  if (response !== 0) {
-    checkInFlight = false
-    return
-  }
 
-  try {
-    await updater.downloadUpdate()
-  } catch (err) {
-    logger.warn(`[updater] Download failed: ${String(err)}`)
-    checkInFlight = false
-  }
-}
-
-async function promptInstall(updater: AppUpdater, version: string): Promise<void> {
-  const { response } = await showMessageBox({
-    type: 'info',
-    title: 'KomfyEdit',
-    message: `KomfyEdit ${version} is ready to install.`,
-    detail: 'The app will close and reopen. Unsaved work is autosaved, but finish any running export first.',
-    buttons: ['Restart now', 'Install on quit'],
-    defaultId: 1,
-    cancelId: 1,
-  })
-
-  if (response === 0) {
-    // isSilent=false so the installer UI shows; isForceRunAfter reopens the app.
-    updater.quitAndInstall(false, true)
-  }
-}
-
-/** Fire-and-forget check a little after launch, silent unless something is found. */
-export function checkForUpdatesOnStartup(): void {
   if (!isUpdateSupported()) {
-    logger.info('[updater] Skipping update check: not a packaged build')
-    return
-  }
-  setTimeout(() => {
-    void runCheck(false)
-  }, 8000)
-}
-
-/** Menu-driven check: reports "up to date" and surfaces errors. */
-export async function checkForUpdatesManually(): Promise<UpdateCheckResult> {
-  return runCheck(true)
-}
-
-async function runCheck(manual: boolean): Promise<UpdateCheckResult> {
-  if (!isUpdateSupported()) {
-    return { status: 'unsupported' }
-  }
-  if (checkInFlight) {
-    return { status: 'busy' }
+    return { success: false, error: 'Updates not supported in this environment' }
   }
 
   const updater = await getUpdater()
-  if (!updater) return { status: 'unsupported' }
+  if (!updater) {
+    return { success: false, error: 'Updater not available' }
+  }
+
+  try {
+    transition({ type: 'START_DOWNLOAD' })
+    await updater.downloadUpdate()
+    return { success: true }
+  } catch (err) {
+    logger.warn(`[updater] Download failed: ${String(err)}`)
+    transition({ type: 'UPDATE_ERROR', error: String(err) })
+    return { success: false, error: String(err) }
+  }
+}
+
+export async function installNow(): Promise<{ success: boolean; error?: string }> {
+  // Safeguard: never restart or interrupt while an export/render is running
+  if (renderQueue.getActiveJobCount() > 0) {
+    logger.warn('[updater] Refusing to restart for update: active export jobs running')
+    return {
+      success: false,
+      error: 'Cannot restart while an export is in progress',
+    }
+  }
+
+  if (isFakeMode) {
+    logger.info('[updater] [fake-mode] installNow triggered (simulating silent quitAndInstall)')
+    return { success: true }
+  }
+
+  if (!isUpdateSupported()) {
+    return { success: false, error: 'Updates not supported in this environment' }
+  }
+
+  const updater = await getUpdater()
+  if (!updater) {
+    return { success: false, error: 'Updater not available' }
+  }
+
+  try {
+    logger.info('[updater] Calling quitAndInstall(true, true) for silent update restart')
+    // isSilent = true (skips UI), isForceRunAfter = true (restarts the app)
+    updater.quitAndInstall(true, true)
+    return { success: true }
+  } catch (err) {
+    logger.error(`[updater] Failed to execute quitAndInstall: ${String(err)}`)
+    return { success: false, error: String(err) }
+  }
+}
+
+/** Check for updates (invoked manually e.g. from Help menu). */
+export async function checkForUpdatesManually(): Promise<UpdateState> {
+  return runCheck(true)
+}
+
+async function runCheck(manual: boolean): Promise<UpdateState> {
+  if (isFakeMode) {
+    transition({ type: 'START_CHECK' })
+    setTimeout(() => {
+      transition({ type: 'UPDATE_AVAILABLE', version: '1.0.5' })
+    }, manual ? 1200 : 300)
+    return currentUpdateState
+  }
+
+  if (!isUpdateSupported()) {
+    return transition({ type: 'CHECK_UNSUPPORTED' })
+  }
+
+  if (checkInFlight) {
+    return currentUpdateState
+  }
+
+  const updater = await getUpdater()
+  if (!updater) {
+    return transition({ type: 'CHECK_UNSUPPORTED' })
+  }
 
   checkInFlight = true
-  currentCheckIsManual = manual
+  transition({ type: 'START_CHECK' })
+
   try {
     await updater.checkForUpdates()
-    return { status: 'checking' }
+    return currentUpdateState
   } catch (err) {
     checkInFlight = false
-    currentCheckIsManual = false
-    return { status: 'error', error: String(err) }
+    logger.warn(`[updater] Check failed: ${String(err)}`)
+    return transition({ type: 'UPDATE_ERROR', error: String(err) })
+  }
+}
+
+/**
+ * Check for updates on startup (after 8 seconds), and periodically every 4 hours while running.
+ */
+export function checkForUpdatesOnStartup(): void {
+  if (!isUpdateSupported()) {
+    logger.info('[updater] Skipping update check: not supported (not packaged and fake mode disabled)')
+    return
+  }
+
+  // Initial check after 8s delay
+  setTimeout(() => {
+    void runCheck(false)
+  }, 8000)
+
+  // Periodic check every 4 hours
+  if (!periodicTimer) {
+    const FOUR_HOURS_MS = 4 * 60 * 60 * 1000
+    periodicTimer = setInterval(() => {
+      void runCheck(false)
+    }, FOUR_HOURS_MS)
   }
 }

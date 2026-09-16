@@ -1,10 +1,10 @@
-# Getting Started with KomfyEdit
+# Getting Started with KailaEdit
 
 <p align="center">
-  <img src="../../images/overview-ui.png" alt="KomfyEdit Overview" width="85%">
+  <img src="../../images/overview-ui.png" alt="KailaEdit Overview" width="85%">
 </p>
 
-**KomfyEdit** is an open-source, non-linear video editing desktop application designed for privacy, speed, and local automation. It runs 100% offline on your machine without mandatory cloud accounts, subscriptions, or remote servers.
+**KailaEdit** is an open-source, non-linear video editing desktop application designed for privacy, speed, and local automation. It runs 100% offline on your machine without mandatory cloud accounts, subscriptions, or remote servers.
 
 ---
 
@@ -28,13 +28,13 @@ Download the build for your machine from the [GitHub Releases](https://github.co
 
 | Platform | File |
 |---|---|
-| Windows 10/11 (64-bit) | `KomfyEdit-<version>-win-x64-Setup.exe` |
-| macOS, Apple Silicon (M1–M4) | `KomfyEdit-<version>-mac-arm64.dmg` |
-| macOS, Intel | `KomfyEdit-<version>-mac-x64.dmg` |
-| Linux (64-bit) | `KomfyEdit-<version>-linux-x86_64.AppImage` or `KomfyEdit-<version>-linux-amd64.deb` |
-| Linux (ARM) | `KomfyEdit-<version>-linux-arm64.AppImage` or `KomfyEdit-<version>-linux-arm64.deb` |
+| Windows 10/11 (64-bit) | `KailaEdit-<version>-win-x64-Setup.exe` |
+| macOS, Apple Silicon (M1–M4) | `KailaEdit-<version>-mac-arm64.dmg` |
+| macOS, Intel | `KailaEdit-<version>-mac-x64.dmg` |
+| Linux (64-bit) | `KailaEdit-<version>-linux-x86_64.AppImage` or `KailaEdit-<version>-linux-amd64.deb` |
+| Linux (ARM) | `KailaEdit-<version>-linux-arm64.AppImage` or `KailaEdit-<version>-linux-arm64.deb` |
 
-> **KomfyEdit is not code-signed yet.** Signing certificates cost money the project does not have, so every platform shows some form of "unknown developer" warning on first launch. Getting past it is a one-time step per installation, described below.
+> **KailaEdit is not code-signed yet.** Signing certificates cost money the project does not have, so every platform shows some form of "unknown developer" warning on first launch. Getting past it is a one-time step per installation, described below.
 
 #### Windows
 
@@ -42,19 +42,19 @@ Run the installer. SmartScreen will show *"Windows protected your PC"*: click **
 
 #### macOS
 
-Open the `.dmg` and drag KomfyEdit into **Applications**. On first launch macOS refuses to open it, usually with *"KomfyEdit is damaged and can't be opened. You should move it to the Trash."*
+Open the `.dmg` and drag KailaEdit into **Applications**. On first launch macOS refuses to open it, usually with *"KailaEdit is damaged and can't be opened. You should move it to the Trash."*
 
 Nothing is actually damaged. That is simply the message macOS shows for an app downloaded without a notarized signature. To clear it, open **Terminal** and run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/KomfyEdit.app
+xattr -dr com.apple.quarantine /Applications/KailaEdit.app
 ```
 
 Then open the app normally.
 
 The command removes the `com.apple.quarantine` flag that macOS attaches to anything downloaded through a browser. It does not disable Gatekeeper, does not change any system setting, and affects only this one app.
 
-If you would rather not use Terminal: double-click the app and let it be blocked, then open **System Settings → Privacy & Security**, scroll to the Security section, and click **Open Anyway** next to the message about KomfyEdit. On macOS 15 Sequoia and later this is the only supported GUI route, since Apple removed the old right-click → Open shortcut for unsigned apps.
+If you would rather not use Terminal: double-click the app and let it be blocked, then open **System Settings → Privacy & Security**, scroll to the Security section, and click **Open Anyway** next to the message about KailaEdit. On macOS 15 Sequoia and later this is the only supported GUI route, since Apple removed the old right-click → Open shortcut for unsigned apps.
 
 > **Auto-update does not work on macOS while the app is unsigned.** `electron-updater` refuses to install an update that is not properly signed, so on macOS you need to download each new `.dmg` yourself. Windows and Linux update themselves normally.
 
@@ -63,14 +63,14 @@ If you would rather not use Terminal: double-click the app and let it be blocked
 **AppImage** — make it executable, then run it:
 
 ```bash
-chmod +x KomfyEdit-*-linux-x86_64.AppImage
-./KomfyEdit-*-linux-x86_64.AppImage
+chmod +x KailaEdit-*-linux-x86_64.AppImage
+./KailaEdit-*-linux-x86_64.AppImage
 ```
 
 **Debian / Ubuntu** — install with `apt`, which resolves any missing dependencies:
 
 ```bash
-sudo apt install ./KomfyEdit-*-linux-amd64.deb
+sudo apt install ./KailaEdit-*-linux-amd64.deb
 ```
 
 ### Option 2: Running from Source
@@ -83,8 +83,8 @@ If you are a developer or prefer running the latest edge build:
 
 2. **Clone the Repository**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git komfyedit
-   cd komfyedit
+   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   cd kailaedit
    ```
 
 3. **Install Dependencies**:
@@ -112,7 +112,7 @@ flowchart LR
     E --> F[Cut, Grade & Export]
 ```
 
-1. **Launch KomfyEdit**: The application opens directly to the Home / Project Selection dashboard.
+1. **Launch KailaEdit**: The application opens directly to the Home / Project Selection dashboard.
 2. **Click "New Project"**:
    - Give your project a clear name (e.g. `My First Vlog`).
    - Select your target aspect ratio:

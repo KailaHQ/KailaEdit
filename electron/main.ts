@@ -21,9 +21,9 @@ import { createWindow, getMainWindow } from './window'
 
 function logAppVersion(): void {
   if (!app.isPackaged) {
-    logger.info('[KomfyEdit] Running in development mode')
+    logger.info('[KailaEdit] Running in development mode')
   } else {
-    logger.info(`[KomfyEdit] Version ${app.getVersion()}`)
+    logger.info(`[KailaEdit] Version ${app.getVersion()}`)
   }
 }
 
@@ -32,6 +32,8 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
+  app.setName('KailaEdit')
+
   // Windows groups taskbar buttons by AppUserModelID. Claiming the app's ID
   // binds the taskbar button directly to the registered app identity and its icon.
   if (process.platform === 'win32') {

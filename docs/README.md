@@ -1,10 +1,10 @@
-# KomfyEdit Documentation Hub
+# KailaEdit Documentation Hub
 
 <p align="center">
-  <img src="images/overview-ui.png" alt="KomfyEdit Desktop Video Editor" width="85%">
+  <img src="images/overview-ui.png" alt="KailaEdit Desktop Video Editor" width="85%">
 </p>
 
-Welcome to the **KomfyEdit** documentation center. KomfyEdit is a modern, lightweight, 100% offline desktop video editor built with **Electron**, **React 18**, **TypeScript**, and bundled **FFmpeg**, featuring a local AI editing agent powered by the **Model Context Protocol (MCP)**.
+Welcome to the **KailaEdit** documentation center. KailaEdit is a modern, lightweight, 100% offline desktop video editor built with **Electron**, **React 18**, **TypeScript**, and bundled **FFmpeg**, featuring a local AI editing agent powered by the **Model Context Protocol (MCP)**.
 
 ---
 
@@ -28,7 +28,7 @@ Welcome to the **KomfyEdit** documentation center. KomfyEdit is a modern, lightw
 | 04 | **Color, Filters & Adjustment Layers / Màu sắc & Lớp điều chỉnh** | [04-color-effects-filters.md](en/user-guide/04-color-effects-filters.md) | [04-color-effects-filters.md](vi/user-guide/04-color-effects-filters.md) | 3D LUT Library, WebGL GPU preview 1:1 FFmpeg parity, custom LUT `.cube`, Adjustment Layer |
 | 05 | **Audio & Subtitles / Âm thanh & Phụ đề** | [05-audio-and-subtitles.md](en/user-guide/05-audio-and-subtitles.md) | [05-audio-and-subtitles.md](vi/user-guide/05-audio-and-subtitles.md) | Local Whisper Speech-to-Text, Audio Ducking, Limiter, Boost (+24dB), Text Presets |
 | 06 | **Export & Rendering / Xuất video** | [06-export-and-delivery.md](en/user-guide/06-export-and-delivery.md) | [06-export-and-delivery.md](vi/user-guide/06-export-and-delivery.md) | GPU NVENC/QSV/VideoToolbox, 4K/8K Proxy & Render Cache, Batch Queue, Chapters |
-| 07 | **EditPilot AI Assistant / Trợ lý AI EditPilot** | [07-editpilot-ai-assistant.md](en/user-guide/07-editpilot-ai-assistant.md) | [07-editpilot-ai-assistant.md](vi/user-guide/07-editpilot-ai-assistant.md) | Live UI Sync, Highlight Extraction, B-Roll Copilot, Whisper transcribe, 22 MCP tools |
+| 07 | **CoEdit AI Assistant / Trợ lý AI CoEdit** | [07-coedit-ai-assistant.md](en/user-guide/07-coedit-ai-assistant.md) | [07-coedit-ai-assistant.md](vi/user-guide/07-coedit-ai-assistant.md) | Live UI Sync, Highlight Extraction, B-Roll Copilot, Whisper transcribe, 22 MCP tools |
 
 ---
 
@@ -51,11 +51,11 @@ graph TD
     subgraph UI ["Frontend Renderer (React 18 + Tailwind)"]
         A[VideoEditor Shell] --> B[Zustand Store]
         B --> C[Timeline & Canvas Engine]
-        B --> D[EditPilot Agent Panel]
+        B --> D[CoEdit Agent Panel]
     end
 
     subgraph IPC ["Typed IPC Bridge (Zod Validated)"]
-        D -- "MCP Request" --> E[KomfyEdit MCP Server]
+        D -- "MCP Request" --> E[KailaEdit MCP Server]
         B -- "electronAPI" --> F[IPC Dispatcher]
     end
 
@@ -79,7 +79,7 @@ graph TD
 
 ## ⚖️ Acknowledgements & License / Ghi nhận & Bản quyền
 
-- **Acknowledgements**: KomfyEdit references and adapts foundational architecture from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd. (under Apache-2.0). See [NOTICES.md](../NOTICES.md) and [LICENSE.txt](../LICENSE.txt).
-- **Free for Non-Commercial Use**: KomfyEdit is 100% free for personal, non-commercial, and educational usage. Commercial distribution or monetization is prohibited without prior authorization.
+- **Acknowledgements**: KailaEdit references and adapts foundational architecture from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd. (under Apache-2.0). See [NOTICES.md](../NOTICES.md) and [LICENSE.txt](../LICENSE.txt).
+- **Free for Non-Commercial Use**: KailaEdit is 100% free for personal, non-commercial, and educational usage. Commercial distribution or monetization is prohibited without prior authorization.
 - **License**: Core software is released under the [Apache-2.0 License](../LICENSE.txt).
 

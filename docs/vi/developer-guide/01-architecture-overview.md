@@ -1,6 +1,6 @@
 # Tổng quan kiến trúc hệ thống
 
-KomfyEdit được thiết kế theo mô hình 2 tầng tách biệt rõ ràng, tối ưu cho hiệu năng đồ họa thời gian thực, tính ổn định ngoại tuyến (offline) và an toàn tuyệt đối qua cầu nối IPC.
+KailaEdit được thiết kế theo mô hình 2 tầng tách biệt rõ ràng, tối ưu cho hiệu năng đồ họa thời gian thực, tính ổn định ngoại tuyến (offline) và an toàn tuyệt đối qua cầu nối IPC.
 
 ---
 
@@ -28,7 +28,7 @@ graph TB
         Life["Vòng đời ứng dụng & Cửa sổ"]
         FS["Quản lý tệp an toàn<br>(path-validation.ts)"]
         Export["Bộ điều phối xuất video FFmpeg<br>(export-handler.ts)"]
-        MCP["Máy chủ EditPilot MCP<br>(packages/komfyedit-mcp/)"]
+        MCP["Máy chủ CoEdit MCP<br>(packages/kailaedit-mcp/)"]
 
         IPC --> Life
         IPC --> FS
@@ -46,7 +46,7 @@ graph TB
 ## 🔑 Các trụ cột thiết kế cốt lõi
 
 ### 1. Hai tầng độc lập, không có Backend đám mây
-KomfyEdit hoàn toàn không chứa mã kết nối API máy chủ bên ngoài, không có hệ thống đăng ký tài khoản hay theo dõi dữ liệu người dùng. Toàn bộ project, cache hình ảnh thu nhỏ (thumbnails) và biểu đồ sóng âm (waveforms) đều nằm trực tiếp trên ổ cứng người dùng.
+KailaEdit hoàn toàn không chứa mã kết nối API máy chủ bên ngoài, không có hệ thống đăng ký tài khoản hay theo dõi dữ liệu người dùng. Toàn bộ project, cache hình ảnh thu nhỏ (thumbnails) và biểu đồ sóng âm (waveforms) đều nằm trực tiếp trên ổ cứng người dùng.
 
 ### 2. Giao tiếp IPC định kiểu chặt chẽ với Zod
 Mọi hàm gọi giữa giao diện React và tiến trình Electron đều được quản lý tại `shared/electron-api-schema.ts`. Mỗi phương thức IPC bắt buộc phải có cặp Zod schema kiểm tra đầu vào và đầu ra:

@@ -1,10 +1,10 @@
 # Máy chủ MCP & Kỹ năng AI (Skills)
 
 <p align="center">
-  <img src="../../images/editpilot-architecture.png" alt="Kiến trúc Model Context Protocol trong KomfyEdit" width="85%">
+  <img src="../../images/editpilot-architecture.png" alt="Kiến trúc Model Context Protocol trong KailaEdit" width="85%">
 </p>
 
-KomfyEdit tích hợp sẵn một máy chủ Model Context Protocol (MCP) nội bộ tại thư mục `packages/komfyedit-mcp/`. Cơ chế này cho phép các tác tử AI (AI Agents) thao tác trực tiếp trên timeline video mà không cần tương tác qua giao diện hay can thiệp vào tệp hệ thống.
+KailaEdit tích hợp sẵn một máy chủ Model Context Protocol (MCP) nội bộ tại thư mục `packages/kailaedit-mcp/`. Cơ chế này cho phép các tác tử AI (AI Agents) thao tác trực tiếp trên timeline video mà không cần tương tác qua giao diện hay can thiệp vào tệp hệ thống.
 
 ---
 
@@ -60,7 +60,7 @@ Khi bạn bổ sung một tính năng biên tập mới trên giao diện:
 
 ## 🧪 Bộ kiểm thử tự động kỹ năng AI (`pnpm eval:skills`)
 
-Để đảm bảo các bản cập nhật mã nguồn không làm suy giảm độ chính xác của trợ lý AI, KomfyEdit trang bị bộ kiểm thử tự động:
+Để đảm bảo các bản cập nhật mã nguồn không làm suy giảm độ chính xác của trợ lý AI, KailaEdit trang bị bộ kiểm thử tự động:
 
 ```bash
 pnpm eval:skills

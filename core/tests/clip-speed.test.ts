@@ -3,7 +3,7 @@ import { createInitialEditorState } from '../src/editor-state'
 import { setClipSpeed, setClipsSpeed, updateClip } from '../src/editor-actions'
 import { selectActiveTimeline } from '../src/editor-selectors'
 import type { Timeline, TimelineClip } from '../src/project-model'
-import { capcutPositionForSpeed, speedForCapcutPosition } from '../src/clip-speed'
+import { piecewisePositionForSpeed, speedForPiecewisePosition } from '../src/clip-speed'
 
 /**
  * Changing a clip's speed on the magnetic track.
@@ -121,7 +121,7 @@ describe('the shape of the bug this replaced', () => {
   })
 })
 
-describe('the CapCut speed range', () => {
+describe('the extended speed range', () => {
   it('accepts up to 100x', () => {
     const next = setClipSpeed(twoClipsOnV1(), 'first', 100, 0.5)
     expect(clipsOf(next)[0].speed).toBe(100)
@@ -212,44 +212,44 @@ describe('linked clips synchronization', () => {
   })
 })
 
-describe('CapCut speed slider mapping and magnetic snapping', () => {
+describe('piecewise speed slider mapping and magnetic snapping', () => {
   it('maps landmarks exactly to their position percentages', () => {
-    expect(capcutPositionForSpeed(0.1)).toBeCloseTo(0.0)
-    expect(capcutPositionForSpeed(1.0)).toBeCloseTo(0.2)
-    expect(capcutPositionForSpeed(2.0)).toBeCloseTo(0.4)
-    expect(capcutPositionForSpeed(5.0)).toBeCloseTo(0.6)
-    expect(capcutPositionForSpeed(10.0)).toBeCloseTo(0.8)
-    expect(capcutPositionForSpeed(100.0)).toBeCloseTo(1.0)
+    expect(piecewisePositionForSpeed(0.1)).toBeCloseTo(0.0)
+    expect(piecewisePositionForSpeed(1.0)).toBeCloseTo(0.2)
+    expect(piecewisePositionForSpeed(2.0)).toBeCloseTo(0.4)
+    expect(piecewisePositionForSpeed(5.0)).toBeCloseTo(0.6)
+    expect(piecewisePositionForSpeed(10.0)).toBeCloseTo(0.8)
+    expect(piecewisePositionForSpeed(100.0)).toBeCloseTo(1.0)
   })
 
   it('snaps magnetically to landmark speeds when near landmark positions', () => {
     // 10x is at pos 0.8
-    expect(speedForCapcutPosition(0.8, true)).toBe(10)
-    expect(speedForCapcutPosition(0.79, true)).toBe(10)
-    expect(speedForCapcutPosition(0.82, true)).toBe(10)
+    expect(speedForPiecewisePosition(0.8, true)).toBe(10)
+    expect(speedForPiecewisePosition(0.79, true)).toBe(10)
+    expect(speedForPiecewisePosition(0.82, true)).toBe(10)
 
     // 1x is at pos 0.2
-    expect(speedForCapcutPosition(0.2, true)).toBe(1)
-    expect(speedForCapcutPosition(0.18, true)).toBe(1)
-    expect(speedForCapcutPosition(0.22, true)).toBe(1)
+    expect(speedForPiecewisePosition(0.2, true)).toBe(1)
+    expect(speedForPiecewisePosition(0.18, true)).toBe(1)
+    expect(speedForPiecewisePosition(0.22, true)).toBe(1)
 
     // 2x is at pos 0.4
-    expect(speedForCapcutPosition(0.39, true)).toBe(2)
-    expect(speedForCapcutPosition(0.41, true)).toBe(2)
+    expect(speedForPiecewisePosition(0.39, true)).toBe(2)
+    expect(speedForPiecewisePosition(0.41, true)).toBe(2)
 
     // 5x is at pos 0.6
-    expect(speedForCapcutPosition(0.58, true)).toBe(5)
-    expect(speedForCapcutPosition(0.62, true)).toBe(5)
+    expect(speedForPiecewisePosition(0.58, true)).toBe(5)
+    expect(speedForPiecewisePosition(0.62, true)).toBe(5)
   })
 
   it('interpolates smoothly when outside magnetic snap zone', () => {
     // Midpoint between 1x (pos 0.2) and 2x (pos 0.4) is pos 0.3
-    const mid = speedForCapcutPosition(0.3, true)
+    const mid = speedForPiecewisePosition(0.3, true)
     expect(mid).toBeGreaterThan(1)
     expect(mid).toBeLessThan(2)
 
     // With snap disabled
-    expect(speedForCapcutPosition(0.81, false)).toBeGreaterThan(10)
+    expect(speedForPiecewisePosition(0.81, false)).toBeGreaterThan(10)
   })
 })
 

@@ -49,7 +49,7 @@ Tự động phát hiện các đoạn nói chuyện liên tục kéo dài (>5�
 3. **Chuyển cảnh mượt mà**: Tự động áp dụng fade in / fade out nhẹ (0.2s–0.3s) ở hai đầu clip B-roll nhằm tránh hiện tượng giật khung hình khi xuất hiện hoặc biến mất.
 4. **Căn chỉnh khung hình**: Đảm bảo transform scale và position phù hợp với tỷ lệ khung hình hiện tại của timeline (16:9 hoặc 9:16).
 
-## Quy trình làm việc chuẩn của EditPilot
+## Quy trình làm việc chuẩn của CoEdit
 1. Gọi `timeline_describe` để nắm cấu trúc track và các clip đang có.
 2. Gọi `suggest_broll` để nhận danh sách các vị trí cần hình ảnh minh họa kèm từ khóa.
 3. Thông báo cho người dùng về các vị trí cần bổ sung B-roll hoặc tự động chèn các tư liệu có sẵn trong project assets bằng `edit_propose` với thao tác `insert_broll`.

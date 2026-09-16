@@ -286,7 +286,7 @@ describe('template file storage', () => {
 
   /*
    * The cover is a frame of the edit as it stood when it was saved. That is the
-   * whole trick behind CapCut's previews: a template is taken FROM a finished
+   * whole trick behind template previews: a template is taken FROM a finished
    * video, so at save time there is a finished video to photograph.
    */
   describe('cover image', () => {

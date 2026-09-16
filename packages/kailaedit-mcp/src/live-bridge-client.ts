@@ -19,21 +19,27 @@ export interface LiveBridgeUndoResult {
 }
 
 export function detectLiveBridgePort(projectId?: string): number | null {
-  if (process.env.KOMFYEDIT_LIVE_PORT) {
-    const port = parseInt(process.env.KOMFYEDIT_LIVE_PORT, 10)
+  const livePortEnv = process.env.KAILAEDIT_LIVE_PORT || process.env.KOMFYEDIT_LIVE_PORT
+  if (livePortEnv) {
+    const port = parseInt(livePortEnv, 10)
     if (!isNaN(port) && port > 0) return port
   }
 
   if (projectId) {
-    const lockPath = path.join(os.tmpdir(), `komfyedit-live-${projectId}.json`)
-    if (fs.existsSync(lockPath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
-        if (data.port && typeof data.port === 'number') {
-          return data.port
+    const candidates = [
+      path.join(os.tmpdir(), `kailaedit-live-${projectId}.json`),
+      path.join(os.tmpdir(), `komfyedit-live-${projectId}.json`),
+    ]
+    for (const lockPath of candidates) {
+      if (fs.existsSync(lockPath)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
+          if (data.port && typeof data.port === 'number') {
+            return data.port
+          }
+        } catch {
+          // best effort
         }
-      } catch {
-        // best effort
       }
     }
   }

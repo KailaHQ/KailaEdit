@@ -3,7 +3,7 @@ import type { Asset, SubtitleClip, TimelineClip, Track } from '../../types/proje
 import { flushSync } from 'react-dom'
 import { mediaSecondsForTimelineSeconds } from '@core/clip-speed'
 import { rowIndexAtY, stableRowIndexAtY, type TimelineRowBox } from '@core/timeline-rows'
-import { resolveOverlaps, packTrack1, pruneEmptyOverlayTracks, migrateClip, type ToolType } from './video-editor-utils'
+import { resolveOverlaps, packTrack1, packMainVideoTrack, pruneEmptyOverlayTracks, migrateClip, type ToolType } from './video-editor-utils'
 
 /** How close to a junction a dropped transition has to land to count. */
 const TRANSITION_DROP_SNAP_PX = 48
@@ -102,6 +102,7 @@ interface UseTimelineDragParams {
   audioTrackHeight: number
   videoTrackHeight: number
   subtitleTrackHeight: number
+  stickerTrackHeight?: number
   subtitles: SubtitleClip[]
   /**
    * Place a transition at a point on a track, closing a small gap first when the
@@ -140,6 +141,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     // constants are only still needed where a new track is being sized.
     videoTrackHeight,
     audioTrackHeight,
+    stickerTrackHeight = 44,
     addFilterClip,
   } = params
 
@@ -589,6 +591,10 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         // Dragged BELOW the bottom audio track -> request new audio track
         return -2
       }
+      if (newPosInKind < 0 && clipKind === 'sticker') {
+        // Dragged ABOVE the top sticker track -> request new sticker track
+        return -3
+      }
       
       const clampedPos = Math.max(0, Math.min(kindRows.length - 1, newPosInKind))
       const newTrackIndex = kindRows[clampedPos].realIndex
@@ -643,6 +649,11 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
             const lastAudioTop = lastAudioTrack ? trackTopPx(lastAudioTrack.realIndex, 4) : 0
             const lastAudioHeight = lastAudioTrack ? getTrackHeight(lastAudioTrack.realIndex) : audioTrackHeight
             yPx = (lastAudioTop + lastAudioHeight) - trackTopPx(original.trackIndex, 4)
+          } else if (target.trackIndex === -3) {
+            const topStickerTrack = stickerDisplayRows[0]
+            const topStickerTop = topStickerTrack ? trackTopPx(topStickerTrack.realIndex, 4) : 0
+            const topStickerHeight = topStickerTrack ? getTrackHeight(topStickerTrack.realIndex) : stickerTrackHeight
+            yPx = (topStickerTop - topStickerHeight) - trackTopPx(original.trackIndex, 4)
           } else {
             yPx = trackTopPx(target.trackIndex, 4) - trackTopPx(original.trackIndex, 4)
           }
@@ -652,7 +663,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         }
       })
     }
-  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, getCurrentTime, lassoRect, orderedTracks, trackContainerRef, trackTopPx, videoTrackHeight, audioTrackHeight, getTrackHeight])
+  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, getCurrentTime, lassoRect, orderedTracks, trackContainerRef, trackTopPx, videoTrackHeight, audioTrackHeight, stickerTrackHeight, getTrackHeight])
   
   const handleMouseUp = useCallback((e?: MouseEvent | Event) => {
     // Finalize lasso selection
@@ -699,11 +710,30 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       const originalPositions = draggingClip.originalPositions
       const movedIds = new Set(Object.keys(originalPositions))
 
+      const hasMoved = Boolean(
+        draggingClip.isDuplicate ||
+        (preview && Object.entries(preview).some(([clipId, target]) => {
+          const orig = originalPositions[clipId]
+          if (!orig) return true
+          return Math.abs(target.startTime - orig.startTime) > 0.001 || target.trackIndex !== orig.trackIndex
+        }))
+      )
+
+      if (!hasMoved) {
+        clearDragPreviewDom()
+        setDraggingClip(null)
+        setResizingClip(null)
+        return
+      }
+
       const needsNewVideoTrack = preview
         ? Object.values(preview).some(target => target.trackIndex === -1)
         : false
       const needsNewAudioTrack = preview
         ? Object.values(preview).some(target => target.trackIndex === -2)
+        : false
+      const needsNewStickerTrack = preview
+        ? Object.values(preview).some(target => target.trackIndex === -3)
         : false
 
       let newTrack: Track | null = null
@@ -732,6 +762,16 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         // Audio tracks are displayed top-down (A1, A2, A3...), so appending to
         // the array adds the track at the bottom.
         newTrackIndex = tracks.length
+      } else if (needsNewStickerTrack) {
+        const stickerTrackCount = tracks.filter(t => t.kind === 'sticker').length
+        newTrack = {
+          id: `track-sticker-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: `S${stickerTrackCount + 1}`,
+          muted: false,
+          locked: false,
+          kind: 'sticker',
+        }
+        newTrackIndex = tracks.length
       }
 
       const allTracks = newTrack ? [...tracks, newTrack] : tracks
@@ -739,7 +779,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       const positioned = clips.map(clip => {
         const target = preview?.[clip.id]
         if (!target) return clip
-        const assignedTrackIndex = (target.trackIndex === -1 || target.trackIndex === -2)
+        const assignedTrackIndex = (target.trackIndex === -1 || target.trackIndex === -2 || target.trackIndex === -3)
           ? (newTrackIndex >= 0 ? newTrackIndex : clip.trackIndex)
           : target.trackIndex
         return {
@@ -748,11 +788,10 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
           trackIndex: assignedTrackIndex,
         }
       })
-      const resolved = resolveOverlaps(positioned, movedIds)
-      const packed = packTrack1(resolved, 0)
-      const pruned = (needsNewVideoTrack || needsNewAudioTrack)
-        ? { tracks: allTracks, clips: packed, subtitles }
-        : pruneEmptyOverlayTracks(allTracks, packed, subtitles)
+      const currentTransitions = activeTimeline?.transitions ?? []
+      const resolved = resolveOverlaps(positioned, movedIds, currentTransitions)
+      const packed = packMainVideoTrack(allTracks, resolved, currentTransitions)
+      const pruned = pruneEmptyOverlayTracks(allTracks, packed, subtitles)
       // Synchronously, then drop the preview transforms in the same task.
       // Committing normally let the browser paint once in between, with the
       // clips back at their pre-drag positions — the jump users saw after
@@ -767,15 +806,16 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       clearDragPreviewDom()
     }
     if (resizingClip) {
+      const currentTransitions = activeTimeline?.transitions ?? []
       setClips(prev => {
-        const resolved = resolveOverlaps(prev, new Set([resizingClip.clipId]))
-        return packTrack1(resolved, 0)
+        const resolved = resolveOverlaps(prev, new Set([resizingClip.clipId]), currentTransitions)
+        return packTrack1(resolved, 0, currentTransitions)
       })
     }
     
     setDraggingClip(null)
     setResizingClip(null)
-  }, [lassoRect, clips, pixelsPerSecond, draggingClip, resizingClip, setClips, getTrackHeight, trackTopPx, clearDragPreviewDom, replaceTimelineDocument, subtitles, tracks])
+  }, [lassoRect, clips, pixelsPerSecond, draggingClip, resizingClip, setClips, getTrackHeight, trackTopPx, clearDragPreviewDom, replaceTimelineDocument, subtitles, tracks, activeTimeline])
   
   /**
    * How far left the left edge of a clip may be dragged.

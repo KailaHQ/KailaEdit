@@ -1,18 +1,24 @@
 import { useState } from 'react'
 import { mainVideoTrackIndex } from '@core/video-editor-utils'
 import { clampClipSpeed } from '@core/clip-speed'
-import { CapCutSpeedSlider } from './CapCutSpeedSlider'
+import { SpeedSlider } from './SpeedSlider'
 import { shallow } from 'zustand/vanilla/shallow'
 import {
   FileVideo, FileImage, FileAudio, Layers, Type,
   FlipHorizontal2, FlipVertical2, ChevronDown, ChevronRight,
   Palette, Eye, Sun, Contrast, Droplets, Thermometer,
-  SunDim, Moon, RotateCcw, Film, Move, Sparkles, Trash2, X,
+  SunDim, Moon, RotateCcw, Film, Sparkles, Trash2, X,
   AlignLeft, AlignCenter, AlignRight, Crop, Pipette,
 } from 'lucide-react'
-import type { Asset, TimelineClip, LetterboxSettings, TextOverlayStyle, TransitionType, KeyframeProperty, ClipMaskShape } from '../../types/project-model'
+import type { Asset, TimelineClip, LetterboxSettings, TextOverlayStyle, TransitionType, ClipMaskShape } from '../../types/project-model'
 import { DEFAULT_CLIP_TRANSFORM, DEFAULT_COLOR_CORRECTION, DEFAULT_LETTERBOX, MAX_CLIP_VOLUME, DEFAULT_CLIP_MASK, DEFAULT_CHROMA_KEY } from '../../types/project-model'
 import { EFFECT_DEFINITIONS } from '../../types/project'
+import {
+  PropertyNumberInput,
+  PropertyToggle,
+  PropertyAlignmentBar,
+  PropertyRotateDial,
+} from './PropertyControls'
 import { TEXT_PRESETS, TEXT_ANIMATIONS } from '@core/text-presets'
 import { isPreviewBoostAvailable } from './audio-boost'
 import { namedResolutionTier } from '../../lib/video-resolution'
@@ -61,7 +67,6 @@ export function ClipPropertiesPanel() {
     setMaskMode,
     toggleMaskMode,
     setClipChromaKey,
-    setEyedropperMode,
     toggleEyedropperMode,
     setClipBlendMode,
     applyTextPresetToClip,
@@ -80,7 +85,11 @@ export function ClipPropertiesPanel() {
   const clips = useEditorStore(selectClips)
   const selectedClip = useEditorStore(selectSelectedClipForProperties)
   const clipAudioControls = useEditorStore(selectSelectedClipAudioControls, shallow)
+  const currentTime = useEditorStore(selectCurrentTime)
   if (!selectedClip) return null
+
+  const timeInClip = Math.max(0, Math.min(selectedClip.duration, currentTime - selectedClip.startTime))
+  const sampledClip = sampleClipAt(selectedClip, timeInClip)
 
   const effectiveMuted = clipAudioControls?.muted ?? (selectedClip.muted || false)
   const effectiveVolume = clipAudioControls?.volume ?? (selectedClip.volume ?? 1)
@@ -100,13 +109,13 @@ export function ClipPropertiesPanel() {
   }
 
   const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('video')
-  const [showFlip, setShowFlip] = useState(false)
+  const [videoSubTab, setVideoSubTab] = useState<'basic' | 'remove-bg' | 'mask' | 'retouch'>('basic')
+  const [uniformScale, setUniformScale] = useState(true)
+  const [showBlend, setShowBlend] = useState(true)
   const [showTransitions, setShowTransitions] = useState(false)
   const [showColorCorrection, setShowColorCorrection] = useState(false)
-  const [showTransform, setShowTransform] = useState(false)
-  const [showMask, setShowMask] = useState(false)
+  const [showTransform, setShowTransform] = useState(true)
   const maskMode = useEditorStore(selectMaskMode)
-  const [showChromaKey, setShowChromaKey] = useState(false)
   const eyedropperMode = useEditorStore(selectEyedropperMode)
   const [targetLufs, setTargetLufs] = useState<number>(-14)
   const [isMeasuringLoudness, setIsMeasuringLoudness] = useState<boolean>(false)
@@ -130,7 +139,6 @@ export function ClipPropertiesPanel() {
     return null
   }
 
-  const isTextClip = selectedClip.type === 'text'
   // The main video track is magnetic: clips there are packed end to end, so a
   // start time typed into the panel would be overwritten by the pack.
   const isOnMagneticTrack = mainVideoTrackIndex(tracks) === selectedClip.trackIndex
@@ -724,7 +732,7 @@ export function ClipPropertiesPanel() {
                     </button>
                   </div>
                 </div>
-                <CapCutSpeedSlider
+                <SpeedSlider
                   speed={currentSpeed}
                   onChange={(newSpeed) => applySpeed(newSpeed)}
                 />
@@ -803,7 +811,9 @@ export function ClipPropertiesPanel() {
         })()}
 
         {tab === 'audio' && hasAudioControls && (() => {
-          const displayVolume = effectiveMuted ? 0 : effectiveVolume
+          const hasKf = hasKeyframesForProperty(selectedClip, 'volume')
+          const currentVolume = hasKf && sampledClip ? sampledClip.volume : effectiveVolume
+          const displayVolume = effectiveMuted ? 0 : currentVolume
           const decibels = displayVolume > 0 ? 20 * Math.log10(displayVolume) : null
           const isBoosted = displayVolume > 1
           return (
@@ -834,13 +844,10 @@ export function ClipPropertiesPanel() {
                 value={displayVolume}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value)
-                  const curTime = selectCurrentTime(getEditorState())
-                  const timeInClip = curTime - selectedClip.startTime
-                  if (hasKeyframesForProperty(selectedClip, 'volume') && timeInClip >= 0 && timeInClip <= selectedClip.duration) {
+                  if (hasKf) {
                     setKeyframe(selectedClip.id, 'volume', timeInClip, val)
-                  } else {
-                    setClipAudioLevel(selectedClip.id, val)
                   }
+                  setClipAudioLevel(selectedClip.id, val)
                 }}
                 className={`w-full ${isBoosted ? 'accent-amber-500' : 'accent-blue-500'}`}
               />
@@ -1186,255 +1193,658 @@ export function ClipPropertiesPanel() {
           )
         })()}
 
-        {/* --- Opacity --- */}
-        {tab === 'video' && !isTextClip && (
-          <div className="pt-3 border-t border-zinc-800">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <label className="text-xs font-semibold text-zinc-400">Opacity</label>
-                <KeyframeDiamondButton
-                  clip={selectedClip}
-                  property="opacity"
-                  currentValue={selectedClip.opacity ?? 100}
-                />
-              </div>
-              <span className="text-[10px] text-zinc-500 tabular-nums">{selectedClip.opacity ?? 100}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={selectedClip.opacity ?? 100}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10)
-                const curTime = selectCurrentTime(getEditorState())
-                const timeInClip = curTime - selectedClip.startTime
-                if (hasKeyframesForProperty(selectedClip, 'opacity') && timeInClip >= 0 && timeInClip <= selectedClip.duration) {
-                  setKeyframe(selectedClip.id, 'opacity', timeInClip, val)
-                } else {
-                  updateClip(selectedClip.id, { opacity: val })
+        {/* --- Video Tab --- */}
+        {tab === 'video' && (
+          <div className="space-y-4">
+            {/* Level 2 Sub-Tabs (Pill Navigation) */}
+            <div className="flex items-center bg-[#141416] p-1 rounded-lg border border-zinc-800/80 gap-1 select-none">
+              {(['basic', 'remove-bg', 'mask', 'retouch'] as const).map((sub) => {
+                const labels: Record<typeof sub, string> = {
+                  'basic': 'Basic',
+                  'remove-bg': 'Remove BG',
+                  'mask': 'Mask',
+                  'retouch': 'Retouch',
                 }
-              }}
-              className="w-full h-1.5 accent-blue-500"
-            />
-            <div className="flex justify-between text-[9px] text-zinc-600 mt-0.5">
-              <span>0%</span>
-              <span>100%</span>
-            </div>
-          </div>
-        )}
-
-        {/* --- Blend Mode --- */}
-        {tab === 'video' && (selectedClip.type === 'video' || selectedClip.type === 'image') && (
-          <div className="pt-3 border-t border-zinc-800">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-zinc-400">
-                {t('clipProperties.blendModeTitle')}
-              </label>
-              {selectedClip.blendMode && selectedClip.blendMode !== 'normal' && (
-                <button
-                  className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors"
-                  onClick={() => setClipBlendMode(selectedClip.id, 'normal')}
-                >
-                  {t('common.reset')}
-                </button>
-              )}
-            </div>
-            <select
-              value={selectedClip.blendMode ?? 'normal'}
-              onChange={(e) => setClipBlendMode(selectedClip.id, e.target.value as ClipBlendMode)}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
-            >
-              {BLEND_MODES.map((mode) => (
-                <option key={mode.id} value={mode.id}>
-                  {t(`clipProperties.blendModes.${mode.id}`) || mode.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* --- Transform --- */}
-        {tab === 'video' && hasVisualTransformControls && (() => {
-          const tf = selectedClip.transform ?? DEFAULT_CLIP_TRANSFORM
-          const setTransform = (patch: Partial<typeof tf>) =>
-            updateClip(selectedClip.id, { transform: { ...tf, ...patch } })
-          const isDefault = (Object.keys(DEFAULT_CLIP_TRANSFORM) as Array<keyof typeof tf>)
-            .every(key => tf[key] === DEFAULT_CLIP_TRANSFORM[key])
-
-          const animatableFields: Partial<Record<keyof typeof tf, KeyframeProperty>> = {
-            scale: 'transform.scale',
-            positionX: 'transform.positionX',
-            positionY: 'transform.positionY',
-            rotation: 'transform.rotation',
-          }
-
-          const sliders: Array<{
-            label: string; field: keyof typeof tf; min: number; max: number; step: number; suffix: string
-          }> = [
-            { label: 'Scale', field: 'scale', min: 1, max: 400, step: 1, suffix: '%' },
-            { label: 'Position X', field: 'positionX', min: -100, max: 100, step: 1, suffix: '%' },
-            { label: 'Position Y', field: 'positionY', min: -100, max: 100, step: 1, suffix: '%' },
-            { label: 'Rotation', field: 'rotation', min: -180, max: 180, step: 1, suffix: '°' },
-            { label: 'Crop Top', field: 'cropTop', min: 0, max: 90, step: 1, suffix: '%' },
-            { label: 'Crop Right', field: 'cropRight', min: 0, max: 90, step: 1, suffix: '%' },
-            { label: 'Crop Bottom', field: 'cropBottom', min: 0, max: 90, step: 1, suffix: '%' },
-            { label: 'Crop Left', field: 'cropLeft', min: 0, max: 90, step: 1, suffix: '%' },
-          ]
-
-          return (
-            <div className="pt-3 border-t border-zinc-800">
-              <button
-                className="flex items-center gap-2 w-full text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors mb-2"
-                onClick={() => setShowTransform(!showTransform)}
-              >
-                {showTransform ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                <Move className="h-3.5 w-3.5" />
-                Transform
-                {!isDefault && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-              </button>
-              {showTransform && (
-                <div className="space-y-2.5 pl-1">
+                const isActive = videoSubTab === sub
+                return (
                   <button
-                    className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-blue-400 transition-colors"
-                    onClick={() => updateClip(selectedClip.id, { transform: { ...DEFAULT_CLIP_TRANSFORM } })}
+                    key={sub}
+                    type="button"
+                    onClick={() => setVideoSubTab(sub)}
+                    className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-all text-center ${
+                      isActive
+                        ? 'bg-[#252529] text-white shadow-sm font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                    }`}
                   >
-                    <RotateCcw className="h-3 w-3" />
-                    Reset All
+                    {labels[sub]}
                   </button>
+                )
+              })}
+            </div>
 
-                  {sliders.map(slider => {
-                    const kfProp = animatableFields[slider.field]
-                    return (
-                      <div key={slider.field}>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-zinc-400">{slider.label}</span>
-                            {kfProp && (
-                              <KeyframeDiamondButton
-                                clip={selectedClip}
-                                property={kfProp}
-                                currentValue={tf[slider.field]}
-                              />
-                            )}
-                          </div>
-                          <span className="text-[10px] text-zinc-500 tabular-nums">
-                            {tf[slider.field]}{slider.suffix}
-                          </span>
+            {/* ── Sub-tab 1: Basic ── */}
+            {videoSubTab === 'basic' && (
+              <div className="space-y-4">
+                {/* Transform */}
+                {hasVisualTransformControls && (() => {
+                  const tf = selectedClip.transform ?? DEFAULT_CLIP_TRANSFORM
+                  const setTransform = (patch: Partial<typeof tf>) =>
+                    updateClip(selectedClip.id, { transform: { ...tf, ...patch } })
+                  const isDefault = (Object.keys(DEFAULT_CLIP_TRANSFORM) as Array<keyof typeof tf>)
+                    .every(key => tf[key] === DEFAULT_CLIP_TRANSFORM[key])
+
+                  const hasScaleKf = hasKeyframesForProperty(selectedClip, 'transform.scale')
+                  const currentScale = hasScaleKf && sampledClip ? (sampledClip.scale ?? tf.scale) : tf.scale
+
+                  const hasPosXKf = hasKeyframesForProperty(selectedClip, 'transform.positionX')
+                  const currentPosX = hasPosXKf && sampledClip ? (sampledClip.positionX ?? tf.positionX) : tf.positionX
+
+                  const hasPosYKf = hasKeyframesForProperty(selectedClip, 'transform.positionY')
+                  const currentPosY = hasPosYKf && sampledClip ? (sampledClip.positionY ?? tf.positionY) : tf.positionY
+
+                  const hasRotKf = hasKeyframesForProperty(selectedClip, 'transform.rotation')
+                  const currentRot = hasRotKf && sampledClip ? (sampledClip.rotation ?? tf.rotation) : tf.rotation
+
+                  return (
+                    <div className="space-y-2">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between h-6">
+                        <span className="text-xs font-semibold text-zinc-200">Transform</span>
+                        <div className="flex items-center gap-1.5">
+                          {!isDefault && (
+                            <button
+                              type="button"
+                              onClick={() => updateClip(selectedClip.id, { transform: { ...DEFAULT_CLIP_TRANSFORM } })}
+                              className="text-zinc-400 hover:text-cyan-400 transition-colors p-0.5"
+                              title="Reset Transform"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                          )}
+                          <KeyframeDiamondButton
+                            clip={selectedClip}
+                            property="transform.scale"
+                            currentValue={currentScale}
+                          />
                         </div>
+                      </div>
+
+                      {/* 1. Scale Row */}
+                      <div className="flex items-center justify-between gap-2 h-7">
+                        <span className="text-xs text-zinc-300 w-14 flex-shrink-0">Scale</span>
                         <input
                           type="range"
-                          min={slider.min}
-                          max={slider.max}
-                          step={slider.step}
-                          value={tf[slider.field]}
+                          min={1}
+                          max={400}
+                          step={1}
+                          value={currentScale}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value)
-                            const curTime = selectCurrentTime(getEditorState())
-                            const timeInClip = curTime - selectedClip.startTime
-                            if (kfProp && hasKeyframesForProperty(selectedClip, kfProp) && timeInClip >= 0 && timeInClip <= selectedClip.duration) {
-                              setKeyframe(selectedClip.id, kfProp, timeInClip, val)
-                            } else {
-                              setTransform({ [slider.field]: val })
+                            if (hasScaleKf) {
+                              setKeyframe(selectedClip.id, 'transform.scale', timeInClip, val)
                             }
+                            setTransform({ scale: val })
                           }}
-                          className="w-full accent-blue-500"
+                          className="flex-1 h-1 accent-cyan-400 cursor-pointer min-w-0"
+                        />
+                        <PropertyNumberInput
+                          value={currentScale}
+                          min={1}
+                          max={400}
+                          step={1}
+                          suffix="%"
+                          className="w-16 flex-shrink-0"
+                          onChange={(val) => {
+                            if (hasScaleKf) {
+                              setKeyframe(selectedClip.id, 'transform.scale', timeInClip, val)
+                            }
+                            setTransform({ scale: val })
+                          }}
+                        />
+                        <KeyframeDiamondButton
+                          clip={selectedClip}
+                          property="transform.scale"
+                          currentValue={currentScale}
+                          className="flex-shrink-0"
                         />
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })()}
 
-        {/* --- Flip --- */}
-        {hasVisualTransformControls && (
-          <div className="pt-3 border-t border-zinc-800">
-            <button
-              className="flex items-center gap-2 w-full text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors mb-2"
-              onClick={() => setShowFlip(!showFlip)}
-            >
-              {showFlip ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <FlipHorizontal2 className="h-3.5 w-3.5" />
-              Flip
-            </button>
-            {showFlip && (
-              <div className="space-y-2 pl-5">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedClip.flipH}
-                    onChange={(e) => updateClip(selectedClip.id, { flipH: e.target.checked })}
-                    className="rounded bg-zinc-800 border-zinc-600"
-                  />
-                  <FlipHorizontal2 className="h-3.5 w-3.5 text-zinc-400" />
-                  <span className="text-sm text-zinc-300">Horizontal</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedClip.flipV}
-                    onChange={(e) => updateClip(selectedClip.id, { flipV: e.target.checked })}
-                    className="rounded bg-zinc-800 border-zinc-600"
-                  />
-                  <FlipVertical2 className="h-3.5 w-3.5 text-zinc-400" />
-                  <span className="text-sm text-zinc-300">Vertical</span>
-                </label>
+                      {/* 2. Uniform scale Row */}
+                      <div className="flex items-center justify-between h-6">
+                        <span className="text-xs text-zinc-300">Uniform scale</span>
+                        <PropertyToggle
+                          checked={uniformScale}
+                          onChange={setUniformScale}
+                        />
+                      </div>
+
+                      {/* 3. Position Row */}
+                      <div className="flex items-center justify-between gap-2 h-7">
+                        <span className="text-xs text-zinc-300 w-14 flex-shrink-0">Position</span>
+                        <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                          <PropertyNumberInput
+                            prefix="X"
+                            value={Math.round(currentPosX)}
+                            min={-1920}
+                            max={1920}
+                            step={1}
+                            className="flex-1 max-w-[76px]"
+                            onChange={(val) => {
+                              if (hasPosXKf) {
+                                setKeyframe(selectedClip.id, 'transform.positionX', timeInClip, val)
+                              }
+                              setTransform({ positionX: val })
+                            }}
+                          />
+                          <PropertyNumberInput
+                            prefix="Y"
+                            value={Math.round(currentPosY)}
+                            min={-1080}
+                            max={1080}
+                            step={1}
+                            className="flex-1 max-w-[76px]"
+                            onChange={(val) => {
+                              if (hasPosYKf) {
+                                setKeyframe(selectedClip.id, 'transform.positionY', timeInClip, val)
+                              }
+                              setTransform({ positionY: val })
+                            }}
+                          />
+                        </div>
+                        <KeyframeDiamondButton
+                          clip={selectedClip}
+                          property="transform.positionX"
+                          currentValue={currentPosX}
+                          className="flex-shrink-0"
+                        />
+                      </div>
+
+                      {/* 4. Rotate Row */}
+                      <div className="flex items-center justify-between gap-2 h-7">
+                        <span className="text-xs text-zinc-300 w-14 flex-shrink-0">Rotate</span>
+                        <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                          <PropertyNumberInput
+                            value={currentRot}
+                            min={-360}
+                            max={360}
+                            step={1}
+                            precision={2}
+                            suffix="°"
+                            className="w-20"
+                            onChange={(val) => {
+                              if (hasRotKf) setKeyframe(selectedClip.id, 'transform.rotation', timeInClip, val)
+                              setTransform({ rotation: val })
+                            }}
+                          />
+                          <PropertyRotateDial
+                            rotation={currentRot}
+                            onReset={() => {
+                              if (hasRotKf) setKeyframe(selectedClip.id, 'transform.rotation', timeInClip, 0)
+                              setTransform({ rotation: 0 })
+                            }}
+                          />
+                        </div>
+                        <KeyframeDiamondButton
+                          clip={selectedClip}
+                          property="transform.rotation"
+                          currentValue={currentRot}
+                          className="flex-shrink-0"
+                        />
+                      </div>
+
+                      {/* Alignment Toolbar */}
+                      <div className="pt-1">
+                        <PropertyAlignmentBar
+                          onAlignLeft={() => {
+                            const newX = -(50 - 50 * (tf.scale / 100))
+                            if (hasPosXKf) setKeyframe(selectedClip.id, 'transform.positionX', timeInClip, newX)
+                            setTransform({ positionX: newX })
+                          }}
+                          onAlignCenterH={() => {
+                            if (hasPosXKf) setKeyframe(selectedClip.id, 'transform.positionX', timeInClip, 0)
+                            setTransform({ positionX: 0 })
+                          }}
+                          onAlignRight={() => {
+                            const newX = (50 - 50 * (tf.scale / 100))
+                            if (hasPosXKf) setKeyframe(selectedClip.id, 'transform.positionX', timeInClip, newX)
+                            setTransform({ positionX: newX })
+                          }}
+                          onAlignTop={() => {
+                            const newY = -(50 - 50 * (tf.scale / 100))
+                            if (hasPosYKf) setKeyframe(selectedClip.id, 'transform.positionY', timeInClip, newY)
+                            setTransform({ positionY: newY })
+                          }}
+                          onAlignCenterV={() => {
+                            if (hasPosYKf) setKeyframe(selectedClip.id, 'transform.positionY', timeInClip, 0)
+                            setTransform({ positionY: 0 })
+                          }}
+                          onAlignBottom={() => {
+                            const newY = (50 - 50 * (tf.scale / 100))
+                            if (hasPosYKf) setKeyframe(selectedClip.id, 'transform.positionY', timeInClip, newY)
+                            setTransform({ positionY: newY })
+                          }}
+                        />
+                      </div>
+
+                      {/* Flip & Crop */}
+                      <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-400">Flip</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => updateClip(selectedClip.id, { flipH: !selectedClip.flipH })}
+                              className={`p-1.5 rounded text-xs border transition-colors ${
+                                selectedClip.flipH
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                  : 'bg-zinc-800 text-zinc-400 border-zinc-700/60 hover:text-white'
+                              }`}
+                              title="Flip Horizontal"
+                            >
+                              <FlipHorizontal2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateClip(selectedClip.id, { flipV: !selectedClip.flipV })}
+                              className={`p-1.5 rounded text-xs border transition-colors ${
+                                selectedClip.flipV
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                  : 'bg-zinc-800 text-zinc-400 border-zinc-700/60 hover:text-white'
+                              }`}
+                              title="Flip Vertical"
+                            >
+                              <FlipVertical2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Crop Collapsible */}
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setShowTransform(!showTransform)}
+                            className="flex items-center justify-between w-full py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                          >
+                            <span>Crop Edges</span>
+                            {showTransform ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          </button>
+                          {showTransform && (
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <PropertyNumberInput
+                                prefix="Top"
+                                value={tf.cropTop || 0}
+                                min={0}
+                                max={90}
+                                suffix="%"
+                                onChange={(v) => setTransform({ cropTop: v })}
+                              />
+                              <PropertyNumberInput
+                                prefix="Bottom"
+                                value={tf.cropBottom || 0}
+                                min={0}
+                                max={90}
+                                suffix="%"
+                                onChange={(v) => setTransform({ cropBottom: v })}
+                              />
+                              <PropertyNumberInput
+                                prefix="Left"
+                                value={tf.cropLeft || 0}
+                                min={0}
+                                max={90}
+                                suffix="%"
+                                onChange={(v) => setTransform({ cropLeft: v })}
+                              />
+                              <PropertyNumberInput
+                                prefix="Right"
+                                value={tf.cropRight || 0}
+                                min={0}
+                                max={90}
+                                suffix="%"
+                                onChange={(v) => setTransform({ cropRight: v })}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Blend */}
+                {(() => {
+                  const hasKf = hasKeyframesForProperty(selectedClip, 'opacity')
+                  const currentOpacity = hasKf && sampledClip ? sampledClip.opacity : (selectedClip.opacity ?? 100)
+
+                  return (
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between h-6">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="blend-toggle"
+                            checked={showBlend}
+                            onChange={(e) => setShowBlend(e.target.checked)}
+                            className="rounded bg-zinc-800 border-zinc-700 accent-cyan-400"
+                          />
+                          <label htmlFor="blend-toggle" className="text-xs font-semibold text-zinc-300 cursor-pointer flex items-center gap-1">
+                            Blend
+                            <ChevronDown className="w-3 h-3 text-zinc-400" />
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {selectedClip.blendMode && selectedClip.blendMode !== 'normal' && (
+                            <button
+                              type="button"
+                              onClick={() => setClipBlendMode(selectedClip.id, 'normal')}
+                              className="text-zinc-400 hover:text-cyan-400 transition-colors p-0.5"
+                              title="Reset Blend Mode"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                          )}
+                          <KeyframeDiamondButton
+                            clip={selectedClip}
+                            property="opacity"
+                            currentValue={currentOpacity}
+                          />
+                        </div>
+                      </div>
+
+                      {showBlend && (
+                        <div className="space-y-1.5 pl-0.5">
+                          {/* Opacity Row */}
+                          <div className="flex items-center justify-between gap-2 h-7">
+                            <span className="text-xs text-zinc-300 w-14 flex-shrink-0">Opacity</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={currentOpacity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10)
+                                if (hasKf) {
+                                  setKeyframe(selectedClip.id, 'opacity', timeInClip, val)
+                                }
+                                updateClip(selectedClip.id, { opacity: val })
+                              }}
+                              className="flex-1 h-1 accent-cyan-400 cursor-pointer min-w-0"
+                            />
+                            <PropertyNumberInput
+                              value={Math.round(currentOpacity)}
+                              min={0}
+                              max={100}
+                              step={1}
+                              suffix="%"
+                              className="w-16 flex-shrink-0"
+                              onChange={(val) => {
+                                if (hasKf) {
+                                  setKeyframe(selectedClip.id, 'opacity', timeInClip, val)
+                                }
+                                updateClip(selectedClip.id, { opacity: val })
+                              }}
+                            />
+                            <KeyframeDiamondButton
+                              clip={selectedClip}
+                              property="opacity"
+                              currentValue={currentOpacity}
+                              className="flex-shrink-0"
+                            />
+                          </div>
+
+                          {/* Mode Row */}
+                          <div className="flex items-center justify-between gap-2 h-7">
+                            <span className="text-xs text-zinc-300 w-14 flex-shrink-0">Mode</span>
+                            <select
+                              value={selectedClip.blendMode ?? 'normal'}
+                              onChange={(e) => setClipBlendMode(selectedClip.id, e.target.value as ClipBlendMode)}
+                              className="flex-1 bg-[#19191c] hover:bg-[#232327] border border-zinc-800 hover:border-zinc-700 rounded h-6 px-2 text-[11px] text-zinc-200 focus:outline-none focus:border-cyan-400 transition-colors"
+                            >
+                              {BLEND_MODES.map((mode) => (
+                                <option key={mode.id} value={mode.id}>
+                                  {t(`clipProperties.blendModes.${mode.id}`) || mode.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Feature Accordion Cards */}
+                <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+                  {[
+                    { id: 'stabilize', title: 'Stabilize', pro: true, desc: 'Reduce shaky camera movements' },
+                    { id: 'enhance', title: 'Enhance quality', pro: true, desc: 'AI upscaling and detail sharpness' },
+                    { id: 'denoise', title: 'Reduce image noise', pro: true, desc: 'Clear grain in low-light clips' },
+                    { id: 'optical-flow', title: 'Optical flow', pro: true, desc: 'Smooth motion interpolation' },
+                    { id: 'ai-remove', title: 'AI remove', pro: true, desc: 'Intelligently remove unwanted objects' },
+                  ].map(feature => (
+                    <div key={feature.id} className="rounded-lg bg-[#19191c] border border-zinc-800/80 p-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-zinc-300">{feature.title}</span>
+                          {feature.pro && (
+                            <span className="text-[10px] text-cyan-400 font-bold px-1 py-0.2 bg-cyan-950/60 border border-cyan-800/50 rounded">
+                              PRO
+                            </span>
+                          )}
+                        </div>
+                        <PropertyToggle
+                          checked={false}
+                          onChange={() => {}}
+                        />
+                      </div>
+                      <p className="text-[11px] text-zinc-500 mt-1">{feature.desc}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* --- Mask --- */}
-        {hasVisualTransformControls && (() => {
-          const mask = selectedClip.mask ?? DEFAULT_CLIP_MASK
-          const hasCustomMask = !!selectedClip.mask && selectedClip.mask.enabled
+            {/* ── Sub-tab 2: Remove BG ── */}
+            {videoSubTab === 'remove-bg' && (() => {
+              const chroma = selectedClip.chromaKey ?? DEFAULT_CHROMA_KEY
+              const isEnabled = Boolean(selectedClip.chromaKey?.enabled)
 
-          return (
-            <div className="pt-3 border-t border-zinc-800">
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  className="flex items-center gap-2 text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
-                  onClick={() => setShowMask(!showMask)}
-                >
-                  {showMask ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  <Crop className="h-3.5 w-3.5" />
-                  Mask
-                  {hasCustomMask && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-                </button>
-                <div className="flex items-center gap-2">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={mask.enabled && !!selectedClip.mask}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setClipMask(selectedClip.id, { ...(selectedClip.mask || DEFAULT_CLIP_MASK), enabled: true })
-                          setMaskMode(true)
-                          setShowMask(true)
-                        } else {
-                          setClipMask(selectedClip.id, { ...(selectedClip.mask || DEFAULT_CLIP_MASK), enabled: false })
-                          setMaskMode(false)
-                        }
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
+              const handleNativeEyedropper = async () => {
+                if (typeof window !== 'undefined' && 'EyeDropper' in window) {
+                  try {
+                    const eyeDropper = new (window as any).EyeDropper()
+                    const result = await eyeDropper.open()
+                    if (result?.sRGBHex) {
+                      setClipChromaKey(selectedClip.id, { color: result.sRGBHex.toUpperCase(), enabled: true })
+                      return
+                    }
+                  } catch {
+                    return
+                  }
+                }
+                toggleEyedropperMode()
+              }
+
+              return (
+                <div className="space-y-4">
+                  {/* Chroma Key Card */}
+                  <div className="rounded-lg bg-[#19191c] border border-zinc-800/80 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Pipette className="h-4 w-4 text-cyan-400" />
+                        <span className="text-xs font-semibold text-zinc-200">Chroma key</span>
+                      </div>
+                      <PropertyToggle
+                        checked={isEnabled}
+                        onChange={(checked) => {
+                          setClipChromaKey(selectedClip.id, { enabled: checked })
+                        }}
+                      />
+                    </div>
+
+                    {isEnabled && (
+                      <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                        {/* Eyedropper & Color Picker */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={chroma.color.startsWith('#') ? chroma.color : `#${chroma.color}`}
+                              onChange={(e) => setClipChromaKey(selectedClip.id, { color: e.target.value.toUpperCase(), enabled: true })}
+                              className="w-7 h-7 rounded border border-zinc-700 cursor-pointer bg-transparent"
+                            />
+                            <input
+                              type="text"
+                              value={chroma.color}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
+                                  setClipChromaKey(selectedClip.id, { color: val.toUpperCase(), enabled: true })
+                                }
+                              }}
+                              placeholder="#00FF00"
+                              className="w-20 px-2 py-1 text-[11px] font-mono rounded bg-zinc-800 text-zinc-200 border border-zinc-700 focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleNativeEyedropper}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded font-medium transition-colors ${
+                              eyedropperMode
+                                ? 'bg-cyan-500 text-black shadow-sm'
+                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
+                            }`}
+                          >
+                            <Pipette className="h-3 w-3" />
+                            {eyedropperMode ? t('clipProperties.samplingColor') : 'Pick Color'}
+                          </button>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-zinc-500 mr-1">Presets</span>
+                          {[
+                            { name: 'Green', hex: '#00FF00' },
+                            { name: 'Blue', hex: '#0000FF' },
+                            { name: 'Magenta', hex: '#FF00FF' },
+                            { name: 'Black', hex: '#000000' },
+                            { name: 'White', hex: '#FFFFFF' },
+                          ].map((p) => (
+                            <button
+                              key={p.hex}
+                              type="button"
+                              onClick={() => setClipChromaKey(selectedClip.id, { color: p.hex, enabled: true })}
+                              className="w-5 h-5 rounded border border-zinc-700/80 hover:scale-110 transition-transform"
+                              style={{ backgroundColor: p.hex }}
+                              title={p.name}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Similarity / Strength */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-zinc-400">
+                            <span>Strength</span>
+                            <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.similarity)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={chroma.similarity}
+                            onChange={(e) => setClipChromaKey(selectedClip.id, { similarity: parseFloat(e.target.value), enabled: true })}
+                            className="w-full h-1.5 accent-cyan-400"
+                          />
+                        </div>
+
+                        {/* Shadow / Smoothness */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-zinc-400">
+                            <span>Shadow</span>
+                            <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.smoothness)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={chroma.smoothness}
+                            onChange={(e) => setClipChromaKey(selectedClip.id, { smoothness: parseFloat(e.target.value), enabled: true })}
+                            className="w-full h-1.5 accent-cyan-400"
+                          />
+                        </div>
+
+                        {/* Spill */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-zinc-400">
+                            <span>Spill</span>
+                            <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.spill)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={chroma.spill}
+                            onChange={(e) => setClipChromaKey(selectedClip.id, { spill: parseFloat(e.target.value), enabled: true })}
+                            className="w-full h-1.5 accent-cyan-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto Cutout Card */}
+                  <div className="rounded-lg bg-[#19191c] border border-zinc-800/80 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Crop className="h-4 w-4 text-cyan-400" />
+                        <span className="text-xs font-semibold text-zinc-200">Auto Cutout</span>
+                        <span className="text-[10px] text-cyan-400 font-bold px-1 py-0.2 bg-cyan-950/60 border border-cyan-800/50 rounded">
+                          AI
+                        </span>
+                      </div>
+                      <PropertyToggle
+                        checked={false}
+                        onChange={() => {}}
+                      />
+                    </div>
+                    <p className="text-[11px] text-zinc-500">
+                      Separate portrait / subject automatically without green screen.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )
+            })()}
 
-              {showMask && (
-                <div className="space-y-3 pl-1">
-                  {/* On-screen edit button */}
+            {/* ── Sub-tab 3: Mask ── */}
+            {videoSubTab === 'mask' && (() => {
+              const mask = selectedClip.mask ?? DEFAULT_CLIP_MASK
+              const hasCustomMask = !!selectedClip.mask && selectedClip.mask.enabled
+
+              return (
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-300">Mask Shape</span>
+                    <PropertyToggle
+                      checked={hasCustomMask}
+                      onChange={(checked) => {
+                        setClipMask(selectedClip.id, checked ? { ...(selectedClip.mask || DEFAULT_CLIP_MASK), enabled: true } : { ...(selectedClip.mask || DEFAULT_CLIP_MASK), enabled: false })
+                        setMaskMode(checked)
+                      }}
+                    />
+                  </div>
+
+                  {/* Canvas Edit button */}
                   <div className="flex items-center justify-between">
                     <button
-                      className={`px-2.5 py-1 text-[11px] rounded font-medium transition-colors ${
+                      type="button"
+                      className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
                         maskMode
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-cyan-500 text-black shadow-sm'
                           : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
                       }`}
                       onClick={() => toggleMaskMode()}
@@ -1443,7 +1853,8 @@ export function ClipPropertiesPanel() {
                     </button>
                     {selectedClip.mask && (
                       <button
-                        className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
+                        type="button"
+                        className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
                         onClick={() => {
                           setClipMask(selectedClip.id, null)
                           setMaskMode(false)
@@ -1454,330 +1865,242 @@ export function ClipPropertiesPanel() {
                     )}
                   </div>
 
-                  {/* Shape selector */}
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-1">Shape</span>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(['rectangle', 'ellipse', 'linear'] as ClipMaskShape[]).map((shape) => (
-                        <button
-                          key={shape}
-                          onClick={() => setClipMask(selectedClip.id, { shape, enabled: true })}
-                          className={`px-2 py-1 text-[11px] rounded capitalize transition-colors ${
-                            mask.shape === shape && selectedClip.mask?.enabled
-                              ? 'bg-blue-600 text-white font-medium'
-                              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/60'
-                          }`}
-                        >
-                          {shape}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Position X */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">Position X</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.x)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={mask.x}
-                      onChange={(e) => setClipMask(selectedClip.id, { x: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-blue-500"
-                    />
-                  </div>
-
-                  {/* Position Y */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">Position Y</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.y)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={mask.y}
-                      onChange={(e) => setClipMask(selectedClip.id, { y: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-blue-500"
-                    />
-                  </div>
-
-                  {/* Width & Height (for rectangle & ellipse) */}
-                  {mask.shape !== 'linear' && (
-                    <>
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[11px] text-zinc-400">Width</span>
-                          <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.width)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={1}
-                          max={200}
-                          step={1}
-                          value={mask.width}
-                          onChange={(e) => setClipMask(selectedClip.id, { width: parseFloat(e.target.value), enabled: true })}
-                          className="w-full h-1.5 accent-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[11px] text-zinc-400">Height</span>
-                          <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.height)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={1}
-                          max={200}
-                          step={1}
-                          value={mask.height}
-                          onChange={(e) => setClipMask(selectedClip.id, { height: parseFloat(e.target.value), enabled: true })}
-                          className="w-full h-1.5 accent-blue-500"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Rotation */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">Rotation</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.rotation ?? 0)}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={-180}
-                      max={180}
-                      step={1}
-                      value={mask.rotation ?? 0}
-                      onChange={(e) => setClipMask(selectedClip.id, { rotation: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-blue-500"
-                    />
-                  </div>
-
-                  {/* Feather */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">Feather</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.feather ?? 0)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={mask.feather ?? 0}
-                      onChange={(e) => setClipMask(selectedClip.id, { feather: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-blue-500"
-                    />
-                  </div>
-
-                  {/* Invert */}
-                  <label className="flex items-center gap-2 cursor-pointer pt-1">
-                    <input
-                      type="checkbox"
-                      checked={mask.invert ?? false}
-                      onChange={(e) => setClipMask(selectedClip.id, { invert: e.target.checked, enabled: true })}
-                      className="rounded bg-zinc-800 border-zinc-600 accent-blue-500"
-                    />
-                    <span className="text-xs text-zinc-300">Invert Mask</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-
-        {/* --- Chroma Key (Green / Blue Screen) --- */}
-        {tab === 'video' && (selectedClip.type === 'video' || selectedClip.type === 'image') && (() => {
-          const chroma = selectedClip.chromaKey ?? DEFAULT_CHROMA_KEY
-          const isEnabled = Boolean(selectedClip.chromaKey?.enabled)
-
-          const handleNativeEyedropper = async () => {
-            if (typeof window !== 'undefined' && 'EyeDropper' in window) {
-              try {
-                const eyeDropper = new (window as any).EyeDropper()
-                const result = await eyeDropper.open()
-                if (result?.sRGBHex) {
-                  setClipChromaKey(selectedClip.id, { color: result.sRGBHex.toUpperCase(), enabled: true })
-                  return
-                }
-              } catch {
-                // User cancelled EyeDropper
-                return
-              }
-            }
-            // Fallback to in-monitor canvas eyedropper mode
-            toggleEyedropperMode()
-          }
-
-          return (
-            <div className="pt-3 border-t border-zinc-800">
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  className="flex items-center gap-2 text-left text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
-                  onClick={() => setShowChromaKey(!showChromaKey)}
-                >
-                  {showChromaKey ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  <Pipette className="h-3.5 w-3.5 text-green-400" />
-                  {t('clipProperties.chromaKeyTitle')}
-                </button>
-                <div className="flex items-center gap-2">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={(e) => {
-                        setClipChromaKey(selectedClip.id, { enabled: e.target.checked })
-                        if (e.target.checked) setShowChromaKey(true)
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600"></div>
-                  </label>
-                </div>
-              </div>
-
-              {showChromaKey && (
-                <div className="space-y-3 pl-1">
-                  {/* Eyedropper & Color Row */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
-                        <input
-                          type="color"
-                          value={chroma.color.startsWith('#') ? chroma.color : `#${chroma.color}`}
-                          onChange={(e) => setClipChromaKey(selectedClip.id, { color: e.target.value.toUpperCase(), enabled: true })}
-                          className="w-7 h-7 rounded border border-zinc-700 cursor-pointer bg-transparent"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={chroma.color}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
-                            setClipChromaKey(selectedClip.id, { color: val.toUpperCase(), enabled: true })
-                          }
-                        }}
-                        placeholder="#00FF00"
-                        className="w-20 px-2 py-1 text-[11px] font-mono rounded bg-zinc-800 text-zinc-200 border border-zinc-700 focus:outline-none focus:border-green-500"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleNativeEyedropper}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded font-medium transition-colors ${
-                        eyedropperMode
-                          ? 'bg-green-600 text-white shadow-sm'
-                          : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
-                      }`}
-                      title={t('clipProperties.eyedropperTitle')}
-                    >
-                      <Pipette className="h-3 w-3" />
-                      {eyedropperMode ? t('clipProperties.samplingColor') : t('clipProperties.pickColor')}
-                    </button>
-                  </div>
-
-                  {/* Preset colors */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-zinc-500 mr-1">{t('clipProperties.quickPresets')}</span>
-                    {[
-                      { name: t('clipProperties.colors.green'), hex: '#00FF00' },
-                      { name: t('clipProperties.colors.blue'), hex: '#0000FF' },
-                      { name: t('clipProperties.colors.magenta'), hex: '#FF00FF' },
-                      { name: t('clipProperties.colors.black'), hex: '#000000' },
-                      { name: t('clipProperties.colors.white'), hex: '#FFFFFF' },
-                    ].map((p) => (
+                  {/* Shape Selector Buttons */}
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['rectangle', 'ellipse', 'linear'] as ClipMaskShape[]).map((shape) => (
                       <button
-                        key={p.hex}
+                        key={shape}
                         type="button"
-                        onClick={() => setClipChromaKey(selectedClip.id, { color: p.hex, enabled: true })}
-                        className="w-5 h-5 rounded border border-zinc-700/80 hover:scale-110 transition-transform"
-                        style={{ backgroundColor: p.hex }}
-                        title={`${p.name} (${p.hex})`}
-                      />
+                        onClick={() => setClipMask(selectedClip.id, { shape, enabled: true })}
+                        className={`py-2 px-2 text-xs rounded-md capitalize transition-colors text-center ${
+                          mask.shape === shape && selectedClip.mask?.enabled
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-medium'
+                            : 'bg-[#1c1c1f] text-zinc-400 hover:bg-[#252529] border border-zinc-800'
+                        }`}
+                      >
+                        {shape}
+                      </button>
                     ))}
                   </div>
 
-                  {/* Similarity */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">{t('clipProperties.similarity')}</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.similarity)}%</span>
+                  {/* Dimensions & Controls */}
+                  <div className="space-y-2.5 pt-2 border-t border-zinc-800/80">
+                    {/* Position X / Y */}
+                    <div className="space-y-1">
+                      <span className="text-xs text-zinc-400">Position</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <PropertyNumberInput
+                          prefix="X"
+                          value={Math.round(mask.x)}
+                          min={0}
+                          max={100}
+                          suffix="%"
+                          onChange={(v) => setClipMask(selectedClip.id, { x: v, enabled: true })}
+                        />
+                        <PropertyNumberInput
+                          prefix="Y"
+                          value={Math.round(mask.y)}
+                          min={0}
+                          max={100}
+                          suffix="%"
+                          onChange={(v) => setClipMask(selectedClip.id, { y: v, enabled: true })}
+                        />
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={chroma.similarity}
-                      onChange={(e) => setClipChromaKey(selectedClip.id, { similarity: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-green-500"
-                    />
-                  </div>
 
-                  {/* Smoothness */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">{t('clipProperties.smoothness')}</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.smoothness)}%</span>
+                    {/* Size (Width / Height) */}
+                    {mask.shape !== 'linear' && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-zinc-400">Size</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <PropertyNumberInput
+                            prefix="W"
+                            value={Math.round(mask.width)}
+                            min={1}
+                            max={200}
+                            suffix="%"
+                            onChange={(v) => setClipMask(selectedClip.id, { width: v, enabled: true })}
+                          />
+                          <PropertyNumberInput
+                            prefix="H"
+                            value={Math.round(mask.height)}
+                            min={1}
+                            max={200}
+                            suffix="%"
+                            onChange={(v) => setClipMask(selectedClip.id, { height: v, enabled: true })}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rotation */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-zinc-400">
+                        <span>Rotation</span>
+                        <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.rotation ?? 0)}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        value={mask.rotation ?? 0}
+                        onChange={(e) => setClipMask(selectedClip.id, { rotation: parseFloat(e.target.value), enabled: true })}
+                        className="w-full h-1.5 accent-cyan-400"
+                      />
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={chroma.smoothness}
-                      onChange={(e) => setClipChromaKey(selectedClip.id, { smoothness: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-green-500"
-                    />
-                  </div>
 
-                  {/* Spill */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-zinc-400">{t('clipProperties.spill')}</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(chroma.spill)}%</span>
+                    {/* Feather */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-zinc-400">
+                        <span>Feather</span>
+                        <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round(mask.feather ?? 0)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={mask.feather ?? 0}
+                        onChange={(e) => setClipMask(selectedClip.id, { feather: parseFloat(e.target.value), enabled: true })}
+                        className="w-full h-1.5 accent-cyan-400"
+                      />
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={chroma.spill}
-                      onChange={(e) => setClipChromaKey(selectedClip.id, { spill: parseFloat(e.target.value), enabled: true })}
-                      className="w-full h-1.5 accent-green-500"
-                    />
-                  </div>
 
-                  {/* Reset button */}
-                  {selectedClip.chromaKey && (
-                    <div className="flex justify-end pt-1">
+                    {/* Invert */}
+                    <div className="pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={mask.invert ?? false}
+                          onChange={(e) => setClipMask(selectedClip.id, { invert: e.target.checked, enabled: true })}
+                          className="rounded bg-zinc-800 border-zinc-600 accent-cyan-400"
+                        />
+                        <span className="text-xs text-zinc-300">Invert Mask</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── Sub-tab 4: Retouch ── */}
+            {videoSubTab === 'retouch' && (
+              <div className="space-y-4">
+                {/* 3D LUT Filter */}
+                <div className="rounded-lg bg-[#19191c] border border-zinc-800/80 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-cyan-400" />
+                      <span className="text-xs font-semibold text-zinc-200">{t('filters.tabTitle')}</span>
+                    </div>
+                    {selectedClip.filter && (
                       <button
                         type="button"
-                        className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
-                        onClick={() => {
-                          setClipChromaKey(selectedClip.id, null)
-                          setEyedropperMode(false)
-                        }}
+                        onClick={() => removeClipFilter(selectedClip.id)}
+                        className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-red-400 transition-colors"
+                        title={t('filters.removeFilter')}
                       >
-                        {t('clipProperties.removeChromaKey')}
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                    )}
+                  </div>
+
+                  {selectedClip.filter ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-zinc-200">
+                          {getFilterDefinition(selectedClip.filter.id)?.name || selectedClip.filter.id}
+                        </span>
+                        <span className="text-xs text-zinc-400 tabular-nums">
+                          {selectedClip.filter.intensity ?? 100}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={selectedClip.filter.intensity ?? 100}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10)
+                            const curTime = selectCurrentTime(getEditorState())
+                            const tInClip = curTime - selectedClip.startTime
+                            if (hasKeyframesForProperty(selectedClip, 'filter.intensity') && tInClip >= 0 && tInClip <= selectedClip.duration) {
+                              setKeyframe(selectedClip.id, 'filter.intensity', tInClip, val)
+                            } else {
+                              setClipFilterIntensity(selectedClip.id, val)
+                            }
+                          }}
+                          className="flex-1 h-1.5 accent-cyan-400"
+                        />
+                        <KeyframeDiamondButton
+                          clip={selectedClip}
+                          property="filter.intensity"
+                          currentValue={selectedClip.filter.intensity ?? 100}
+                        />
+                      </div>
                     </div>
+                  ) : (
+                    <p className="text-xs text-zinc-500 italic">
+                      No filter applied. Choose a filter from the library to preview.
+                    </p>
                   )}
                 </div>
-              )}
-            </div>
-          )
-        })()}
+
+                {/* Color Adjustments */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-300">Adjustments</span>
+                    {selectedClip.colorCorrection && Object.values(selectedClip.colorCorrection).some(v => v !== 0) && (
+                      <button
+                        type="button"
+                        onClick={() => updateClip(selectedClip.id, { colorCorrection: { ...DEFAULT_COLOR_CORRECTION } })}
+                        className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-cyan-400 transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  {[
+                    { key: 'exposure' as const, label: 'Exposure', min: -100, max: 100 },
+                    { key: 'brightness' as const, label: 'Brightness', min: -100, max: 100 },
+                    { key: 'contrast' as const, label: 'Contrast', min: -100, max: 100 },
+                    { key: 'saturation' as const, label: 'Saturation', min: -100, max: 100 },
+                    { key: 'temperature' as const, label: 'Temperature', min: -100, max: 100 },
+                  ].map((ctrl) => {
+                    const currentVal = selectedClip.colorCorrection?.[ctrl.key] ?? 0
+                    return (
+                      <div key={ctrl.key} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs text-zinc-400">
+                          <span>{ctrl.label}</span>
+                          <span className="text-[10px] text-zinc-500 tabular-nums">{currentVal}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={ctrl.min}
+                          max={ctrl.max}
+                          step={1}
+                          value={currentVal}
+                          onChange={(e) => updateClip(selectedClip.id, {
+                            colorCorrection: {
+                              ...(selectedClip.colorCorrection || DEFAULT_COLOR_CORRECTION),
+                              [ctrl.key]: parseInt(e.target.value, 10),
+                            }
+                          })}
+                          className="w-full h-1.5 accent-cyan-400"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* --- Transitions --- */}
         {tab === 'effects' && hasTransitionControls && (

@@ -10,6 +10,7 @@ import { pathToFileUrl } from '../lib/file-url'
 import type { Project } from '../types/project-model'
 import { getProjectThumbnailAsset } from '@core/video-editor-utils'
 import { useProjectReferencesMigration } from '../hooks/useProjectReferencesMigration'
+import { UpdateButton } from '../components/UpdateButton'
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp)
@@ -275,21 +276,24 @@ export function Home() {
         <div className="relative h-36 overflow-hidden">
           <img
             src="./banner-studio.jpg"
-            alt="KomfyEdit Studio Banner"
+            alt="KailaEdit Studio Banner"
             className="absolute inset-0 w-full h-full object-cover object-center select-none pointer-events-none"
           />
           {/* Subtle dark gradient overlay for crystal-clear text contrast */}
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
           <div className="absolute bottom-4 left-8 z-10">
-            <h1 className="text-2xl font-bold text-white tracking-tight mb-1 drop-shadow-md">
-              KomfyEdit{' '}
-              {appVersion && (
-                <span className="ml-2 align-middle text-sm font-medium text-zinc-300/90 drop-shadow-sm">
-                  v{appVersion}
-                </span>
-              )}
-            </h1>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-2xl font-bold text-white tracking-tight drop-shadow-md">
+                KailaEdit{' '}
+                {appVersion && (
+                  <span className="ml-2 align-middle text-sm font-medium text-zinc-300/90 drop-shadow-sm">
+                    v{appVersion}
+                  </span>
+                )}
+              </h1>
+              <UpdateButton />
+            </div>
             <p className="text-xs sm:text-sm text-zinc-300 drop-shadow-sm">{t('home.tagline')}</p>
           </div>
         </div>

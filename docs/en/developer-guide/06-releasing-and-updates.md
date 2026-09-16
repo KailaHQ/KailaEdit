@@ -1,6 +1,6 @@
 # Releasing & Auto-Updates
 
-KomfyEdit ships installers through **GitHub Releases**, and the app checks for new versions itself using [`electron-updater`](https://www.electron.build/auto-update). This page covers how a release is cut, what CI produces, and how the in-app updater behaves.
+KailaEdit ships installers through **GitHub Releases**, and the app checks for new versions itself using [`electron-updater`](https://www.electron.build/auto-update). This page covers how a release is cut, what CI produces, and how the in-app updater behaves.
 
 ---
 
@@ -56,10 +56,10 @@ The draft is **not** published automatically. Open the Releases tab, confirm eve
 
 | Job | Runner | Artifacts (for version 1.2.0) |
 |---|---|---|
-| `windows-x64` | `windows-latest` | `KomfyEdit-1.2.0-win-x64-Setup.exe` |
-| `macos-arm64-and-x64` | `macos-latest` | `KomfyEdit-1.2.0-mac-arm64.dmg` / `.zip` (Apple Silicon), `KomfyEdit-1.2.0-mac-x64.dmg` / `.zip` (Intel) |
-| `linux-x64` | `ubuntu-latest` | `KomfyEdit-1.2.0-linux-x86_64.AppImage`, `KomfyEdit-1.2.0-linux-amd64.deb` |
-| `linux-arm64` | `ubuntu-24.04-arm` | `KomfyEdit-1.2.0-linux-arm64.AppImage`, `KomfyEdit-1.2.0-linux-arm64.deb` |
+| `windows-x64` | `windows-latest` | `KailaEdit-1.2.0-win-x64-Setup.exe` |
+| `macos-arm64-and-x64` | `macos-latest` | `KailaEdit-1.2.0-mac-arm64.dmg` / `.zip` (Apple Silicon), `KailaEdit-1.2.0-mac-x64.dmg` / `.zip` (Intel) |
+| `linux-x64` | `ubuntu-latest` | `KailaEdit-1.2.0-linux-x86_64.AppImage`, `KailaEdit-1.2.0-linux-amd64.deb` |
+| `linux-arm64` | `ubuntu-24.04-arm` | `KailaEdit-1.2.0-linux-arm64.AppImage`, `KailaEdit-1.2.0-linux-arm64.deb` |
 
 Because the version is part of the filename, there is no stable `releases/latest/download/...` link to hand out. Point people at the Releases page instead, and GitHub will offer them the newest assets.
 
@@ -102,7 +102,7 @@ Every prompt is a native `dialog` built in the main process, so the renderer has
 
 ## 🔏 Code Signing Status
 
-KomfyEdit is currently **not code-signed**. CI sets `CSC_IDENTITY_AUTO_DISCOVERY: false` so builds do not fail looking for credentials. What that means per platform:
+KailaEdit is currently **not code-signed**. CI sets `CSC_IDENTITY_AUTO_DISCOVERY: false` so builds do not fail looking for credentials. What that means per platform:
 
 | Platform | Installation | Auto-update |
 |---|---|---|
@@ -114,7 +114,7 @@ macOS users therefore have to download each new `.dmg` manually until a Develope
 
 ### Hardened Runtime must stay off until then
 
-`mac.hardenedRuntime` is set to `false` on purpose. arm64 binaries must carry a signature, so with no certificate electron-builder falls back to an **ad-hoc** signature (`macPackager.ts`, `fallBackToAdhoc`). An ad-hoc signature has no Team ID, and Hardened Runtime enforces library validation — a process may only load libraries signed by the same team. KomfyEdit loads `@resvg/resvg-js`'s native `.node` binding and spawns the bundled ffmpeg, both signed separately, so the app is killed at launch on Apple Silicon. macOS shows the generic *"Check with the developer to make sure KomfyEdit works with this version of macOS"* dialog; the crash report underneath names the real cause:
+`mac.hardenedRuntime` is set to `false` on purpose. arm64 binaries must carry a signature, so with no certificate electron-builder falls back to an **ad-hoc** signature (`macPackager.ts`, `fallBackToAdhoc`). An ad-hoc signature has no Team ID, and Hardened Runtime enforces library validation — a process may only load libraries signed by the same team. KailaEdit loads `@resvg/resvg-js`'s native `.node` binding and spawns the bundled ffmpeg, both signed separately, so the app is killed at launch on Apple Silicon. macOS shows the generic *"Check with the developer to make sure KailaEdit works with this version of macOS"* dialog; the crash report underneath names the real cause:
 
 ```
 Termination Reason: Namespace DYLD, Code 1, Library missing

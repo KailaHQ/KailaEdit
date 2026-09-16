@@ -1,10 +1,10 @@
-# Bắt đầu với KomfyEdit
+# Bắt đầu với KailaEdit
 
 <p align="center">
-  <img src="../../images/overview-ui.png" alt="Tổng quan KomfyEdit" width="85%">
+  <img src="../../images/overview-ui.png" alt="Tổng quan KailaEdit" width="85%">
 </p>
 
-**KomfyEdit** là ứng dụng biên tập video phi tuyến tính (non-linear video editor) nguồn mở dành cho máy tính để bàn (desktop). Ứng dụng hoạt động hoàn toàn **offline 100%**, đảm bảo quyền riêng tư tuyệt đối, tốc độ xử lý cao và không yêu cầu tài khoản đám mây hay máy chủ bên ngoài.
+**KailaEdit** là ứng dụng biên tập video phi tuyến tính (non-linear video editor) nguồn mở dành cho máy tính để bàn (desktop). Ứng dụng hoạt động hoàn toàn **offline 100%**, đảm bảo quyền riêng tư tuyệt đối, tốc độ xử lý cao và không yêu cầu tài khoản đám mây hay máy chủ bên ngoài.
 
 ---
 
@@ -28,13 +28,13 @@ Tải bản dựng phù hợp với máy của bạn tại trang [GitHub Release
 
 | Hệ điều hành | Tệp cần tải |
 |---|---|
-| Windows 10/11 (64-bit) | `KomfyEdit-<phiên bản>-win-x64-Setup.exe` |
-| macOS chip Apple (M1–M4) | `KomfyEdit-<phiên bản>-mac-arm64.dmg` |
-| macOS chip Intel | `KomfyEdit-<phiên bản>-mac-x64.dmg` |
-| Linux (64-bit) | `KomfyEdit-<phiên bản>-linux-x86_64.AppImage` hoặc `KomfyEdit-<phiên bản>-linux-amd64.deb` |
-| Linux (ARM) | `KomfyEdit-<phiên bản>-linux-arm64.AppImage` hoặc `KomfyEdit-<phiên bản>-linux-arm64.deb` |
+| Windows 10/11 (64-bit) | `KailaEdit-<phiên bản>-win-x64-Setup.exe` |
+| macOS chip Apple (M1–M4) | `KailaEdit-<phiên bản>-mac-arm64.dmg` |
+| macOS chip Intel | `KailaEdit-<phiên bản>-mac-x64.dmg` |
+| Linux (64-bit) | `KailaEdit-<phiên bản>-linux-x86_64.AppImage` hoặc `KailaEdit-<phiên bản>-linux-amd64.deb` |
+| Linux (ARM) | `KailaEdit-<phiên bản>-linux-arm64.AppImage` hoặc `KailaEdit-<phiên bản>-linux-arm64.deb` |
 
-> **KomfyEdit chưa được ký số.** Chứng chỉ ký số tốn phí mà dự án chưa có, nên mọi hệ điều hành đều cảnh báo "nhà phát triển không xác định" ở lần mở đầu tiên. Cách vượt qua nằm ngay bên dưới, chỉ phải làm **một lần cho mỗi lần cài**.
+> **KailaEdit chưa được ký số.** Chứng chỉ ký số tốn phí mà dự án chưa có, nên mọi hệ điều hành đều cảnh báo "nhà phát triển không xác định" ở lần mở đầu tiên. Cách vượt qua nằm ngay bên dưới, chỉ phải làm **một lần cho mỗi lần cài**.
 
 #### Windows
 
@@ -42,19 +42,19 @@ Chạy file cài đặt. SmartScreen sẽ hiện *"Windows protected your PC"*: 
 
 #### macOS
 
-Mở file `.dmg` rồi kéo KomfyEdit vào thư mục **Applications**. Lần mở đầu tiên macOS sẽ từ chối, thường kèm dòng *"KomfyEdit is damaged and can't be opened. You should move it to the Trash."*
+Mở file `.dmg` rồi kéo KailaEdit vào thư mục **Applications**. Lần mở đầu tiên macOS sẽ từ chối, thường kèm dòng *"KailaEdit is damaged and can't be opened. You should move it to the Trash."*
 
 **Ứng dụng không hề bị hỏng.** Đó chỉ là thông báo macOS dành cho app tải về mà chưa có chữ ký được Apple công chứng. Để xử lý, mở **Terminal** và chạy:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/KomfyEdit.app
+xattr -dr com.apple.quarantine /Applications/KailaEdit.app
 ```
 
 Sau đó mở app như bình thường.
 
 Lệnh này gỡ cờ `com.apple.quarantine` mà macOS gắn vào mọi thứ tải qua trình duyệt. Nó **không** tắt Gatekeeper, **không** đổi thiết lập hệ thống nào, và chỉ tác động đến đúng ứng dụng này.
 
-Nếu bạn không muốn dùng Terminal: bấm đúp vào app cho nó bị chặn, rồi vào **System Settings → Privacy & Security**, kéo xuống mục Security và bấm **Open Anyway** ở dòng nhắc về KomfyEdit. Từ macOS 15 Sequoia trở đi đây là cách duy nhất qua giao diện, vì Apple đã bỏ thao tác chuột phải → Open cho app chưa ký.
+Nếu bạn không muốn dùng Terminal: bấm đúp vào app cho nó bị chặn, rồi vào **System Settings → Privacy & Security**, kéo xuống mục Security và bấm **Open Anyway** ở dòng nhắc về KailaEdit. Từ macOS 15 Sequoia trở đi đây là cách duy nhất qua giao diện, vì Apple đã bỏ thao tác chuột phải → Open cho app chưa ký.
 
 > **Tự động cập nhật không hoạt động trên macOS khi app chưa ký.** `electron-updater` từ chối cài bản cập nhật không có chữ ký hợp lệ, nên trên macOS bạn phải tự tải file `.dmg` mới mỗi lần. Windows và Linux vẫn tự cập nhật bình thường.
 
@@ -63,14 +63,14 @@ Nếu bạn không muốn dùng Terminal: bấm đúp vào app cho nó bị ch�
 **AppImage** — cấp quyền chạy rồi khởi động:
 
 ```bash
-chmod +x KomfyEdit-*-linux-x86_64.AppImage
-./KomfyEdit-*-linux-x86_64.AppImage
+chmod +x KailaEdit-*-linux-x86_64.AppImage
+./KailaEdit-*-linux-x86_64.AppImage
 ```
 
 **Debian / Ubuntu** — cài bằng `apt` để nó tự xử lý các gói phụ thuộc còn thiếu:
 
 ```bash
-sudo apt install ./KomfyEdit-*-linux-amd64.deb
+sudo apt install ./KailaEdit-*-linux-amd64.deb
 ```
 
 ### Cách 2: Khởi chạy từ mã nguồn (Dành cho lập trình viên)
@@ -82,8 +82,8 @@ sudo apt install ./KomfyEdit-*-linux-amd64.deb
 
 2. **Tải mã nguồn (Clone repository)**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git komfyedit
-   cd komfyedit
+   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   cd kailaedit
    ```
 
 3. **Cài đặt các gói phụ thuộc**:
@@ -109,7 +109,7 @@ flowchart LR
     E --> F[Cắt ghép, Chỉnh màu & Xuất]
 ```
 
-1. **Mở KomfyEdit**: Màn hình Home sẽ xuất hiện hiển thị danh sách các dự án gần đây.
+1. **Mở KailaEdit**: Màn hình Home sẽ xuất hiện hiển thị danh sách các dự án gần đây.
 2. **Bấm "New Project" (Dự án mới)**:
    - Đặt tên cho dự án (ví dụ: `Vlog Du Lịch Đà Lạt`).
    - Chọn tỉ lệ khung hình (Aspect Ratio):

@@ -1,12 +1,13 @@
 {
-  "name": "komfyedit",
+  "name": "kailaedit",
+  "productName": "KailaEdit",
   "version": "1.0.4",
-  "description": "KomfyEdit - Desktop Video Editor",
+  "description": "KailaEdit - Desktop Video Editor",
   "type": "module",
   "main": "dist-electron/main.js",
   "license": "Apache-2.0",
   "author": {
-    "name": "KomfyEdit",
+    "name": "KailaEdit",
     "email": "tuyenhm68@users.noreply.github.com"
   },
   "homepage": "https://github.com/tuyenhm68/KomfyEdit",
@@ -32,9 +33,9 @@
     "changelog:draft": "node scripts/draft-changelog.mjs",
     "changelog:check": "node scripts/release-notes.cjs --check",
     "release:notes": "node scripts/release-notes.cjs",
-    "start:unpacked:mac": "open release/mac-arm64/KomfyEdit.app",
-    "start:unpacked:win": "powershell -Command \"& '.\\release\\win-unpacked\\KomfyEdit.exe'\"",
-    "mcp": "node packages/komfyedit-mcp/bin/komfyedit-mcp.js",
+    "start:unpacked:mac": "open release/mac-arm64/KailaEdit.app",
+    "start:unpacked:win": "powershell -Command \"& '.\\release\\win-unpacked\\KailaEdit.exe'\"",
+    "mcp": "node packages/kailaedit-mcp/bin/kailaedit-mcp.js",
     "eval:skills": "tsx scripts/eval-skills.ts",
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:electron": "tsc -p tsconfig.electron.json"

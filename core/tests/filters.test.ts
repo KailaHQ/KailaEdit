@@ -244,7 +244,7 @@ describe('Sprint F1: Filter Registry and Migration', () => {
     expect(styles.filter).toContain('sepia')
   })
 
-  it('adds filter clip to timeline as an adjustment clip at time 0 (CapCut style)', () => {
+  it('adds filter clip to timeline as an adjustment clip at time 0', () => {
     const timeline = {
       id: 'timeline-1',
       name: 'Main Timeline',

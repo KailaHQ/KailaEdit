@@ -196,7 +196,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
   }), [deleteAsset, revealAsset])
 
   const addClipToTimeline = useCallback((asset: Asset, trackIndex = 0, startTime?: number) => {
-    // Add puts the asset in front of the existing edit on V1, CapCut-style.
+    // Add puts the asset in front of the existing edit on V1.
     actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime, position: 'start' })
   }, [actions])
 

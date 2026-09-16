@@ -5,7 +5,7 @@ import { selectActiveTimeline } from '../src/editor-selectors'
 import type { Asset, Timeline } from '../src/project-model'
 
 /**
- * A video dropped on the timeline stays one clip, the way CapCut behaves.
+ * A video dropped on the timeline stays one clip.
  *
  * KomfyEdit used to split every imported video into a video clip plus a linked
  * audio clip on the nearest audio track. Both playback and export already knew

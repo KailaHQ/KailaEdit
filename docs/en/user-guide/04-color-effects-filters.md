@@ -4,7 +4,7 @@
   <img src="../../images/adjustment-layer-concept.png" alt="Adjustment Layer Architecture" width="85%">
 </p>
 
-KomfyEdit features a professional GPU/WebGL-accelerated color grading pipeline, filmic 3D LUT presets, video transitions, and a non-destructive **Adjustment Layer** engine.
+KailaEdit features a professional GPU/WebGL-accelerated color grading pipeline, filmic 3D LUT presets, video transitions, and a non-destructive **Adjustment Layer** engine.
 
 ---
 
@@ -39,7 +39,7 @@ graph TD
   <img src="../../images/adjustment-layer-media-asset.png" alt="Adjustment Layer Assets in Media Bin" width="40%">
 </p>
 
-In KomfyEdit, Adjustment Layers are treated as reusable assets stored in your project's **Media Bin** (marked with a layered icon and the **`Adj`** badge):
+In KailaEdit, Adjustment Layers are treated as reusable assets stored in your project's **Media Bin** (marked with a layered icon and the **`Adj`** badge):
 1. **Creation Trigger**: Whenever you click the **`Adj`** button on the timeline header or select `Clip` → `Add Adjustment Layer` from the top menu, a new Adjustment Layer asset is added to your Media list.
 2. **Reusability**: You can drag this asset from the Media Bin onto any upper track (`V2`, `V3`, etc.) as many times as you want.
 3. **Cleaning Up Unused Layers**: If you accidentally clicked `Adj` multiple times, simply hover over the unwanted card in the Media Bin and click the small **Trash** icon (or select it and press `Delete`). Deleting an asset from the media bin does not break existing clips unless they rely on that asset.
@@ -74,7 +74,7 @@ You can color grade individual clips or Adjustment Layers directly in the Inspec
 
 ## 🎬 3. Cinema 3D LUT Filters Library
 
-KomfyEdit features a unified color pipeline ensuring 1:1 color accuracy: the **WebGL 3D Texture shader preview** and the **FFmpeg `lut3d` export engine** both consume the exact same source `.cube` tables. What you see in your playback monitor is precisely what renders in your master file!
+KailaEdit features a unified color pipeline ensuring 1:1 color accuracy: the **WebGL 3D Texture shader preview** and the **FFmpeg `lut3d` export engine** both consume the exact same source `.cube` tables. What you see in your playback monitor is precisely what renders in your master file!
 
 ```mermaid
 flowchart LR

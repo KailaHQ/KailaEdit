@@ -4,7 +4,7 @@ import { hasMediaFiles, isExternalFileDrag } from './external-file-drop'
 import { ClipContextMenu } from './ClipContextMenu'
 import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
 import {
-  packTrack1,
+  packMainVideoTrack,
   pruneEmptyOverlayTracks,
   type ToolType,
 } from './video-editor-utils'
@@ -230,7 +230,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     actions.updateAsset(assetId, updates)
   }, [actions])
   const addClipToTimeline = useCallback((asset: Asset, trackIndex: number, startTime?: number) => {
-    // Add puts the asset in front of the existing edit on V1, CapCut-style.
+    // Add puts the asset in front of the existing edit on V1.
     actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime, position: 'start' })
   }, [actions])
   const resolveClipPath = useCallback((clip: TimelineClip | null) => clip ? selectClipPathFromAssets(assets, clip) : '', [assets])
@@ -361,7 +361,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     const removeIds = new Set([clipId])
     clip?.linkedClipIds?.forEach(linkedId => removeIds.add(linkedId))
     const filtered = clips.filter(candidate => !removeIds.has(candidate.id))
-    const packed = packTrack1(filtered, 0)
+    const packed = packMainVideoTrack(tracks, filtered, activeTimeline?.transitions ?? [])
     const pruned = pruneEmptyOverlayTracks(tracks, packed, subtitles)
     if (pruned.tracks.length !== tracks.length) {
       setTracks(pruned.tracks)
@@ -373,7 +373,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       removeIds.forEach(id => next.delete(id))
       return next
     })
-  }, [clips, setClips, setSelectedClipIds, setSubtitles, setTracks, subtitles, tracks])
+  }, [clips, setClips, setSelectedClipIds, setSubtitles, setTracks, subtitles, tracks, activeTimeline])
 
   const clearSelectedGap = useCallback(() => {
     setSelectedGap(null)
@@ -483,7 +483,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       }
     }
     return top + padding
-  }, [trackDisplayRow, orderedTracks, videoTrackHeight, audioTrackHeight, subtitleTrackHeight])
+  }, [trackDisplayRow, orderedTracks, videoTrackHeight, audioTrackHeight, subtitleTrackHeight, stickerTrackHeight])
 
   // Cut detection lives in core because the transitions library needs the same
   // answer to work out which junction a click should land on.
@@ -650,7 +650,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     timelineRef, trackContainerRef, trackContentRef,
     orderedTracks, getTrackHeight, trackTopPx,
     splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
-    audioTrackHeight, videoTrackHeight, subtitleTrackHeight,
+    audioTrackHeight, videoTrackHeight, subtitleTrackHeight, stickerTrackHeight,
     applyTransitionAtPoint,
     addFilterClip: actions.addFilterClip,
   })

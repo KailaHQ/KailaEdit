@@ -68,6 +68,7 @@ import {
   type EditorModel,
   type EditorState,
   type TimelineGapSelection,
+  type KeyframeSelection,
 } from './editor-state'
 import {
   getActiveTimelineFromEditorModel,
@@ -297,7 +298,7 @@ function buildDroppedVisualClipInsertion(
   const isImageAsset = asset.type === 'image'
 
   const createVisualClip = (isVideoAsset || isImageAsset || isAdjustment) && trackPatched
-  // A video keeps its sound inside the video clip, the way CapCut does.
+  // A video keeps its sound inside the video clip.
   // The preview and the exporter both already read audio straight off a video
   // clip that has no linked audio clip (isAudioSourceClip in
   // usePlaybackAudioSync, and the hasLinkedAudioClip guard in
@@ -1416,9 +1417,8 @@ export function splitClipsAtTime(state: EditorState, clipIds: string[], time: nu
 
 export function moveClips(state: EditorState, params: MoveClipsParams): EditorState {
   const clipSet = new Set(params.clipIds)
-  return replaceActiveTimeline(state, timeline => ({
-    ...timeline,
-    clips: timeline.clips.map(clip => (
+  return replaceActiveTimeline(state, timeline => {
+    const moved = timeline.clips.map(clip => (
       clipSet.has(clip.id)
         ? {
             ...clip,
@@ -1426,8 +1426,16 @@ export function moveClips(state: EditorState, params: MoveClipsParams): EditorSt
             trackIndex: params.targetTrackIndex ?? clip.trackIndex,
           }
         : clip
-    )),
-  }))
+    ))
+    const packed = packMainVideoTrack(timeline.tracks, moved, timeline.transitions)
+    const pruned = pruneEmptyTracks(timeline.tracks, packed, timeline.subtitles || [])
+    return {
+      ...timeline,
+      tracks: pruned.tracks,
+      clips: pruned.clips,
+      subtitles: pruned.subtitles,
+    }
+  })
 }
 
 export function resizeClip(state: EditorState, params: ResizeClipParams): EditorState {
@@ -2300,19 +2308,46 @@ export function clearClipSelection(state: EditorState): EditorState {
     selection: {
       ...session.selection,
       clipIds: new Set(),
+      selectedKeyframe: null,
+    },
+  }))
+}
+
+export function setSelectedKeyframe(state: EditorState, keyframe: KeyframeSelection | null): EditorState {
+  return updateSession(state, session => ({
+    ...session,
+    selection: {
+      ...session.selection,
+      selectedKeyframe: keyframe,
+    },
+  }))
+}
+
+export function clearSelectedKeyframe(state: EditorState): EditorState {
+  return updateSession(state, session => ({
+    ...session,
+    selection: {
+      ...session.selection,
+      selectedKeyframe: null,
     },
   }))
 }
 
 export function setSelectedClipIds(state: EditorState, value: SetStateAction<Set<string>>): EditorState {
-  return updateSession(state, session => ({
-    ...session,
-    selection: {
-      ...session.selection,
-      clipIds: applyStateAction(value, session.selection.clipIds),
-      subtitleId: null,
-    },
-  }))
+  return updateSession(state, session => {
+    const nextClipIds = applyStateAction(value, session.selection.clipIds)
+    const prevKf = session.selection.selectedKeyframe
+    const keepKf = prevKf && nextClipIds.has(prevKf.clipId) ? prevKf : null
+    return {
+      ...session,
+      selection: {
+        ...session.selection,
+        clipIds: nextClipIds,
+        subtitleId: null,
+        selectedKeyframe: keepKf,
+      },
+    }
+  })
 }
 
 export function setSelectedSubtitle(state: EditorState, subtitleId?: string): EditorState {
@@ -2322,6 +2357,7 @@ export function setSelectedSubtitle(state: EditorState, subtitleId?: string): Ed
       ...session.selection,
       subtitleId: subtitleId ?? null,
       clipIds: new Set(),
+      selectedKeyframe: null,
     },
   }))
 }
@@ -3631,6 +3667,61 @@ export function removeKeyframeAt(
   }
 
   return updateClip(state, clipId, { keyframes: currentTracks })
+}
+
+export function removeKeyframeGroupAt(
+  state: EditorState,
+  clipId: string,
+  t: number,
+): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip || !clip.keyframes) return state
+
+  const currentTracks = clip.keyframes
+    .map(track => ({
+      ...track,
+      points: track.points.filter(p => Math.abs(p.t - t) > 0.04),
+    }))
+    .filter(track => track.points.length > 0)
+
+  return updateClip(state, clipId, { keyframes: currentTracks })
+}
+
+export function moveKeyframeGroup(
+  state: EditorState,
+  clipId: string,
+  fromT: number,
+  toT: number,
+): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip || !clip.keyframes) return state
+
+  const clampedToT = Math.max(0, Math.min(clip.duration, Math.round(toT * 1000) / 1000))
+
+  const currentTracks = clip.keyframes.map(track => {
+    const pointIdx = track.points.findIndex(p => Math.abs(p.t - fromT) <= 0.04)
+    if (pointIdx < 0) return track
+    const newPoints = [...track.points]
+    newPoints[pointIdx] = {
+      ...newPoints[pointIdx],
+      t: clampedToT,
+    }
+    newPoints.sort((a, b) => a.t - b.t)
+    return {
+      ...track,
+      points: newPoints,
+    }
+  })
+
+  let nextState = updateClip(state, clipId, { keyframes: currentTracks })
+  nextState = updateSession(nextState, session => ({
+    ...session,
+    selection: {
+      ...session.selection,
+      selectedKeyframe: { clipId, t: clampedToT },
+    },
+  }))
+  return nextState
 }
 
 export function moveKeyframe(

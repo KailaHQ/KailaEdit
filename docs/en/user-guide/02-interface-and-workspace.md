@@ -1,10 +1,10 @@
 # Interface & Workspace
 
 <p align="center">
-  <img src="../../images/overview-ui.png" alt="KomfyEdit Workspace Layout" width="85%">
+  <img src="../../images/overview-ui.png" alt="KailaEdit Workspace Layout" width="85%">
 </p>
 
-The KomfyEdit workspace is organized into five primary functional panels optimized for high-speed offline non-linear editing.
+The KailaEdit workspace is organized into five primary functional panels optimized for high-speed offline non-linear editing.
 
 ---
 
@@ -92,7 +92,7 @@ Accessible via `Edit` → `Preferences` or the gear icon in the title bar:
 - **Interface Language**: Switch seamlessly between **English** and **Tiếng Việt**.
 - **Hardware Acceleration**: Automatic GPU hardware encoding detection (NVIDIA NVENC, Intel QuickSync, Apple VideoToolbox).
 - **Proxy & Render Cache Storage**: Configure local directories for generated lightweight editing proxies and background render cache files, including disk cleanup tools.
-- **EditPilot AI Agent Engine**: Select your local CLI provider (Claude Code, Antigravity, or Codex) and safety permissions.
+- **CoEdit AI Agent Engine**: Select your local CLI provider (Claude Code, Antigravity, or Codex) and safety permissions.
 
 ### Project Settings (`File` → `Project Settings...`)
 - Modify sequence canvas resolution (1080p, 4K UHD, or vertical 9:16 for TikTok/Shorts/Reels).

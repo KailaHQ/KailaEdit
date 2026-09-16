@@ -60,6 +60,7 @@ export function createWindow(): BrowserWindow {
   }
 
   mainWindow = new BrowserWindow({
+    title: 'KailaEdit',
     width: 1400,
     height: 900,
     minWidth: 1200,

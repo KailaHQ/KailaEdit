@@ -1,6 +1,6 @@
 # Architecture Overview
 
-KomfyEdit is built on a clean, decoupled two-layer architecture designed for offline stability, high frame-rate interactive editing, and bulletproof IPC validation.
+KailaEdit is built on a clean, decoupled two-layer architecture designed for offline stability, high frame-rate interactive editing, and bulletproof IPC validation.
 
 ---
 
@@ -28,7 +28,7 @@ graph TB
         Life["App Lifecycle & Window Management"]
         FS["Path-Validated File Manager<br>(path-validation.ts)"]
         Export["FFmpeg Pipeline Orchestrator<br>(export-handler.ts)"]
-        MCP["EditPilot MCP Server<br>(packages/komfyedit-mcp/)"]
+        MCP["CoEdit MCP Server<br>(packages/kailaedit-mcp/)"]
 
         IPC --> Life
         IPC --> FS
@@ -46,7 +46,7 @@ graph TB
 ## 🔑 Core Pillars
 
 ### 1. Two Layers, No Cloud Backend
-KomfyEdit contains no remote servers, telemetry tracking, or cloud authentication. All user projects, cache files, waveforms, and media assets reside exclusively on the user's local disk.
+KailaEdit contains no remote servers, telemetry tracking, or cloud authentication. All user projects, cache files, waveforms, and media assets reside exclusively on the user's local disk.
 
 ### 2. Typed IPC via Zod
 All communication between the renderer and Electron main process flows through `shared/electron-api-schema.ts`. Every single IPC method defines:

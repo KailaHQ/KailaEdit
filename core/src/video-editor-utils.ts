@@ -86,6 +86,7 @@ export const LAYOUT_LIMITS = {
 export function resolveOverlaps(
   allClips: TimelineClip[],
   movedIds: Set<string>,
+  transitions: ReadonlyArray<{ leftClipId: string; rightClipId: string; duration: number }> = [],
 ): TimelineClip[] {
   let result = [...allClips]
 
@@ -101,6 +102,17 @@ export function resolveOverlaps(
     for (const c of result) {
       if (movedIds.has(c.id)) { next.push(c); continue }
       if (c.trackIndex !== moved.trackIndex) { next.push(c); continue }
+
+      // If moved and c are connected by a transition, their overlap is intentional and
+      // managed by transition packing, not a conflict to resolve.
+      const isConnectedByTransition = transitions.some(t =>
+        (t.leftClipId === moved.id && t.rightClipId === c.id) ||
+        (t.leftClipId === c.id && t.rightClipId === moved.id)
+      )
+      if (isConnectedByTransition) {
+        next.push(c)
+        continue
+      }
 
       const cStart = c.startTime
       const cEnd = c.startTime + c.duration
@@ -228,6 +240,18 @@ export function packTrack1(
 
 /** Index of the main video track (V1) — the magnetic one — or -1 if there is none. */
 export function mainVideoTrackIndex(tracks: Track[]): number {
+  // First prefer explicit base video track by id ('track-v1'), name ('V1'), or sourcePatched flag
+  const explicit = tracks.findIndex(
+    track => track.kind === 'video' && track.type !== 'subtitle' && (track.id === 'track-v1' || track.name === 'V1' || track.sourcePatched),
+  )
+  if (explicit >= 0) return explicit
+
+  // Avoid choosing overlay tracks (e.g. titled 'Kinetic Titles', 'Text Overlay', etc.) over main video tracks
+  const nonOverlay = tracks.findIndex(
+    track => track.kind === 'video' && track.type !== 'subtitle' && !/text|title|chữ|adj|overlay|sticker/i.test(track.name),
+  )
+  if (nonOverlay >= 0) return nonOverlay
+
   return tracks.findIndex(track => track.kind === 'video' && track.type !== 'subtitle')
 }
 
@@ -833,7 +857,7 @@ export function pruneEmptyTracks(
   clips: TimelineClip[],
   subtitles: SubtitleClip[] = [],
 ): { tracks: Track[]; clips: TimelineClip[]; subtitles: SubtitleClip[] } {
-  const firstVideoIndex = tracks.findIndex(track => track.kind === 'video' && track.type !== 'subtitle')
+  const baseVideoIndex = mainVideoTrackIndex(tracks)
 
   const isOccupied = (index: number) =>
     clips.some(clip => clip.trackIndex === index)
@@ -841,7 +865,7 @@ export function pruneEmptyTracks(
 
   const removed = new Set<number>()
   tracks.forEach((track, index) => {
-    if (index === firstVideoIndex) return
+    if (index === baseVideoIndex) return
     if (track.type === 'subtitle') return
     if (track.locked) return
     if (isOccupied(index)) return

@@ -25,7 +25,7 @@ Tự động phân tích transcript của video dài (podcast, talkshow, bài gi
 4. **Phát ngôn súc tích, dễ trích dẫn**: Thích hợp làm trích dẫn viral trên mạng xã hội.
 5. **Đoạn mạch câu trọn vẹn**: Không bị cụt đầu hoặc đứt đuôi.
 
-## Quy trình làm việc chuẩn của EditPilot
+## Quy trình làm việc chuẩn của CoEdit
 1. Gọi `timeline_describe` để lấy danh sách clip video trên timeline.
 2. Gọi `extract_highlights` để lấy danh sách các đoạn viral nhất cùng `hookText`.
 3. Đề xuất lựa chọn cho người dùng hoặc gọi `edit_propose` với `create_highlight_short`.

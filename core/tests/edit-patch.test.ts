@@ -374,7 +374,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       })
     })
 
-    it('applies add_filter_clip operation creating an adjustment clip on timeline (CapCut style)', () => {
+    it('applies add_filter_clip operation creating an adjustment clip on timeline', () => {
       const state = makeTestState(20)
       const patch: EditPatch = {
         version: 1,

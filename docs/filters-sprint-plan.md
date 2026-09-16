@@ -1,4 +1,4 @@
-# Sprint Plan — Tính năng Filters cho KomfyEdit
+# Sprint Plan — Tính năng Filters cho KailaEdit
 
 **Ngày lập:** 2026-09-06 · **Nhánh gốc:** `strip-to-video-editor`
 
@@ -60,7 +60,7 @@ Tính năng filter **đã tồn tại một nửa**. Không được viết lạ
 
 ### Khoảng cách tính năng
 
-| Kỳ vọng tiêu chuẩn | KomfyEdit hiện tại |
+| Kỳ vọng tiêu chuẩn | KailaEdit hiện tại |
 |---|---|
 | Hàng trăm filter, có danh mục (Featured, NEW, Hits, CCD, Life, Portrait, Retro, Night, Food…) | 7 filter, không danh mục |
 | Ô tìm kiếm | Không |
@@ -81,7 +81,7 @@ Không có test nào so sánh hai bên. Người dùng chỉnh màu theo preview
 
 ### Hiện trạng bề mặt MCP (cho autopilot)
 
-Bề mặt agent đọc/ghi timeline nằm ở [`packages/komfyedit-mcp/src/server.ts`](../packages/komfyedit-mcp/src/server.ts) và [`core/src/edit-patch.ts`](../core/src/edit-patch.ts). **Không có gì cho màu sắc cả:**
+Bề mặt agent đọc/ghi timeline nằm ở [`packages/kailaedit-mcp/src/server.ts`](../packages/kailaedit-mcp/src/server.ts) và [`core/src/edit-patch.ts`](../core/src/edit-patch.ts). **Không có gì cho màu sắc cả:**
 
 | Bề mặt | Có gì hôm nay | Thiếu cho filter |
 |---|---|---|
@@ -108,7 +108,7 @@ Bề mặt agent đọc/ghi timeline nằm ở [`packages/komfyedit-mcp/src/serv
 
 4. **i18n có hai file.** Mọi chuỗi hiển thị phải thêm vào **cả** `frontend/i18n/locales/en.ts` và `vi.ts`. Không hardcode tiếng Anh trong JSX.
 
-5. **Zod schema là hợp đồng lưu file.** Thêm trường mới vào `project-model.ts` phải `.optional()` hoặc `.default()`, nếu không project cũ sẽ không mở được. Có project thật trên đĩa (`.komfyedit-data/projects/`) để kiểm chứng.
+5. **Zod schema là hợp đồng lưu file.** Thêm trường mới vào `project-model.ts` phải `.optional()` hoặc `.default()`, nếu không project cũ sẽ không mở được. Có project thật trên đĩa (`.kailaedit-data/projects/`) để kiểm chứng.
 
 6. **Effect có `mask`.** `getClipEffectStyles` bỏ qua effect có `mask.enabled` (chúng được vẽ như overlay riêng, xem `getMaskedEffectOverlays`). Filter mới phải quyết định rõ có hỗ trợ mask không — mặc định là **không**, và phải viết ra trong PR.
 
@@ -219,7 +219,7 @@ Hiện `lut-*` nằm chung enum với `blur`/`glow`. Enum không mở rộng đ�
 - **Migration:** clip đang mang effect `lut-*` phải được chuyển sang `clip.filter` khi mở project, giữ nguyên `intensity`. Effect `lut-*` cũ vẫn phải đọc được (đừng xoá khỏi enum ở sprint này) nhưng không còn được tạo mới.
 
 **Điều kiện chấp nhận**
-- Project cũ trong `.komfyedit-data/projects/` mở lên vẫn thấy đúng filter, đúng cường độ.
+- Project cũ trong `.kailaedit-data/projects/` mở lên vẫn thấy đúng filter, đúng cường độ.
 - Test migration: timeline có `effects: [{ type: 'lut-vintage', params: { intensity: 60 } }]` → sau khi mở có `clip.filter = { id: 'vintage', intensity: 60 }` và không còn effect đó.
 - Thêm một filter mới **không cần sửa file schema nào**.
 
@@ -342,7 +342,7 @@ Sprint này phụ thuộc F0 (parity) và F1 (registry trong `core/`). Không ph
 
 ### F4-2 · Tool `filter_list`
 
-**Phạm vi:** `packages/komfyedit-mcp/src/server.ts`
+**Phạm vi:** `packages/kailaedit-mcp/src/server.ts`
 
 - Tool mới trả về registry: `id`, `name`, `category`, `tags`, và một câu mô tả ngắn nhìn ra được (`"warm, lifted blacks, low saturation"`).
 - Hỗ trợ lọc theo `category` và `query` để agent không phải nuốt cả trăm mục vào context.
@@ -401,7 +401,7 @@ Theo đúng khuôn của skill [`cut-silence`](../.claude/skills/cut-silence.md)
 
 ### F4-6 · `render_preview` chứng minh được filter
 
-**Phạm vi:** test trong `packages/komfyedit-mcp/`
+**Phạm vi:** test trong `packages/kailaedit-mcp/`
 
 - Render một clip có filter, đọc pixel trung tâm, so với kết quả `applyLutToRgb` của core trong cùng ngưỡng 2/255 của F0-4.
 - Đây là mắt của agent. Nếu nó nói dối thì autopilot grade mù.
@@ -457,7 +457,7 @@ Mỗi PR phải trả lời được:
 | WebGL preview là việc lớn hơn ước lượng | F0 trượt lịch, kéo theo mọi sprint | Làm F0-2 trước tiên và cắt phạm vi: chỉ lớp video chính, không mask, không transition |
 | ffmpeg trên máy người dùng không có `lut3d` | Export mất filter | Kiểm tra `ffmpeg -filters` khi khởi động, cảnh báo sớm; ffmpeg-static đã kèm nên rủi ro thấp |
 | Dung lượng LUT làm phình bộ cài | Bản build nặng | LUT size 17 thay vì 33 nếu vượt ngân sách; đo ở F1-2 |
-| Migration làm hỏng project cũ | Mất việc của người dùng | F1-1 phải test trên project thật trong `.komfyedit-data/projects/`; không xoá enum cũ ở sprint này |
+| Migration làm hỏng project cũ | Mất việc của người dùng | F1-1 phải test trên project thật trong `.kailaedit-data/projects/`; không xoá enum cũ ở sprint này |
 | Filter cộng dồn với `colorCorrection` cho kết quả bất ngờ | Người dùng chỉnh mãi không ra màu mong muốn | Chốt và tài liệu hoá thứ tự áp ngay ở F0, đừng để mỗi nơi tự quyết |
 | Registry nằm nhầm ở `frontend/` | MCP không import được, F4 phải làm lại từ đầu | Ràng buộc đã ghi trong F1-1; reviewer kiểm ngay ở PR đó, đừng để tới F4 mới phát hiện |
 | Agent grade hàng loạt rồi người dùng không thích | Mất việc, khó hoàn tác bằng mắt | `ask_confirm` bắt buộc trước khi vượt 5 clip (F4-5); một patch = một mục undo (F3-1) |

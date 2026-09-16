@@ -3,9 +3,9 @@ name: dynamic-zoom
 description: Dynamic Zoom (Punch-in cut) workflow to alternate shot framing between medium shot (100%) and close-up (115%–120%) across speaking cuts to maintain visual retention.
 ---
 
-# KomfyEdit Skill: Dynamic Zoom (`dynamic-zoom`)
+# KailaEdit Skill: Dynamic Zoom (`dynamic-zoom`)
 
-This skill defines the standard procedure for applying dynamic zoom (punch-in cuts) to conversational video clips on the KomfyEdit timeline.
+This skill defines the standard procedure for applying dynamic zoom (punch-in cuts) to conversational video clips on the KailaEdit timeline.
 
 ---
 
@@ -24,12 +24,12 @@ Continuous single-angle videos (e.g. tutorials, podcasts, vlogs, TikTok/Reels co
 | Parameter | Recommended Value | Range | Notes |
 |---|---|---|---|
 | **Zoom Scale (`scale`)** | `115%` | `110%` – `125%` | Zooming beyond 125% causes perceptible resolution degradation on 1080p footage. |
-| **Origin / Centering** | Centered (`positionX: 0, positionY: 0`) | Centered | Automatic offset: KomfyEdit ffmpeg exporter and CSS preview automatically maintain frame centering. |
+| **Origin / Centering** | Centered (`positionX: 0, positionY: 0`) | Centered | Automatic offset: KailaEdit ffmpeg exporter and CSS preview automatically maintain frame centering. |
 | **Sequence Alternation** | `100%` $\to$ `115%` $\to$ `100%` $\to$ `115%` | Alternating | Apply across consecutive sentence-level cuts after silent interval removal or transcribe cut. |
 
 ---
 
-## 3. Workflow for EditPilot
+## 3. Workflow for CoEdit
 
 When asked to "tạo nhịp zoom", "punch-in", "dynamic zoom", or "tạo góc quay cận cảnh":
 

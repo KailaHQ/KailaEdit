@@ -1,6 +1,6 @@
 # Walkthrough: Thêm Kho Sound Effects Miễn Phí Chuẩn Phòng Thu Vào Mục Audio
 
-Chúng tôi đã hoàn thành tích hợp kho hiệu ứng âm thanh (Sound Effects / SFX) miễn phí chuẩn phòng thu (16-bit 44.1kHz PCM WAV) vào mục **Audio** của KomfyEdit, hoạt động 100% offline, hỗ trợ nghe thử trực tiếp, chèn 1-click vào timeline và hỗ trợ AI Agent EditPilot qua MCP tool `sfx_list` & thao tác `add_sfx`.
+Chúng tôi đã hoàn thành tích hợp kho hiệu ứng âm thanh (Sound Effects / SFX) miễn phí chuẩn phòng thu (16-bit 44.1kHz PCM WAV) vào mục **Audio** của KailaEdit, hoạt động 100% offline, hỗ trợ nghe thử trực tiếp, chèn 1-click vào timeline và hỗ trợ AI Agent CoEdit qua MCP tool `sfx_list` & thao tác `add_sfx`.
 
 ---
 
@@ -44,11 +44,11 @@ Tất cả 29 tệp âm thanh được tạo ra với thuật toán xử lý tí
 ---
 
 ### B. Core & Editor Actions
-- [`core/src/sfx.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/core/src/sfx.ts):
+- [`core/src/sfx.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/core/src/sfx.ts):
   - Khai báo 6 phân loại `SfxCategory`: `transition`, `accent`, `notification`, `impact`, `comedy`, `foley`.
   - Khai báo `SFX_DEFINITIONS` với đầy đủ 29 bản ghi: ID, tên, danh mục, tệp WAV, thời lượng, mô tả, từ khóa tìm kiếm.
   - Hàm `getSfxDefinition`, `isValidSfxId`, `resolveSfxRelativePath`.
-- [`core/src/editor-actions.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/core/src/editor-actions.ts):
+- [`core/src/editor-actions.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/core/src/editor-actions.ts):
   - Hàm pure action `addSfxClip(state, params: AddSfxClipParams)`:
     - Tự động lấy vị trí `startTime` tại playhead (`currentTime`).
     - Tìm audio track trống hoặc ưu tiên audio track phụ (`A2+`) để không làm gián đoạn voice/dialogue trên `A1`.
@@ -59,31 +59,31 @@ Tất cả 29 tệp âm thanh được tạo ra với thuật toán xử lý tí
 ---
 
 ### C. Giao diện Người dùng (UI)
-- [`frontend/views/editor/EditorChrome.tsx`](file:///H:/WorkSpace/vibe-project/KomfyEdit/frontend/views/editor/EditorChrome.tsx):
+- [`frontend/views/editor/EditorChrome.tsx`](file:///H:/WorkSpace/vibe-project/KailaEdit/frontend/views/editor/EditorChrome.tsx):
   - Thêm mục `sound-effects` (Hiệu ứng âm thanh) vào thanh điều hướng tab `audio`.
-- [`frontend/views/editor/SoundEffectsLibrary.tsx`](file:///H:/WorkSpace/vibe-project/KomfyEdit/frontend/views/editor/SoundEffectsLibrary.tsx):
+- [`frontend/views/editor/SoundEffectsLibrary.tsx`](file:///H:/WorkSpace/vibe-project/KailaEdit/frontend/views/editor/SoundEffectsLibrary.tsx):
   - Thanh tìm kiếm tức thời theo từ khóa, tên, mô tả.
   - Các pill bộ lọc danh mục (`Tất cả`, `Chuyển cảnh`, `Điểm nhấn`, `Thông báo / Game`, `Va đập / Kịch tính`, `Hài hước / Meme`, `Hiệu ứng Foley`, `Tự nhập`).
   - Nút **Phát thử / Tạm dừng** với cơ chế quản lý âm thanh thông minh (nghe thử độ trễ cực thấp, tự động dừng âm thanh trước đó khi bấm âm thanh mới).
   - Nút `+` 1-click chèn ngay vào timeline tại vị trí playhead.
   - Thẻ thông báo xác nhận trực quan khi chèn thành công.
   - Hỗ trợ tải tệp âm thanh riêng từ máy tính qua nút **Nhập**.
-- [`frontend/views/editor/EditorLibraryPanel.tsx`](file:///H:/WorkSpace/vibe-project/KomfyEdit/frontend/views/editor/EditorLibraryPanel.tsx):
+- [`frontend/views/editor/EditorLibraryPanel.tsx`](file:///H:/WorkSpace/vibe-project/KailaEdit/frontend/views/editor/EditorLibraryPanel.tsx):
   - Định tuyến hiển thị `<SoundEffectsLibrary />` khi người dùng bấm vào mục "Hiệu ứng âm thanh" trong tab Audio.
-- [`frontend/i18n/locales/vi.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/frontend/i18n/locales/vi.ts) & [`en.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/frontend/i18n/locales/en.ts):
+- [`frontend/i18n/locales/vi.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/frontend/i18n/locales/vi.ts) & [`en.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/frontend/i18n/locales/en.ts):
   - Bổ sung chuỗi ngôn ngữ song ngữ đầy đủ cho tính năng.
 
 ---
 
-### D. Tích hợp EditPilot & MCP Server (Tuân thủ AGENTS.md)
-- [`packages/komfyedit-mcp/src/server.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/packages/komfyedit-mcp/src/server.ts):
+### D. Tích hợp CoEdit & MCP Server (Tuân thủ AGENTS.md)
+- [`packages/kailaedit-mcp/src/server.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/packages/kailaedit-mcp/src/server.ts):
   - Đăng ký công cụ `sfx_list` trong `READ_ONLY_TOOLS`: Cho phép AI Agent tra cứu toàn bộ danh sách 29 hiệu ứng âm thanh theo từng thể loại hoặc từ khóa.
-- [`core/src/edit-patch.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/core/src/edit-patch.ts):
+- [`core/src/edit-patch.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/core/src/edit-patch.ts):
   - Bổ sung thao tác `add_sfx` vào `editPatchOperationSchema`.
   - Hỗ trợ kiểm tra tính hợp lệ `validateEditPatch` (chống ghi vào track bị khóa).
   - Tự động mô tả thay đổi `describePatch` để người dùng duyệt trước khi áp dụng.
   - Thực thi thao tác trong `executePatchOperations`.
-- [`core/src/editpilot-prompt.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/core/src/editpilot-prompt.ts):
+- [`core/src/editpilot-prompt.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/core/src/editpilot-prompt.ts):
   - Cập nhật System Prompt cho trợ lý AI hướng dẫn tra cứu `sfx_list` và sử dụng `add_sfx`.
 
 ---
@@ -91,7 +91,7 @@ Tất cả 29 tệp âm thanh được tạo ra với thuật toán xử lý tí
 ## 2. Kết quả Kiểm thử & Xác minh
 
 1. **Unit tests SFX chuyên biệt:**
-   - [`core/tests/sfx.test.ts`](file:///H:/WorkSpace/vibe-project/KomfyEdit/core/tests/sfx.test.ts): **9/9 tests PASS**
+   - [`core/tests/sfx.test.ts`](file:///H:/WorkSpace/vibe-project/KailaEdit/core/tests/sfx.test.ts): **9/9 tests PASS**
      - Kiểm tra toàn bộ 29 SFX đã được định nghĩa.
      - Xác nhận tất cả 29 tệp `.wav` tồn tại thực tế trên đĩa ở cả `public/sfx` và `resources/sfx` với kích thước chuẩn > 1KB.
      - Kiểm tra logic chèn timeline `addSfxClip` tự động tạo track âm thanh.

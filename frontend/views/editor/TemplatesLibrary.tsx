@@ -364,8 +364,8 @@ export function TemplatesLibrary({ section }: { section: string }) {
    *
    * The pill on the left picks a shelf, the search box narrows by name, and the
    * two dropdowns narrow by shape and by how many shots the template wants —
-   * the three things you can tell about a template before opening it, and the
-   * three CapCut puts at the top of its own browser for the same reason.
+   * the three things you can tell about a template before opening it, and
+   * the three standard filters placed at the top of the browser for the same reason.
    */
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()

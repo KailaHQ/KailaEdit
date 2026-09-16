@@ -16,10 +16,10 @@ import {
 /* ────────────────────────────────────────────────────────────────
    The templates that ship with the app.
 
-   CapCut's library is full because thousands of people publish into it. This
-   one cannot be, so these exist to answer a narrower question: what does a
-   template DO? A first-run library of zero teaches nothing, and "save your
-   edit as a template" is hard to picture until you have taken one apart.
+   Public online libraries are full because thousands of people publish into them.
+   This offline library cannot be, so these exist to answer a narrower question:
+   what does a template DO? A first-run library of zero teaches nothing, and "save
+   your edit as a template" is hard to picture until you have taken one apart.
 
    Two deliberate limits:
 

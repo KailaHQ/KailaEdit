@@ -21,8 +21,8 @@ Ensure you have the following installed on your workstation:
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/tuyenhm68/KomfyEdit.git komfyedit
-   cd komfyedit
+   git clone https://github.com/tuyenhm68/KomfyEdit.git kailaedit
+   cd kailaedit
    ```
 
 2. **Install Dependencies**:

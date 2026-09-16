@@ -1,6 +1,6 @@
 # State Management & Editor Store
 
-The video editor requires sub-millisecond timeline interactivity, frame-accurate playhead tracking, and rock-solid undo/redo history. KomfyEdit implements this using a structured **Zustand** store.
+The video editor requires sub-millisecond timeline interactivity, frame-accurate playhead tracking, and rock-solid undo/redo history. KailaEdit implements this using a structured **Zustand** store.
 
 ---
 

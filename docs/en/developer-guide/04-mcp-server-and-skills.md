@@ -4,7 +4,7 @@
   <img src="../../images/editpilot-architecture.png" alt="Model Context Protocol Architecture" width="85%">
 </p>
 
-KomfyEdit features a native Model Context Protocol (MCP) server located in `packages/komfyedit-mcp/`. This allows AI coding agents and LLM assistants to automate video editing tasks without touching the raw filesystem or UI clicks.
+KailaEdit features a native Model Context Protocol (MCP) server located in `packages/kailaedit-mcp/`. This allows AI coding agents and LLM assistants to automate video editing tasks without touching the raw filesystem or UI clicks.
 
 ---
 
@@ -60,7 +60,7 @@ Whenever you introduce a new editing capability to the frontend:
 
 ## 🧪 Skill Benchmark Harness (`pnpm eval:skills`)
 
-To prevent regressions in AI editing accuracy, KomfyEdit includes an automated evaluation harness:
+To prevent regressions in AI editing accuracy, KailaEdit includes an automated evaluation harness:
 
 ```bash
 pnpm eval:skills

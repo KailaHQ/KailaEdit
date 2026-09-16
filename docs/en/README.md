@@ -1,6 +1,6 @@
-# KomfyEdit Documentation (English)
+# KailaEdit Documentation (English)
 
-Welcome to the English documentation for **KomfyEdit**, the offline desktop video editor with native AI agent integration.
+Welcome to the English documentation for **KailaEdit**, the offline desktop video editor with native AI agent integration.
 
 ---
 
@@ -15,7 +15,7 @@ Step-by-step guides for video creators, editors, and enthusiasts.
 4. **[04. Color, Effects & Adjustment Layers](user-guide/04-color-effects-filters.md)**: Curated 3D LUT Filters library (search, favorites, hover preview, intensity slider, apply-to-all), WebGL GPU shader preview with 1:1 FFmpeg parity, manual grading, custom `.cube` LUT imports, and Adjustment Layer deep dive.
 5. **[05. Audio & Subtitles](user-guide/05-audio-and-subtitles.md)**: Volume control, Audio Boost (+24dB), Brickwall Limiter, Smart Audio Ducking, offline AI Whisper Auto-Transcription, Text Presets, and SRT import/export.
 6. **[06. Export & Delivery](user-guide/06-export-and-delivery.md)**: Rendering with offline FFmpeg, H.264/ProRes/VP9, GPU Hardware Acceleration (NVENC, QuickSync, VideoToolbox), 4K/8K Proxy workflow & Render Cache, Batch Render Queue, and Chapter Markers.
-7. **[07. EditPilot AI Assistant](user-guide/07-editpilot-ai-assistant.md)**: Connecting local CLI models (Claude Code, Antigravity, Codex) via MCP, Live in-memory UI Sync, Auto Highlight Extraction, Contextual B-Roll Copilot, Whisper transcription, and complete 22 MCP Tools reference table.
+7. **[07. CoEdit AI Assistant](user-guide/07-coedit-ai-assistant.md)**: Connecting local CLI models (Claude Code, Antigravity, Codex) via MCP, Live in-memory UI Sync, Auto Highlight Extraction, Contextual B-Roll Copilot, Whisper transcription, and complete 22 MCP Tools reference table.
 
 ---
 
@@ -33,8 +33,8 @@ Architecture, development practices, and contribution standards for engineers.
 
 ## ⚖️ Acknowledgements & Terms of Use
 
-- **Acknowledgements**: KomfyEdit's codebase references and adapts foundational architecture from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd. (licensed under Apache-2.0). Upstream notices and attribution are preserved in [NOTICES.md](../../NOTICES.md) and [LICENSE.txt](../../LICENSE.txt).
-- **Free for Non-Commercial Use**: KomfyEdit is provided completely free of charge for personal, research, and non-commercial workflows. Commercial distribution or monetization is prohibited without prior written permission.
+- **Acknowledgements**: KailaEdit's codebase references and adapts foundational architecture from [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) by Lightricks Ltd. (licensed under Apache-2.0). Upstream notices and attribution are preserved in [NOTICES.md](../../NOTICES.md) and [LICENSE.txt](../../LICENSE.txt).
+- **Free for Non-Commercial Use**: KailaEdit is provided completely free of charge for personal, research, and non-commercial workflows. Commercial distribution or monetization is prohibited without prior written permission.
 - **License**: Core software is licensed under the [Apache-2.0 License](../../LICENSE.txt).
 
 ---

@@ -11,7 +11,7 @@ import {
 } from '../src/clip-speed'
 
 describe('the speed range', () => {
-  it('runs from 0.1x to 100x, as CapCut does', () => {
+  it('runs from 0.1x to 100x', () => {
     expect(MIN_CLIP_SPEED).toBe(0.1)
     expect(MAX_CLIP_SPEED).toBe(100)
   })

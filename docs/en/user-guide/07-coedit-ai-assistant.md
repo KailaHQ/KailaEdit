@@ -1,23 +1,23 @@
-# EditPilot AI Assistant
+# CoEdit AI Assistant
 
 <p align="center">
-  <img src="../../images/editpilot-architecture.png" alt="EditPilot AI Video Editing Agent" width="85%">
+  <img src="../../images/editpilot-architecture.png" alt="CoEdit AI Video Editing Agent" width="85%">
 </p>
 
-**EditPilot** is KomfyEdit's built-in, locally-controlled AI editing companion. It allows advanced LLM agents (such as Claude Code, Antigravity, or OpenAI Codex) to observe your timeline, calculate acoustic silences and visual scene changes, propose atomic edits, and execute them safely with human oversight.
+**CoEdit** is KailaEdit's built-in, locally-controlled AI editing companion. It allows advanced LLM agents (such as Claude Code, Antigravity, or OpenAI Codex) to observe your timeline, calculate acoustic silences and visual scene changes, propose atomic edits, and execute them safely with human oversight.
 
 ---
 
 ## 🤖 1. The Model Context Protocol (MCP) Approach
 
-Traditional video editor plugins often lack safety boundaries or produce non-reproducible edits. KomfyEdit isolates AI capabilities behind an offline **MCP Server** (`packages/komfyedit-mcp/`):
+Traditional video editor plugins often lack safety boundaries or produce non-reproducible edits. KailaEdit isolates AI capabilities behind an offline **MCP Server** (`packages/kailaedit-mcp/`):
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Editor as User (Editor)
-    participant Panel as EditPilot Panel
-    participant MCP as KomfyEdit MCP Server
+    participant Panel as CoEdit Panel
+    participant MCP as KailaEdit MCP Server
     participant Timeline as Timeline Store
 
     Editor->>Panel: "Remove pauses longer than 0.8s and apply Film Classic LUT"
@@ -36,19 +36,19 @@ sequenceDiagram
 
 ## 🛡️ 2. Core Safety Invariants & Live UI Sync
 
-EditPilot guarantees that no model can ever corrupt or destructively wipe your timeline:
+CoEdit guarantees that no model can ever corrupt or destructively wipe your timeline:
 
 1. **Single-Writer Safety Lock**:
    - Eliminates write collisions between the app's debounced autosave and external AI agents. Write ownership is managed strictly to prevent accidental data loss.
 2. **Live In-Memory UI Synchronization**:
-   - Instead of modifying JSON project files on disk and requiring a manual reload, the KomfyEdit MCP server dispatches `edit_apply` mutations directly into the running app store over IPC. You see **timeline clips update in real time** right before your eyes!
+   - Instead of modifying JSON project files on disk and requiring a manual reload, the KailaEdit MCP server dispatches `edit_apply` mutations directly into the running app store over IPC. You see **timeline clips update in real time** right before your eyes!
 3. **Human-in-the-Loop (`ask_confirm`)**: Destructive or sequence-altering operations require user review and explicit confirmation before commit.
 4. **Locked Track Enforcement**: Any track with the lock toggle engaged (`🔒`) rejects automated modifications.
 5. **Strict Invariant Checking (`qc_check`)**:
    - Zero micro-clips (prevents fragments smaller than 0.5s).
    - Main story contiguity (checks for accidental gaps on track V1).
    - Boundary checks (ensures clip start times never exceed media boundaries).
-6. **Instant Atomic Snapshot Undo (`edit_undo` / `Ctrl + Z`)**: Every patch applied by EditPilot is bundled into an atomic batch that can be reverted with a single `Ctrl + Z`.
+6. **Instant Atomic Snapshot Undo (`edit_undo` / `Ctrl + Z`)**: Every patch applied by CoEdit is bundled into an atomic batch that can be reverted with a single `Ctrl + Z`.
 
 ---
 
@@ -56,37 +56,37 @@ EditPilot guarantees that no model can ever corrupt or destructively wipe your t
 
 ### 1. Automatic Silence Removal (Smart Jump-Cutting)
 > *"Remove all silences and pauses longer than 0.7 seconds from Track V1."*
-- EditPilot runs `observe_silence` to analyze the audio waveform and generates ripple cut operations to tighten the sequence.
+- CoEdit runs `observe_silence` to analyze the audio waveform and generates ripple cut operations to tighten the sequence.
 
 ### 2. Scene Cut Detection
 > *"Detect scene transitions across the raw video and slice at each camera switch."*
-- EditPilot executes `observe_scenes`, identifies cut boundaries based on frame luminance shifts, and slices cleanly at every scene change.
+- CoEdit executes `observe_scenes`, identifies cut boundaries based on frame luminance shifts, and slices cleanly at every scene change.
 
 ### 3. Auto Highlight Extraction
 > *"Extract a 30-second high-energy highlight reel from this sports event footage for a vertical teaser."*
-- EditPilot triggers `extract_highlights`: evaluating audio energy peaks, voice dynamics, motion velocity, and visual cuts to isolate the most engaging moments.
+- CoEdit triggers `extract_highlights`: evaluating audio energy peaks, voice dynamics, motion velocity, and visual cuts to isolate the most engaging moments.
 
 ### 4. Contextual B-Roll Copilot
 > *"Review the speech transcript and suggest relevant B-Roll clips from the media bin to overlay on Track V2."*
-- EditPilot uses `suggest_broll` paired with transcript cues to place contextual cutaways exactly where the speaker references them.
+- CoEdit uses `suggest_broll` paired with transcript cues to place contextual cutaways exactly where the speaker references them.
 
 ### 5. Offline Speech-to-Text Subtitles (Whisper)
 > *"Transcribe the dialogue across the sequence and generate a synchronized subtitle track."*
-- EditPilot calls `transcribe` to run the embedded local Whisper model and creates word-aligned subtitle cues directly on the timeline.
+- CoEdit calls `transcribe` to run the embedded local Whisper model and creates word-aligned subtitle cues directly on the timeline.
 
 ### 6. Automated Filters & Sticker Styling
 > *"List available color filters and apply a warm Cinematic LUT to the timeline."*
-- EditPilot inspects `filter_list` and `sticker_list` to enrich your timeline visuals automatically according to your prompt.
+- CoEdit inspects `filter_list` and `sticker_list` to enrich your timeline visuals automatically according to your prompt.
 
 ---
 
 ## 📖 4. MCP Tools Reference (22 Tools)
 
-The local KomfyEdit MCP server exposes 22 standard tools to external AI agents:
+The local KailaEdit MCP server exposes 22 standard tools to external AI agents:
 
 | Category | MCP Tool Name | Description & Purpose |
 |---|---|---|
-| **Read** | `project_list` | Lists all local KomfyEdit projects. |
+| **Read** | `project_list` | Lists all local KailaEdit projects. |
 | | `project_open` | Opens a project workspace by its unique ID. |
 | | `timeline_describe` | Detailed breakdown of tracks, clips, effects, filters, and subtitles. |
 | | `timeline_summary` | High-level summary of duration, clip counts, and track layout. |

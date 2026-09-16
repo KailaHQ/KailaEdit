@@ -1,6 +1,6 @@
 # Quản lý State & Editor Store
 
-Một phần mềm biên tập video đòi hỏi phản hồi thao tác dưới 1 miligiây, bám sát từng khung hình của đầu đọc playhead ở tần số 60Hz và khả năng hoàn tác (Undo/Redo) tin cậy tuyệt đối. KomfyEdit hiện thực hóa điều này bằng cấu trúc **Zustand store** tách biệt logic nghiêm ngặt.
+Một phần mềm biên tập video đòi hỏi phản hồi thao tác dưới 1 miligiây, bám sát từng khung hình của đầu đọc playhead ở tần số 60Hz và khả năng hoàn tác (Undo/Redo) tin cậy tuyệt đối. KailaEdit hiện thực hóa điều này bằng cấu trúc **Zustand store** tách biệt logic nghiêm ngặt.
 
 ---
 
