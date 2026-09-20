@@ -45,6 +45,21 @@ export function resolveStrokeWorkerPath(): string | null {
     // Ignore
   }
 
+  // 5. Fallback for test / dev environment before dist build: resolve TypeScript source
+  try {
+    const devTsPath = path.resolve(process.cwd(), 'electron', 'matte', 'stroke-worker.ts')
+    if (fs.existsSync(devTsPath)) return devTsPath
+  } catch {
+    // Ignore
+  }
+
+  try {
+    const metaSource = fileURLToPath(new URL(/* @vite-ignore */ './stroke-worker.ts', import.meta.url))
+    if (fs.existsSync(metaSource)) return metaSource
+  } catch {
+    // Ignore
+  }
+
   return null
 }
 
@@ -67,14 +82,17 @@ interface QueuedTask {
 export class StrokeWorkerPool {
   private workers: WorkerEntry[] = []
   private taskQueue: QueuedTask[] = []
+  private readonly poolSize: number
   private workerPath: string | null = null
-  private poolSize: number
   private isTerminated = false
 
-  constructor(customPoolSize?: number) {
-    const cores = os.cpus()?.length || 4
-    // min(8, cores/2), minimum 1
-    this.poolSize = customPoolSize ?? Math.max(1, Math.min(8, Math.floor(cores / 2)))
+  constructor(poolSize?: number) {
+    if (poolSize !== undefined && poolSize > 0) {
+      this.poolSize = poolSize
+    } else {
+      const cores = os.cpus().length || 4
+      this.poolSize = Math.max(1, Math.min(8, Math.floor(cores / 2)))
+    }
   }
 
   getPoolSize(): number {
@@ -115,7 +133,10 @@ export class StrokeWorkerPool {
   }
 
   private spawnWorker(): WorkerEntry {
-    const worker = new Worker(this.workerPath!)
+    const workerOptions = this.workerPath!.endsWith('.ts')
+      ? { execArgv: ['--import', 'tsx'] }
+      : undefined
+    const worker = new Worker(this.workerPath!, workerOptions)
     const entry: WorkerEntry = {
       worker,
       busy: false,

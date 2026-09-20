@@ -48,6 +48,21 @@ export function resolveMatteWorkerPath(): string | null {
     // Ignore
   }
 
+  // 5. Fallback for test / dev environment before dist build: resolve TypeScript source
+  try {
+    const devTsPath = path.resolve(process.cwd(), 'electron', 'matte', 'matte-worker.ts')
+    if (fs.existsSync(devTsPath)) return devTsPath
+  } catch {
+    // Ignore
+  }
+
+  try {
+    const metaSource = fileURLToPath(new URL(/* @vite-ignore */ './matte-worker.ts', import.meta.url))
+    if (fs.existsSync(metaSource)) return metaSource
+  } catch {
+    // Ignore
+  }
+
   return null
 }
 
@@ -80,7 +95,10 @@ export class MatteWorkerHost {
       throw new Error('[matte-worker-host] matte-worker.js could not be resolved on disk')
     }
 
-    const worker = new Worker(workerPath)
+    const workerOptions = workerPath.endsWith('.ts')
+      ? { execArgv: ['--import', 'tsx'] }
+      : undefined
+    const worker = new Worker(workerPath, workerOptions)
     const host = new MatteWorkerHost(worker)
 
     return new Promise<MatteWorkerHost>((resolve, reject) => {
