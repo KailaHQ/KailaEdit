@@ -196,6 +196,43 @@ export function registerFileHandlers(): void {
     shell.showItemInFolder(filePath)
   })
 
+  /**
+   * A byte range of a media file, for the renderer's WebCodecs demuxer.
+   *
+   * Reads only what was asked for rather than the whole file, so a large source does not
+   * have to exist twice in memory to cross the IPC boundary. `validatePath` is what keeps
+   * this from being an arbitrary-file-read primitive for the renderer.
+   */
+  handle('readMediaChunk', async ({ filePath, offset, length }) => {
+    const normalizedPath = validatePath(filePath, getAllowedRoots())
+
+    const stat = await fs.promises.stat(normalizedPath)
+    if (!stat.isFile()) {
+      throw new Error(`Not a file: ${normalizedPath}`)
+    }
+
+    const start = Math.min(offset, stat.size)
+    const end = Math.min(start + length, stat.size)
+    const size = Math.max(0, end - start)
+    const buffer = Buffer.allocUnsafe(size)
+
+    if (size > 0) {
+      const handle = await fs.promises.open(normalizedPath, 'r')
+      try {
+        await handle.read(buffer, 0, size, start)
+      } finally {
+        await handle.close()
+      }
+    }
+
+    // A fresh Uint8Array over exactly these bytes: Buffer instances share one pooled
+    // ArrayBuffer, and structured-clone would carry that whole pool across the boundary.
+    return {
+      data: new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)),
+      totalSize: stat.size,
+    }
+  })
+
   handle('readLocalFile', async ({ filePath }) => {
     try {
       const normalizedPath = validatePath(filePath, getAllowedRoots())

@@ -4,6 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import ffmpegStatic from 'ffmpeg-static'
 import { logger } from '../logger'
+import { quietChildStdio } from '../process/quiet-child-stdio'
 
 let activeExportProcess: ChildProcess | null = null
 let cachedFfmpegPath: string | null | undefined
@@ -105,6 +106,9 @@ export function runFfmpegWithProgress(
   const progressArgs = ['-progress', 'pipe:1', ...args]
   logger.info(`[ffmpeg] spawn with progress: ${progressArgs.join(' ').slice(0, 400)}`)
   const proc = spawn(ffmpegPath, progressArgs, { stdio: ['pipe', 'pipe', 'pipe'] })
+  // `kill()` below can close these pipes under a write or a pending read; without a
+  // listener that surfaces as an uncaught exception. See quietChildStdio.
+  quietChildStdio(proc, 'ffmpeg')
   let stderrLog = ''
   let killed = false
 
@@ -164,40 +168,6 @@ export function runFfmpegWithProgress(
       } catch {}
     },
   }
-}
-
-/** Run an ffmpeg command and return a promise. Logs stderr and sets activeExportProcess. */
-export function runFfmpeg(ffmpegPath: string, args: string[]): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    logger.info( `[ffmpeg] spawn: ${args.join(' ').slice(0, 400)}`)
-    const proc = spawn(ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    activeExportProcess = proc
-    let stderrLog = ''
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      stderrLog += text
-      const lines = text.trim().split('\n')
-      for (const line of lines) {
-        if (line.includes('frame=') || line.includes('Error') || line.includes('error')) {
-          logger.info( `[ffmpeg] ${line.trim().slice(0, 200)}`)
-        }
-      }
-    })
-    proc.on('close', (code) => {
-      activeExportProcess = null
-      if (code === 0) {
-        resolve({ success: true })
-      } else {
-        const errLines = stderrLog.split('\n').filter(l => l.trim()).slice(-5).join('\n')
-        logger.error( `[ffmpeg] exited ${code}:\n${errLines}`)
-        resolve({ success: false, error: `FFmpeg failed (code ${code}): ${errLines.slice(0, 300)}` })
-      }
-    })
-    proc.on('error', (err) => {
-      activeExportProcess = null
-      resolve({ success: false, error: `Failed to start ffmpeg: ${err.message}` })
-    })
-  })
 }
 
 function runFfmpegSyncOrThrow(ffmpegPath: string, args: string[], timeoutMs = 30000): void {
@@ -323,9 +293,13 @@ export function getVideoDimensions(videoPath: string): { width: number; height: 
   return dimensions
 }
 
+/**
+ * Process termination safety hook.
+ * Kept for Electron main process lifecycle cleanup on 'before-quit' in main.ts.
+ */
 export function stopExportProcess(): void {
   if (activeExportProcess) {
-    logger.info( 'Stopping active export process...')
+    logger.info('Stopping active export process...')
     activeExportProcess.kill()
     activeExportProcess = null
   }

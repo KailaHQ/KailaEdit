@@ -15,11 +15,11 @@ import { useTranslation } from '../../i18n/I18nContext'
 import { useSettings } from '../../contexts/SettingsContext'
 
 const FALLBACK_CATEGORY_LABELS: Record<TransitionCategory, string> = {
-  basic: 'Cơ bản',
-  wipe: 'Gạt',
-  slide: 'Đẩy',
-  shape: 'Hình khối',
-  motion: 'Chuyển động',
+  basic: 'Basic',
+  wipe: 'Wipe',
+  slide: 'Slide',
+  shape: 'Shape',
+  motion: 'Motion',
 }
 
 /**

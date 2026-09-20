@@ -1,6 +1,5 @@
 import path from 'path'
 import fs from 'fs'
-import os from 'os'
 import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
@@ -9,6 +8,7 @@ import { findFfmpegPath, runFfmpegWithProgress, type FfmpegProcessHandle } from 
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
 import { removeEntry } from '../storage/remove-entry'
+import { resolveUserDataDir } from '../../core/src/app-paths'
 
 export type ProxyStatus = 'none' | 'generating' | 'ready' | 'error'
 
@@ -55,10 +55,10 @@ export class ProxyManager {
       if (app && typeof app.getPath === 'function') {
         baseDir = path.join(app.getPath('userData'), 'proxy-cache')
       } else {
-        baseDir = path.join(os.tmpdir(), 'komfyedit-proxy-cache')
+        baseDir = path.join(resolveUserDataDir(), 'proxy-cache')
       }
     } catch {
-      baseDir = path.join(os.tmpdir(), 'komfyedit-proxy-cache')
+      baseDir = path.join(resolveUserDataDir(), 'proxy-cache')
     }
 
     if (!fs.existsSync(baseDir)) {
@@ -112,7 +112,9 @@ export class ProxyManager {
   }
 
   getPartPath(assetId: string): string {
-    return path.join(this.getProxyDir(), `${assetId}_540p.mp4.part`)
+    // `.part.mp4`, for the reason spelled out in RenderCacheManager.getPartPath: ffmpeg
+    // reads the muxer off the extension and will not write a `.part` file at all.
+    return path.join(this.getProxyDir(), `${assetId}_540p.part.mp4`)
   }
 
   getProxyStatus(assetId: string): ProxyItemStatus {

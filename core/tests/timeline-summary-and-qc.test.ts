@@ -3,6 +3,7 @@ import {
   timelineSummary,
   qcCheck,
   timelineClipSchema,
+  computeAutoMatteFingerprint,
   type Timeline,
   type TimelineClip,
   type SubtitleClip,
@@ -512,6 +513,150 @@ describe('S3-3 · timeline.summary và qc.check', () => {
       expect(simIssue).toBeDefined()
       expect(simIssue?.severity).toBe('warning')
       expect(simIssue?.message).toContain('similarity at 0%')
+    })
+
+    it('detects unbaked auto matte and invalid stroke configurations in qcCheck', () => {
+      // A bake belongs to a stretch of media, not to the clip that asked for it, so the
+      // record carries the range it covers and QC checks that the clip fits inside it.
+      const validFp = computeAutoMatteFingerprint({
+        assetKey: '/path/to/media.mp4',
+        trimStart: 0,
+        duration: 3,
+        speed: 1,
+        reversed: false,
+        model: 'rvm-mobilenetv3',
+        quality: 'standard',
+      })
+
+      const clips = [
+        makeClip({
+          id: 'c-baked',
+          assetId: 'asset-c-baked',
+          trackIndex: 0,
+          startTime: 0,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+            bake: {
+              path: '/tmp/baked.mp4',
+              fingerprint: validFp,
+              frameCount: 90,
+              createdAt: Date.now(),
+              sourceStart: 0,
+              sourceSpan: 3,
+              speed: 1,
+              reversed: false,
+              model: 'rvm-mobilenetv3',
+              quality: 'standard',
+            },
+          },
+        } as any),
+        makeClip({
+          id: 'c-unbaked',
+          assetId: 'asset-c-unbaked',
+          trackIndex: 0,
+          startTime: 3,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+          },
+        } as any),
+        makeClip({
+          id: 'c-fp-mismatch',
+          assetId: 'asset-c-mismatch',
+          trackIndex: 0,
+          startTime: 6,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+            bake: {
+              path: '/tmp/old.mp4',
+              fingerprint: 'stale-fingerprint',
+              frameCount: 90,
+              createdAt: Date.now(),
+            },
+          },
+        } as any),
+        makeClip({
+          id: 'c-valid-stroke',
+          trackIndex: 0,
+          startTime: 9,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          stroke: {
+            enabled: true,
+            style: 'solid',
+            color: '#FF0000',
+            width: 10,
+            opacity: 100,
+          },
+        } as any),
+        makeClip({
+          id: 'c-invalid-stroke-color',
+          trackIndex: 0,
+          startTime: 12,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          stroke: {
+            enabled: true,
+            style: 'solid',
+            color: 'not-hex',
+            width: 10,
+            opacity: 100,
+          },
+        } as any),
+        makeClip({
+          id: 'c-zero-stroke-width',
+          trackIndex: 0,
+          startTime: 15,
+          duration: 3,
+          mediaPath: '/path/to/media.mp4',
+          stroke: {
+            enabled: true,
+            style: 'dotted',
+            color: '#00FF00',
+            width: 0,
+            opacity: 100,
+          },
+        } as any),
+      ]
+
+      const timeline = createMockTimeline({ clips })
+      const issues = qcCheck(timeline)
+
+      const matteIssues = issues.filter(i => i.type === 'AUTO_MATTE_NOT_BAKED')
+      expect(matteIssues.find(i => i.clipId === 'c-baked')).toBeUndefined()
+      expect(matteIssues.find(i => i.clipId === 'c-unbaked')).toBeDefined()
+      expect(matteIssues.find(i => i.clipId === 'c-unbaked')?.severity).toBe('warning')
+      expect(matteIssues.find(i => i.clipId === 'c-fp-mismatch')).toBeDefined()
+      expect(matteIssues.find(i => i.clipId === 'c-fp-mismatch')?.message).toContain('not baked or fingerprint is mismatched')
+
+      const strokeIssues = issues.filter(i => i.type === 'INVALID_STROKE')
+      expect(strokeIssues.find(i => i.clipId === 'c-valid-stroke')).toBeUndefined()
+      const colorIssue = strokeIssues.find(i => i.clipId === 'c-invalid-stroke-color')
+      expect(colorIssue).toBeDefined()
+      expect(colorIssue?.severity).toBe('error')
+      expect(colorIssue?.message).toContain('invalid stroke color')
+
+      const widthIssue = strokeIssues.find(i => i.clipId === 'c-zero-stroke-width')
+      expect(widthIssue).toBeDefined()
+      expect(widthIssue?.severity).toBe('warning')
+      expect(widthIssue?.message).toContain('stroke width at 0%')
     })
   })
 })

@@ -290,7 +290,10 @@ function AgentRow({ definition, status, detecting, chosen, active, onChoose, onR
             <Tooltip
               side="left"
               contentClassName="max-w-[240px] whitespace-normal leading-relaxed"
-              content={`Đăng ký MCP KomfyEdit cho ${definition.label}, và cấp quyền ${definition.mcpPermissionRule?.replace('{name}', 'komfyedit') ?? ''} để lượt chạy nền không bị từ chối. CLI này quản MCP bằng lệnh riêng chứ không phải cờ mỗi lần chạy, nên cả hai đều phải ghi vào cấu hình CLI của bạn.`}
+              content={t('editpilot.registerMcpTooltip', {
+                label: definition.label,
+                permission: definition.mcpPermissionRule?.replace('{name}', 'kailaedit') ?? '',
+              })}
             >
               <button
                 onClick={event => { event.preventDefault(); onRegisterMcp() }}

@@ -3,6 +3,7 @@ import { createRequire } from 'module'
 import path from 'path'
 import os from 'os'
 import { getProjectAssetsPath } from './app-state'
+import { resolveUserDataDir } from '../core/src/app-paths'
 
 const require = createRequire(import.meta.url)
 let appInstance: App | null = null
@@ -30,7 +31,7 @@ export function getCurrentDir(): string {
 export function getAllowedRoots(): string[] {
   const roots = [
     getCurrentDir(),
-    appInstance?.getPath ? appInstance.getPath('userData') : os.tmpdir(),
+    appInstance?.getPath ? appInstance.getPath('userData') : resolveUserDataDir(),
     appInstance?.getPath ? appInstance.getPath('downloads') : os.tmpdir(),
     os.tmpdir(),
   ]

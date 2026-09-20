@@ -6,6 +6,7 @@ import { getAllowedRoots } from '../config'
 import { validatePath } from '../path-validation'
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
+import { autoMatteBakeOffset, autoMatteSourceRange } from '../../core/src/auto-matte'
 import {
   findFfmpegPath,
   runFfmpegWithProgress,
@@ -75,6 +76,8 @@ export interface RenderStartParams {
   subtitles?: any[]
   transitions?: any[]
   hardwareAcceleration?: boolean
+  /** Which processor runs background removal for clips that need a matte baked. */
+  autoMatteDevice?: 'auto' | 'gpu' | 'cpu'
   markers?: ExportMarkerParam[]
   videoBitrate?: number
   audioBitrate?: number
@@ -93,6 +96,9 @@ export interface RenderPreviewParams {
   subtitles?: any[]
   transitions?: any[]
 }
+
+/** Longest range one preview render will produce. */
+export const PREVIEW_MAX_SECONDS = 60
 
 export function sliceClipsForPreview(
   clips: any[],
@@ -220,7 +226,14 @@ class RenderQueueManager {
   } {
     const startTime = Math.max(0, params.startTime ?? 0)
     const duration = params.duration ?? (params.endTime !== undefined ? Math.max(0.1, params.endTime - startTime) : 10)
-    const previewDuration = Math.min(60, Math.max(0.1, duration))
+    const previewDuration = Math.min(PREVIEW_MAX_SECONDS, Math.max(0.1, duration))
+    if (duration > PREVIEW_MAX_SECONDS) {
+      // Callers that cannot use a short answer — the render cache, which marks the whole
+      // requested span as ready — must not get one silently. See MAX_CACHE_SEGMENT_SECONDS.
+      logger.warn(
+        `[RenderQueue] Preview range ${duration.toFixed(2)}s exceeds the ${PREVIEW_MAX_SECONDS}s limit and was clamped to ${previewDuration.toFixed(2)}s`,
+      )
+    }
 
     const slicedClips = sliceClipsForPreview(params.clips || [], startTime, previewDuration)
     if (slicedClips.length === 0) {
@@ -355,6 +368,199 @@ class RenderQueueManager {
     return { success: true, jobId }
   }
 
+  /**
+   * Step 0 — make sure every clip that needs an auto matte (and a stroke derived from it)
+   * actually has one on disk before the filtergraph is built.
+   *
+   * Without this, a clip whose matte was never baked in the editor exports with its
+   * background still in place, and a stroke never reaches the file at all because
+   * `strokeBakePath` would stay empty. Baking here is cheap when the editor already did
+   * it: `ensureBake` hits the fingerprint cache and returns immediately.
+   *
+   * Mutates the clips in place. That is safe here: `params.clips` arrives freshly
+   * deserialized from IPC for this one render call, so nothing else in the main process
+   * holds a reference to these objects.
+   */
+  private async prepareMattes(
+    job: RenderJob,
+    clips: any[],
+    device: 'auto' | 'gpu' | 'cpu' = 'auto',
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const targets = clips.filter(
+      c =>
+        (c.type === 'video' || c.type === 'image') &&
+        (c.autoMatte?.enabled || (c.customMatte?.enabled && c.customMatte.strokes?.length > 0)),
+    )
+    if (targets.length === 0) return { ok: true }
+
+    const { matteService } = await import('../matte/matte-service')
+    const { strokeBakeService } = await import('../matte/stroke-bake')
+    const { customMatteBakeService } = await import('../matte/custom-matte-bake')
+
+    // Reserve the first slice of the progress bar for preparation.
+    const PREP_END_PERCENT = 5
+
+    logger.info(`[RenderQueue:${job.id}] Step 0: preparing auto/custom matte for ${targets.length} clip(s)`)
+
+    for (let i = 0; i < targets.length; i++) {
+      if (isCancelled(job)) return { ok: false, error: 'Cancelled' }
+
+      const clip = targets[i]
+      const clipId = clip.id || `export-clip-${i}`
+      const matteJobId = `render-${job.id}-matte-${i}`
+      const clipStart = (i / targets.length) * PREP_END_PERCENT
+      const clipSpan = PREP_END_PERCENT / targets.length
+
+      const report = (percent: number) => {
+        if (isCancelled(job)) {
+          matteService.cancelJob(matteJobId)
+          return
+        }
+        job.percent = Number((clipStart + (percent / 100) * clipSpan).toFixed(1))
+        emitToRenderer('render:progress', {
+          jobId: job.id,
+          percent: job.percent,
+          timeSeconds: 0,
+        })
+      }
+
+      let activeMattePath: string | undefined
+      let activeFingerprint: string | undefined
+      let activeFrameCount: number | undefined
+      // What the active matte file covers, in SOURCE seconds. An auto matte may cover
+      // more than this clip (bakes are shared between trims); anything derived from it
+      // below is cut to the clip, so it covers exactly the clip.
+      let activeRange: { sourceStart: number; sourceSpan: number } | undefined
+      const clipRange = autoMatteSourceRange({
+        trimStart: clip.trimStart,
+        duration: clip.duration,
+        speed: clip.speed ?? 1,
+      })
+
+      if (clip.autoMatte?.enabled) {
+        const matteRes = await matteService.ensureBake(
+          {
+            jobId: matteJobId,
+            clipId,
+            filePath: clip.path,
+            trimStart: clip.trimStart,
+            duration: clip.duration,
+            speed: clip.speed ?? 1,
+            reversed: Boolean(clip.reversed),
+            model: clip.autoMatte?.model,
+            quality: clip.autoMatte?.quality,
+            device,
+            still: clip.type === 'image',
+          },
+          report,
+        )
+
+        if (isCancelled(job)) return { ok: false, error: 'Cancelled' }
+
+        if (!matteRes.success || !matteRes.mattePath) {
+          return {
+            ok: false,
+            error: `Background removal failed for clip ${clipId}: ${matteRes.error ?? 'unknown error'}`,
+          }
+        }
+
+        activeMattePath = matteRes.mattePath
+        activeFingerprint = matteRes.fingerprint ?? ''
+        activeFrameCount = matteRes.frameCount
+        activeRange = matteRes.bake
+          ? { sourceStart: matteRes.bake.sourceStart, sourceSpan: matteRes.bake.sourceSpan }
+          : clipRange
+      }
+
+      // If custom matte strokes are enabled, blend on top of base matte (or solid frame)
+      if (clip.customMatte?.enabled && clip.customMatte.strokes && clip.customMatte.strokes.length > 0) {
+        const customRes = await customMatteBakeService.ensureBake({
+          clipId,
+          baseMattePath: activeMattePath,
+          baseMatteFingerprint: activeFingerprint,
+          filePath: clip.path,
+          trimStart: clip.trimStart,
+          duration: clip.duration,
+          speed: clip.speed ?? 1,
+          baseMatteOffset: autoMatteBakeOffset(
+            activeRange ? { sourceStart: activeRange.sourceStart } : undefined,
+            clip.trimStart,
+            clip.speed ?? 1,
+          ),
+          strokes: clip.customMatte.strokes,
+          onProgress: report,
+        })
+
+        if (isCancelled(job)) return { ok: false, error: 'Cancelled' }
+
+        if (!customRes.success || !customRes.mattePath) {
+          return {
+            ok: false,
+            error: `Custom matte bake failed for clip ${clipId}: ${customRes.error ?? 'unknown error'}`,
+          }
+        }
+
+        activeMattePath = customRes.mattePath
+        activeFingerprint = customRes.fingerprint ?? ''
+        activeFrameCount = customRes.frameCount ?? activeFrameCount
+        // The blended matte is rendered clip-aligned, whatever the base covered.
+        activeRange = clipRange
+      }
+
+      if (activeMattePath) {
+        clip.autoMatte = {
+          ...(clip.autoMatte || { enabled: true }),
+          enabled: true,
+          bake: {
+            path: activeMattePath,
+            fingerprint: activeFingerprint ?? '',
+            frameCount: activeFrameCount ?? 0,
+            createdAt: Date.now(),
+            sourceStart: (activeRange ?? clipRange).sourceStart,
+            sourceSpan: (activeRange ?? clipRange).sourceSpan,
+            speed: clip.speed ?? 1,
+            reversed: Boolean(clip.reversed),
+            model: clip.autoMatte?.model || 'rvm-mobilenetv3',
+            quality: clip.autoMatte?.quality || 'standard',
+          },
+        }
+      }
+
+      const stroke = clip.stroke
+      if (activeMattePath && stroke?.enabled && stroke.style !== 'none' && stroke.width > 0) {
+        const prevCleanup = job.cleanup
+        job.cleanup = () => {
+          strokeBakeService.cancel(clipId)
+          if (prevCleanup) prevCleanup()
+        }
+
+        const strokeRes = await strokeBakeService.ensureBake({
+          clipId,
+          mattePath: activeMattePath,
+          matteFingerprint: activeFingerprint ?? '',
+          stroke,
+          onProgress: report,
+        })
+
+        job.cleanup = prevCleanup
+
+        if (isCancelled(job)) return { ok: false, error: 'Cancelled' }
+
+        if (!strokeRes.success) {
+          return {
+            ok: false,
+            error: `Stroke rendering failed for clip ${clipId}: ${strokeRes.error ?? 'unknown error'}`,
+          }
+        }
+        clip.strokeBakePath = strokeRes.strokePath
+      }
+    }
+
+    job.percent = PREP_END_PERCENT
+    emitToRenderer('render:progress', { jobId: job.id, percent: PREP_END_PERCENT, timeSeconds: 0 })
+    return { ok: true }
+  }
+
   private async executeJob(
     job: RenderJob,
     params: RenderStartParams,
@@ -379,18 +585,25 @@ class RenderQueueManager {
       audioBitrate,
     } = params
 
-    const ts = Date.now()
-    const tmpVideo = path.join(tmpDir, `komfy-export-video-${ts}.mkv`)
-    const tmpAudio = path.join(tmpDir, `komfy-export-audio-${ts}.wav`)
-    const tmpChapters = path.join(tmpDir, `komfy-chapters-${ts}.txt`)
+    const fileId = `${job.id}-${Date.now()}`
+    const tmpVideo = path.join(tmpDir, `komfy-export-video-${fileId}.mkv`)
+    const tmpAudio = path.join(tmpDir, `komfy-export-audio-${fileId}.wav`)
+    const tmpChapters = path.join(tmpDir, `komfy-chapters-${fileId}.txt`)
     let filterFile: string | null = null
     let tmpRawPcm: string | null = null
     let hasChapters = false
+    // Set when an ffmpeg step fails, so the graph that failed survives cleanup. A filter
+    // graph this size cannot be reconstructed from a log line, and the failing script
+    // used to be deleted on the way out — which is why the h264_nvenc "Error
+    // reinitializing filters" report had nothing behind it to reproduce.
+    let keepFilterFile = false
 
     const cleanup = () => {
       try { if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo) } catch {}
       try { if (fs.existsSync(tmpAudio)) fs.unlinkSync(tmpAudio) } catch {}
-      try { if (filterFile && fs.existsSync(filterFile)) fs.unlinkSync(filterFile) } catch {}
+      try {
+        if (filterFile && !keepFilterFile && fs.existsSync(filterFile)) fs.unlinkSync(filterFile)
+      } catch {}
       try { if (tmpRawPcm && fs.existsSync(tmpRawPcm)) fs.unlinkSync(tmpRawPcm) } catch {}
       if (hasChapters) {
         try { if (fs.existsSync(tmpChapters)) fs.unlinkSync(tmpChapters) } catch {}
@@ -403,6 +616,23 @@ class RenderQueueManager {
       const isAudioOnly = codec === 'wav' || codec === 'mp3' || codec === 'aac'
       const isGif = codec === 'gif'
 
+      // ── Step 0: Auto matte + stroke bakes (0% -> 5%) ───────────────────
+      if (!isAudioOnly) {
+        const prep = await this.prepareMattes(job, clips, params.autoMatteDevice ?? 'auto')
+        if (isCancelled(job)) {
+          cleanup()
+          return
+        }
+        if (!prep.ok) {
+          job.status = 'failed'
+          job.error = prep.error
+          cleanup()
+          this.notifyFinish(job)
+          emitToRenderer('render:error', { jobId: job.id, error: job.error })
+          return
+        }
+      }
+
       // ── Step 1: Video filter graph (0% -> 85%, or 0% -> 70% for GIF) ───
       if (!isAudioOnly) {
         const videoEndPercent = isGif ? 70 : 85
@@ -412,7 +642,7 @@ class RenderQueueManager {
           transitions,
         })
 
-        filterFile = path.join(tmpDir, `komfy-filter-v-${ts}.txt`)
+        filterFile = path.join(tmpDir, `komfy-filter-v-${fileId}.txt`)
         fs.writeFileSync(filterFile, filterScript, 'utf8')
 
         // Determine encoder for Step 1
@@ -458,8 +688,12 @@ class RenderQueueManager {
 
         // Graceful fallback: if hardware encoder failed, retry with CPU libx264
         if (!step1Result.success && useHw && !isCancelled(job)) {
+          keepFilterFile = true
           logger.warn(
             `[RenderQueue:${job.id}] Hardware encoder ${activeEncoder} failed: ${step1Result.error ?? 'unknown error'}. Falling back to CPU libx264.`
+          )
+          logger.warn(
+            `[RenderQueue:${job.id}] Filter graph kept for diagnosis: ${filterFile}. Reproduce with: ffmpeg -y ${inputs.join(' ')} -filter_complex_script "${filterFile}" -map [outv] -an ${activeEncoderArgs.join(' ')} out.mkv`
           )
           try { if (fs.existsSync(tmpVideo)) fs.unlinkSync(tmpVideo) } catch {}
           activeEncoder = 'libx264'
@@ -474,6 +708,8 @@ class RenderQueueManager {
         }
 
         if (!step1Result.success) {
+          keepFilterFile = true
+          logger.error(`[RenderQueue:${job.id}] Filter graph kept for diagnosis: ${filterFile}`)
           job.status = 'failed'
           job.error = step1Result.error ?? 'FFmpeg video filter step failed'
           job.stderr = step1Result.stderr
@@ -507,7 +743,7 @@ class RenderQueueManager {
           return
         }
 
-        tmpRawPcm = path.join(tmpDir, `komfy-pcm-${ts}.raw`)
+        tmpRawPcm = path.join(tmpDir, `komfy-pcm-${fileId}.raw`)
         fs.writeFileSync(tmpRawPcm, pcmBuffer)
 
         const step2Handle = runFfmpegWithProgress(
@@ -793,6 +1029,9 @@ class RenderQueueManager {
 
       if (!step3Result.success) {
         job.status = 'failed'
+        logger.error(
+          `[RenderQueue:${job.id}] Step 3 (mux) failed writing ${outputPath}: ${step3Result.error ?? 'unknown error'}`,
+        )
         job.error = step3Result.error ?? 'FFmpeg mux step failed'
         job.stderr = step3Result.stderr
         this.notifyFinish(job)

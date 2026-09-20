@@ -166,7 +166,7 @@ export function createIpcBackend(options: CreateIpcBackendOptions = {}): EditPil
         const projectId = options.getProjectId?.() ?? null
 
         const promptWithContext = request.references.length > 0
-          ? `${request.prompt}\n\nClip đang tham chiếu: ${request.references.map(r => `${r.label} (id: ${r.clipId})`).join(', ')}`
+          ? `${request.prompt}\n\nReferenced clips: ${request.references.map(r => `${r.label} (id: ${r.clipId})`).join(', ')}`
           : request.prompt
 
         try {
@@ -199,11 +199,11 @@ export function createIpcBackend(options: CreateIpcBackendOptions = {}): EditPil
 }
 
 const NOT_CONFIGURED_MESSAGE = [
-  'Chưa có agent CLI nào được cấu hình.',
+  'No agent CLI is currently configured.',
   '',
-  'EditPilot chạy bằng CLI của chính bạn (Claude Code, Codex, hoặc Antigravity) với',
-  'credential của bạn — KomfyEdit không giữ token và không tính credit. Phần cầu nối',
-  'sang CLI chưa được nối; giao diện này đã sẵn sàng cho nó.',
+  'EditPilot runs with your own CLI (Claude Code, Codex, or Antigravity) and',
+  'your own credentials — KailaEdit retains no tokens and charges no credits.',
+  'The CLI bridge is not connected yet; this interface is ready for it.',
 ].join('\n')
 
 /**
@@ -230,8 +230,8 @@ export const notConfiguredBackend: EditPilotBackend = {
 
 /** Suggestion chips for quick editing plans. */
 export const EDIT_PILOT_SUGGESTIONS: string[] = [
-  'Cắt bỏ mọi khoảng lặng dài hơn 2 giây',
-  'Dựng bản thô theo từng cảnh',
-  'Chuẩn hoá âm lượng về -14 LUFS',
-  'Tạo phụ đề cho toàn bộ timeline',
+  'Cut all silences longer than 2 seconds',
+  'Assemble rough cut by scene',
+  'Normalize loudness to -14 LUFS',
+  'Generate subtitles for the entire timeline',
 ]

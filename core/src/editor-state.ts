@@ -7,6 +7,7 @@ import type {
   Timeline,
   TimelineClip,
   Track,
+  BrushMode,
 } from './project-model'
 import type { AssetTranscript } from './transcript-store'
 import {
@@ -128,6 +129,8 @@ export interface EditorUiState {
   cropMode: boolean
   maskMode: boolean
   eyedropperMode: boolean
+  customMatteBrushMode?: BrushMode | null
+  customMatteBrushSize?: number
   /**
    * Why the last edit was refused, or null when nothing was.
    *
@@ -324,6 +327,8 @@ export function createInitialEditorState(
         cropMode: false,
         maskMode: false,
         eyedropperMode: false,
+        customMatteBrushMode: null,
+        customMatteBrushSize: 5,
         lastRejectedEdit: null,
       },
       clipboard: {

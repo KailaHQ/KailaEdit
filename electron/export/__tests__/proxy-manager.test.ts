@@ -6,6 +6,7 @@ import { ProxyManager } from '../proxy-manager'
 import * as eventEmitter from '../../ipc/event-emitter'
 import { selectClipPathFromAssets } from '../../../core/src/editor-selectors'
 import type { Asset, TimelineClip } from '../../../core/src/project-model'
+import { resolveUserDataDir } from '../../../core/src/app-paths'
 
 describe('ProxyManager', () => {
   let tempDir: string
@@ -126,5 +127,13 @@ describe('ProxyManager', () => {
     const exportPath = selectClipPathFromAssets([testAsset], testClip)
     expect(exportPath).toBe('/path/to/original/4k_video.mp4')
     expect(exportPath).not.toBe(testAsset.proxyPath)
+  })
+
+  it('resolves default proxy dir under resolveUserDataDir() when Electron app is not available', () => {
+    const defaultManager = new ProxyManager()
+    const resolvedDir = defaultManager.getProxyDir()
+    const expectedDir = path.join(resolveUserDataDir(), 'proxy-cache')
+    expect(resolvedDir).toBe(expectedDir)
+    expect(fs.existsSync(resolvedDir)).toBe(true)
   })
 })

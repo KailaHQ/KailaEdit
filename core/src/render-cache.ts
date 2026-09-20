@@ -1,5 +1,4 @@
-import type { Timeline } from './project-model'
-import { hasKeyframesForProperty } from './keyframes'
+import type { Timeline, TimelineClip } from './project-model'
 
 export interface ComplexSegment {
   id: string
@@ -8,6 +7,14 @@ export interface ComplexSegment {
   duration: number
   reasons: string[]
 }
+
+/**
+ * Longest segment the render cache will take on in one piece.
+ *
+ * Must stay at or below the preview renderer's own ceiling (see startPreviewJob), which
+ * silently clamps anything longer.
+ */
+export const MAX_CACHE_SEGMENT_SECONDS = 30
 
 export interface RawInterval {
   start: number
@@ -57,27 +64,17 @@ export function findComplexSegments(timeline: Timeline): ComplexSegment[] {
     }
   }
 
-  // 2. Heavy individual clip features (mask, chromakey, blendMode, adjustment)
+  // 2. Heavy compositing features (adjustment layers, non-normal blend modes)
+  // Single-clip effects (stroke, speed, auto-matte, chroma key) are rendered 100% in-memory
+  // in realtime via WebGL and WebCodecs, without requiring slow and wasteful background video bakes.
   for (const clip of clips) {
     const start = clip.startTime
     const end = clip.startTime + clip.duration
     if (clip.type === 'adjustment') {
       rawIntervals.push({ start, end, reason: 'adjustment' })
     }
-    if (clip.mask?.enabled) {
-      rawIntervals.push({ start, end, reason: 'mask' })
-    }
-    if (clip.chromaKey?.enabled) {
-      rawIntervals.push({ start, end, reason: 'chromakey' })
-    }
     if (clip.blendMode && clip.blendMode !== 'normal') {
       rawIntervals.push({ start, end, reason: 'blendmode' })
-    }
-    if (typeof clip.speed === 'number' && (clip.speed > 1.25 || clip.speed < 0.8)) {
-      rawIntervals.push({ start, end, reason: 'speed' })
-    }
-    if (hasKeyframesForProperty(clip, 'speed')) {
-      rawIntervals.push({ start, end, reason: 'speed_ramp' })
     }
   }
 
@@ -124,13 +121,29 @@ export function findComplexSegments(timeline: Timeline): ComplexSegment[] {
     }
   }
 
-  // Filter out micro-segments (< 0.25s) and format output
+  // Filter out micro-segments (< 0.25s), split what is too long to cache, format output
   const segments: ComplexSegment[] = []
   for (const m of merged) {
-    const start = Number(m.start.toFixed(3))
-    const end = Number(m.end.toFixed(3))
-    const duration = Number((end - start).toFixed(3))
-    if (duration >= 0.25) {
+    const mergedStart = Number(m.start.toFixed(3))
+    const mergedEnd = Number(m.end.toFixed(3))
+    const mergedDuration = mergedEnd - mergedStart
+    if (mergedDuration < 0.25) continue
+
+    // A segment is cached by rendering it, and that renderer will not produce more than
+    // MAX_CACHE_SEGMENT_SECONDS in one pass. A longer segment used to be handed over
+    // whole, come back truncated, and still be marked ready for its full span — so the
+    // preview played the cache past the end of the file and froze on the last frame.
+    // Splitting here keeps every segment inside what can actually be rendered, and has
+    // the side benefit that editing one part of a long overlap only invalidates its own
+    // chunk.
+    const parts = Math.max(1, Math.ceil(mergedDuration / MAX_CACHE_SEGMENT_SECONDS))
+    const partDuration = mergedDuration / parts
+
+    for (let i = 0; i < parts; i++) {
+      const start = Number((mergedStart + i * partDuration).toFixed(3))
+      const end = Number((i === parts - 1 ? mergedEnd : mergedStart + (i + 1) * partDuration).toFixed(3))
+      const duration = Number((end - start).toFixed(3))
+      if (duration < 0.25) continue
       segments.push({
         id: `seg_${start.toFixed(2)}_${end.toFixed(2)}`,
         startTime: start,
@@ -142,6 +155,27 @@ export function findComplexSegments(timeline: Timeline): ComplexSegment[] {
   }
 
   return segments
+}
+
+/**
+ * The part of a clip's auto matte that changes the picture.
+ *
+ * `autoMatte.bake` carries `createdAt: Date.now()` and a frame count, neither of which
+ * the rendered frame depends on. Hashing the whole object meant that finishing a bake —
+ * even one that produced a byte-identical matte — changed every segment hash that clip
+ * appeared in, threw away the cached segments, and started the renders again. The bake's
+ * fingerprint is kept, because a *different* matte really is a different picture.
+ */
+function stableAutoMatte(autoMatte: TimelineClip['autoMatte']): unknown {
+  if (!autoMatte) return undefined
+  return {
+    enabled: autoMatte.enabled,
+    model: autoMatte.model,
+    quality: autoMatte.quality,
+    featherEdge: autoMatte.featherEdge,
+    cleanEdge: autoMatte.cleanEdge,
+    bakeFingerprint: autoMatte.bake?.fingerprint ?? null,
+  }
 }
 
 /**
@@ -183,6 +217,25 @@ export function computeSegmentContentHash(
       filter: c.filter,
       mask: c.mask,
       chromaKey: c.chromaKey,
+      autoMatte: stableAutoMatte(c.autoMatte),
+      customMatte: c.customMatte ? {
+        enabled: c.customMatte.enabled,
+        strokesCount: c.customMatte.strokes?.length ?? 0,
+        appliedHash: c.customMatte.appliedHash ?? null,
+      } : null,
+      stroke: c.stroke ? {
+        enabled: c.stroke.enabled,
+        style: c.stroke.style,
+        width: c.stroke.width,
+        color: c.stroke.color,
+        opacity: c.stroke.opacity,
+        offsetX: c.stroke.offsetX,
+        offsetY: c.stroke.offsetY,
+        glow: c.stroke.glow,
+        roughness: c.stroke.roughness,
+        gap: c.stroke.gap,
+        seed: c.stroke.seed,
+      } : null,
       blendMode: c.blendMode,
       keyframes: c.keyframes,
       textStyle: c.textStyle,

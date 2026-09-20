@@ -1,6 +1,6 @@
 # KailaEdit
 
-KailaEdit is an open-source desktop video editor. It runs fully offline — no account, no API key, no GPU, no network calls. Import your media, cut it on a multi-track timeline, and export with the bundled ffmpeg.
+KailaEdit is an open-source desktop video editor. It runs fully offline by default — no mandatory account, no telemetry, no bundled remote backend. Core editing, timeline manipulation, auto background removal with local ONNX models, and export with bundled ffmpeg run completely on-device. Optional external services (speech recognition via OpenAI Whisper or self-hosted Whisper, highlight analysis via OpenAI LLM, and local AI CLI copilots via CoEdit MCP) are disabled by default and only connect when explicitly configured by the user.
 
 <p align="center">
   <img src="images/video-editor.png" alt="Video Editor" width="70%">

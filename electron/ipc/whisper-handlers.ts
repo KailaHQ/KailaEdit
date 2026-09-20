@@ -39,6 +39,28 @@ export function registerWhisperHandlers(): void {
     }
   })
 
+  handle('llmTestConnection', async ({ endpoint, apiKey, model }) => {
+    return whisperService.testLlmConnection(endpoint, apiKey, model)
+  })
+
+  handle('llmSaveSecureKey', async ({ apiKey }) => {
+    return whisperService.saveSecureLlmApiKey(apiKey)
+  })
+
+  handle('llmGetSecureKey', async () => {
+    const res = whisperService.getStoredLlmApiKey()
+    const masked = res.apiKey
+      ? res.apiKey.length > 8
+        ? `${res.apiKey.slice(0, 3)}...${res.apiKey.slice(-4)}`
+        : '••••••••'
+      : ''
+    return {
+      hasKey: res.hasKey,
+      maskedKey: masked,
+      isEncrypted: res.isEncrypted,
+    }
+  })
+
   handle('whisperTranscribe', async (params) => {
     const normalizedPath = validatePath(params.filePath, getAllowedRoots())
 
@@ -71,15 +93,9 @@ export function registerWhisperHandlers(): void {
   })
 
   /**
-   * Picking highlights needs a model, not a transcription service — and the
-   * only model here is the CLI the user configured in EditPilot.
-   *
-   * There is deliberately no fallback. An OpenAI path used to catch everything
-   * this one turns down, which meant a missing CLI, a broken CLI and an
-   * unreadable answer all ended the same way: a second provider quietly billed
-   * a second key, and nobody was ever told the CLI had not been used. Saying
-   * why, once, is worth more than an answer from somewhere the user did not
-   * choose.
+   * Picking highlights needs a model. If the user configured an EditPilot CLI,
+   * it runs first; otherwise (or if the CLI is absent/fails), it uses the LLM endpoint
+   * configured under Settings > AI Analysis.
    */
   handle('whisperExtractHighlights', async (params) => {
     if (!params.transcriptText.trim()) {
@@ -91,21 +107,21 @@ export function registerWhisperHandlers(): void {
       params.maxItems ?? 4,
     )}`
 
-    const cli = await runOneShot({ prompt })
-    if (!cli.ok) {
-      return cli.reason === 'no-agent'
-        ? { success: false, error: 'NO_CLI' }
-        : { success: false, error: `CLI_FAILED: ${cli.agentLabel} — ${cli.detail}` }
+    try {
+      const cli = await runOneShot({ prompt })
+      if (cli.ok) {
+        const highlights = parseHighlightResponse(cli.text)
+        if (highlights.length > 0) {
+          logger.info(`[whisper] Highlight qua ${cli.agentLabel}: ${highlights.length} đoạn`)
+          return { success: true, highlights }
+        }
+        logger.warn(`[whisper] ${cli.agentLabel} không trả về JSON đọc được; chuyển sang LLM endpoint`)
+      }
+    } catch (err: any) {
+      logger.warn(`[whisper] Hỏi CLI thất bại (${err?.message}); chuyển sang LLM endpoint`)
     }
 
-    const highlights = parseHighlightResponse(cli.text)
-    if (highlights.length === 0) {
-      logger.warn(`[whisper] ${cli.agentLabel} không trả về JSON đọc được`)
-      return { success: false, error: `CLI_FAILED: ${cli.agentLabel}` }
-    }
-
-    logger.info(`[whisper] Highlight qua ${cli.agentLabel}: ${highlights.length} đoạn`)
-    return { success: true, highlights }
+    return whisperService.analyzeHighlightsWithLlm(params)
   })
 
   /**

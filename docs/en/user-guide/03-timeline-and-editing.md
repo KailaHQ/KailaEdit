@@ -72,7 +72,7 @@ When blank gaps appear between clips on the timeline, KailaEdit provides immedia
 
 ---
 
-## 💎 Motion & Parameter Keyframing
+## 🔷 Motion & Parameter Keyframing
 
 KailaEdit features an intuitive **Keyframe Animation Engine** allowing smooth parameter interpolation across clips over time:
 

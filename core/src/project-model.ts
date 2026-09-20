@@ -219,7 +219,7 @@ export const DEFAULT_LETTERBOX = letterboxSettingsSchema.parse({
 
 /**
  * @deprecated Legacy effect-level mask schema. Retained for backward-compatibility with older project files.
- * Real clip-level masking is scheduled for KE-501.
+ * Real clip-level masking was implemented in KE-501 (see clip.mask).
  */
 export const effectMaskSchema = z.object({
   enabled: z.boolean(),
@@ -281,6 +281,8 @@ export const chromaKeySchema = z.object({
   similarity: z.number().min(0).max(100).default(30), // threshold/tolerance %
   smoothness: z.number().min(0).max(100).default(10), // feather/softness %
   spill: z.number().min(0).max(100).default(10), // spill suppression %
+  featherEdge: z.number().min(0).max(100).default(0).optional(), // gblur on alpha %
+  cleanEdge: z.number().min(0).max(100).default(0).optional(), // erosion on alpha %
 })
 
 export type ChromaKey = z.infer<typeof chromaKeySchema>
@@ -291,6 +293,146 @@ export const DEFAULT_CHROMA_KEY: ChromaKey = {
   similarity: 30,
   smoothness: 10,
   spill: 10,
+  featherEdge: 0,
+  cleanEdge: 0,
+}
+
+export const autoMatteModelValues = ['rvm-mobilenetv3', 'modnet'] as const
+export type AutoMatteModel = (typeof autoMatteModelValues)[number]
+
+export const autoMatteQualityValues = ['draft', 'standard', 'high'] as const
+export type AutoMatteQuality = (typeof autoMatteQualityValues)[number]
+
+/**
+ * Which processor runs the matting model.
+ *
+ * 'auto' takes the GPU when this machine has a usable one and quietly falls back to the
+ * CPU otherwise. The explicit choices exist because "quietly" is not always what people
+ * want: 'gpu' surfaces an error instead of silently running slow, and 'cpu' is the way out
+ * when a driver misbehaves.
+ *
+ * This is a machine preference, not a property of the edit, so it lives in app settings
+ * and is passed in per call — it is deliberately NOT part of the bake fingerprint, since
+ * the same matte should not be re-baked just because it ran somewhere else.
+ */
+export const autoMatteDeviceValues = ['auto', 'gpu', 'cpu'] as const
+export const autoMatteDeviceSchema = z.enum(autoMatteDeviceValues)
+export type AutoMatteDevice = (typeof autoMatteDeviceValues)[number]
+
+export const autoMatteBakeSchema = z.object({
+  path: z.string(),
+  fingerprint: z.string(),
+  frameCount: z.number(),
+  createdAt: z.number(),
+  /**
+   * The SOURCE range this file actually covers, and how it was made.
+   *
+   * Recorded because a bake no longer has to line up with the clip that asked for it: one
+   * bake serves every trim that falls inside it, and the consumer seeks by
+   * `autoMatteBakeOffset`. Optional so older projects still load — a bake without a range
+   * says nothing about what it covers, so it is treated as invalid and re-baked once.
+   */
+  sourceStart: z.number().optional(),
+  sourceSpan: z.number().optional(),
+  speed: z.number().optional(),
+  reversed: z.boolean().optional(),
+  model: z.string().optional(),
+  quality: z.string().optional(),
+  assetKey: z.string().optional(),
+})
+
+export type AutoMatteBake = z.infer<typeof autoMatteBakeSchema>
+
+export const autoMatteSchema = z.object({
+  enabled: z.boolean().default(true),
+  model: z.enum(autoMatteModelValues).default('rvm-mobilenetv3'),
+  quality: z.enum(autoMatteQualityValues).default('standard'),
+  featherEdge: z.number().min(0).max(100).default(0),
+  cleanEdge: z.number().min(0).max(100).default(0),
+  bake: autoMatteBakeSchema.optional(),
+})
+
+export type AutoMatte = z.infer<typeof autoMatteSchema>
+
+export const DEFAULT_AUTO_MATTE: AutoMatte = {
+  enabled: true,
+  model: 'rvm-mobilenetv3',
+  quality: 'standard',
+  featherEdge: 0,
+  cleanEdge: 0,
+}
+
+export const brushModeValues = ['brush', 'eraser', 'region-brush', 'region-eraser'] as const
+export type BrushMode = (typeof brushModeValues)[number]
+
+export const brushStrokeSchema = z.object({
+  mode: z.enum(brushModeValues),
+  /** Phần trăm cạnh ngắn khung hình — KHÔNG phải pixel */
+  size: z.number().min(0.1).max(50),
+  /** Toạ độ chuẩn hoá 0..1, để đổi khung hình không lệch */
+  points: z.array(z.tuple([z.number(), z.number()])),
+  /** Thời điểm trong clip lúc vẽ — dùng để chốt tiêu chí màu cho cọ lan vùng */
+  paintedAt: z.number().min(0),
+})
+
+export type BrushStroke = z.infer<typeof brushStrokeSchema>
+
+export const customMatteSchema = z.object({
+  enabled: z.boolean().default(true),
+  strokes: z.array(brushStrokeSchema).default([]),
+  /** Băm từ danh sách nét vẽ. Bằng nhau thì không dựng lại. */
+  appliedHash: z.string().optional(),
+  bake: autoMatteBakeSchema.optional(),
+})
+
+export type CustomMatte = z.infer<typeof customMatteSchema>
+
+export const DEFAULT_CUSTOM_MATTE: CustomMatte = {
+  enabled: true,
+  strokes: [],
+}
+
+export const strokeStyleValues = [
+  'none',
+  'solid',
+  'straight',
+  'offset',
+  'dotted',
+  'hand-drawn',
+  'paper',
+  'luminescence',
+] as const
+
+export type StrokeStyle = typeof strokeStyleValues[number]
+
+export const clipStrokeSchema = z.object({
+  enabled: z.boolean().default(true),
+  style: z.enum(strokeStyleValues).default('solid'),
+  color: z.string().default('#FFFFFF'),
+  width: z.number().min(0).max(100).default(12), // phần trăm của cạnh ngắn khung hình
+  opacity: z.number().min(0).max(100).default(100),
+  offsetX: z.number().min(-100).max(100).default(0),
+  offsetY: z.number().min(-100).max(100).default(0),
+  glow: z.number().min(0).max(100).default(50),
+  roughness: z.number().min(0).max(100).default(50),
+  gap: z.number().min(0).max(100).default(50),
+  seed: z.number().int().default(0),
+})
+
+export type ClipStroke = z.infer<typeof clipStrokeSchema>
+
+export const DEFAULT_CLIP_STROKE: ClipStroke = {
+  enabled: true,
+  style: 'solid',
+  color: '#FFFFFF',
+  width: 12,
+  opacity: 100,
+  offsetX: 0,
+  offsetY: 0,
+  glow: 50,
+  roughness: 50,
+  gap: 50,
+  seed: 0,
 }
 
 export const clipFilterSchema = z.object({
@@ -305,7 +447,7 @@ export const clipEffectSchema = z.object({
   type: z.enum(effectTypeValues),
   enabled: z.boolean(),
   params: z.record(z.string(), z.number()),
-  /** @deprecated Legacy effect-level mask. Ignored by renderer & export; clip-level masks will be added in KE-501. */
+  /** @deprecated Legacy effect-level mask. Ignored by renderer & export; clip-level masks were implemented in KE-501 (see clip.mask). */
   mask: effectMaskSchema.optional(),
 })
 
@@ -413,6 +555,11 @@ export const keyframePropertyValues = [
   'speed',
   'filter.intensity',
   'text.progress',
+  'chromaKey.similarity',
+  'chromaKey.smoothness',
+  'chromaKey.spill',
+  'chromaKey.featherEdge',
+  'chromaKey.cleanEdge',
 ] as const
 
 export const keyframePropertySchema = z.enum(keyframePropertyValues)
@@ -481,6 +628,9 @@ const baseTimelineClipSchema = z.object({
   keyframes: z.array(keyframeTrackSchema).optional(),
   mask: clipMaskSchema.optional(),
   chromaKey: chromaKeySchema.optional(),
+  autoMatte: autoMatteSchema.optional(),
+  customMatte: customMatteSchema.optional(),
+  stroke: clipStrokeSchema.optional(),
   blendMode: clipBlendModeSchema.default('normal').optional(),
   stickerId: z.string().optional(),
 })
@@ -531,6 +681,44 @@ export const timelineMarkerSchema = z.object({
 
 export type TimelineMarker = z.infer<typeof timelineMarkerSchema>
 
+export const timelineCoverTextItemSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  fontFamily: z.string().optional(),
+  fontSize: z.number().optional(),
+  fontWeight: z.string().optional(),
+  fontStyle: z.string().optional(),
+  color: z.string().optional(),
+  backgroundColor: z.string().optional(),
+  textAlign: z.enum(['left', 'center', 'right']).optional(),
+  x: z.number().default(50), // percent 0-100
+  y: z.number().default(50), // percent 0-100
+  rotation: z.number().optional(),
+  scale: z.number().optional(),
+  stylePreset: z.string().optional(),
+  letterSpacing: z.number().optional(),
+  lineHeight: z.number().optional(),
+  textTransform: z.enum(['none', 'uppercase', 'lowercase', 'capitalize']).optional(),
+  shadow: z.string().optional(),
+  stroke: z.string().optional(),
+  strokeWidth: z.number().optional(),
+})
+
+export type TimelineCoverTextItem = z.infer<typeof timelineCoverTextItemSchema>
+
+export const timelineCoverSchema = z.object({
+  type: z.enum(['video_frame', 'custom_image']).default('video_frame'),
+  time: z.number().default(0), // seconds on timeline
+  customImagePath: z.string().optional(),
+  templateId: z.string().optional(),
+  texts: z.array(timelineCoverTextItemSchema).default([]),
+  elements: z.array(z.any()).optional(),
+  thumbnailDataUrl: z.string().optional(),
+  updatedAt: z.number().optional(),
+})
+
+export type TimelineCover = z.infer<typeof timelineCoverSchema>
+
 export const timelineSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -550,6 +738,7 @@ export const timelineSchema = z.object({
   background: timelineBackgroundSchema.optional(),
   variantTag: z.string().optional(),
   description: z.string().optional(),
+  cover: timelineCoverSchema.optional(),
 })
 
 export const assetBinsSchema = z.record(z.string(), z.string())

@@ -4,12 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working in this
 
 ## Project Overview
 
-KailaEdit is an offline Electron desktop video editor. Two layers, no backend server:
+KailaEdit is an offline-first Electron desktop video editor. Two layers, no proprietary cloud backend:
 
 - **Frontend** (`frontend/`): React 18 + TypeScript + Tailwind CSS renderer
-- **Electron** (`electron/`): Main process managing app lifecycle, IPC, file/media handling, and ffmpeg export
+- **Electron** (`electron/`): Main process managing app lifecycle, IPC, file/media handling, ONNX runtime, and ffmpeg export
 
-There is no Python, no network API, and no AI generation in this app. If you find code reaching for a backend URL, an API key, or a model, it is a leftover from the upstream LTX Desktop project and should be removed.
+### Network Boundaries & AI Capabilities
+
+1. **No Proprietary Cloud Backend**: KailaEdit has no remote server, accounts, or telemetry.
+2. **True LTX Desktop Leftovers (DELETE if found)**: Dead endpoints calling upstream LTX servers, cloud image/video generation backends, or legacy auth/session tokens from the upstream project.
+3. **Legitimate Network & AI Integrations (DO NOT DELETE)**:
+   - **Speech-to-Text (`electron/whisper/whisper-service.ts`)**: User-configured HTTP endpoint (OpenAI Audio API or local/self-hosted `faster-whisper-server`). Disabled by default.
+   - **Auto Highlights (`core/src/auto-highlight.ts`)**: User-configured OpenAI API key and `gpt-4o-mini` endpoint for transcript analysis. Disabled by default.
+   - **CoEdit / Agent runner (`electron/editpilot/agent-runner.ts`)**: Runs user-installed local CLI agents (Claude Code, Codex, Antigravity) communicating strictly via MCP JSON-RPC over stdio.
+   - **Auto Matte / Background Removal (`electron/matte/`, ONNX runtime)**: 100% on-device execution using bundled ONNX models (`rvm-mobilenetv3.onnx`, `modnet.onnx`). Zero network calls.
+4. **Enforced Network Constraints**:
+   - Every network call MUST originate from the Electron main process (renderer is blocked by strict CSP).
+   - Network features are strictly opt-in and disabled by default.
+   - No hardcoded endpoints outside default schema values in settings.
 
 ## Common Commands
 

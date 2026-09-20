@@ -12,6 +12,33 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-20
+
+### Added
+- **Custom Cover Templates.** Create and save your own cover design templates in Cover Studio.
+  Save any layout as a reusable template, update existing custom templates with one click,
+  or "Save as" a new template. Custom templates are saved to your local library and can be applied
+  seamlessly across any video project.
+- **High-Fidelity AI Background Removal.** A newly rebuilt on-device portrait cutout engine
+  running directly with hardware acceleration (DirectML/CPU). Cuts out subjects in under a second
+  with full hair preservation, clean soft edges, and zero spatial offset. 100% offline with zero cloud calls.
+
+### Changed
+- **Cleaner Media Library filenames.** File labels now sit neatly below thumbnails in a single line,
+  with smart truncation preserving the file extension and trailing characters (e.g. `my-video-...4k.mp4`)
+  so long filenames no longer clutter the media bin.
+- **Streamlined Cover Studio toolbar.** Replaced the redundant Animate tab with Templates, and streamlined
+  cover template operations with dedicated "Save Template", "Update Template", and "Save as Template" buttons.
+
+### Fixed
+- **Cover background removal cutting off hair and misaligning edges.** Fixed an issue where background
+  removal in Cover Studio was downgraded to low resolution, cutting hair into a dome shape and leaving
+  patches of wall or slicing into cheeks. Background removal now outputs at full source resolution with perfect alignment.
+- **Cover template text input closing unexpectedly.** Fixed a bug where typing a template name inside
+  the save modal would prematurely dismiss the dialog.
+- **Cover changes not persisting on save.** Fixed an issue where applying a template to a cover and saving
+  did not properly record the updated cover elements into the timeline.
+
 ## [1.0.5] - 2026-09-16
 
 ### Changed

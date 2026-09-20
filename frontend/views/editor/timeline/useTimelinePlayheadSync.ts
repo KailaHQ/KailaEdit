@@ -13,6 +13,7 @@ export interface UseTimelinePlayheadSyncOptions {
   fitToViewRef: React.MutableRefObject<() => void>
   trackContainerRef: React.RefObject<HTMLDivElement>
   trackHeadersRef: React.RefObject<HTMLDivElement>
+  coverGutterRef?: React.RefObject<HTMLDivElement>
   rulerScrollRef: React.RefObject<HTMLDivElement>
   playheadRulerRef: React.RefObject<HTMLDivElement>
   playheadOverlayRef: React.RefObject<HTMLDivElement>
@@ -36,6 +37,7 @@ export function useTimelinePlayheadSync(options: UseTimelinePlayheadSyncOptions)
     fitToViewRef,
     trackContainerRef,
     trackHeadersRef,
+    coverGutterRef,
     rulerScrollRef,
     playheadRulerRef,
     playheadOverlayRef,
@@ -52,22 +54,24 @@ export function useTimelinePlayheadSync(options: UseTimelinePlayheadSyncOptions)
   const syncPlayheadPosition = useCallback((time: number) => {
     const container = trackContainerRef.current
     const scrollLeft = container?.scrollLeft || 0
+    const clientWidth = container?.clientWidth || 0
     const leftPx = time * pixelsPerSecond
 
     if (playheadRulerRef.current) {
       playheadRulerRef.current.style.left = `${leftPx}px`
     }
     if (playheadOverlayRef.current) {
-      playheadOverlayRef.current.style.left = `${leftPx - scrollLeft}px`
+      const visibleX = leftPx - scrollLeft
+      // Strictly clamp overlay playhead within visible tracks container bounds
+      const clampedX = Math.max(0, Math.min(clientWidth, visibleX))
+      playheadOverlayRef.current.style.left = `${clampedX}px`
+      playheadOverlayRef.current.style.display = (visibleX < -2 || visibleX > clientWidth + 2) ? 'none' : ''
     }
   }, [pixelsPerSecond, playheadOverlayRef, playheadRulerRef, trackContainerRef])
 
   const syncTimelineTimecode = useCallback((time: number) => {
-    const el = timelineTimecodeRef.current
-    if (!el) return
-    const nextText = formatTime(time, fps, timecodeFormat)
-    if (el.textContent !== nextText) {
-      el.textContent = nextText
+    if (timelineTimecodeRef.current) {
+      timelineTimecodeRef.current.textContent = formatTime(time, fps, timecodeFormat)
     }
   }, [fps, timecodeFormat, timelineTimecodeRef])
 
@@ -82,13 +86,16 @@ export function useTimelinePlayheadSync(options: UseTimelinePlayheadSyncOptions)
     const matchScrollbarGutter = () => {
       const scrollbarHeight = scroller.offsetHeight - scroller.clientHeight
       headers.style.paddingBottom = scrollbarHeight > 0 ? `${scrollbarHeight}px` : ''
+      if (coverGutterRef?.current) {
+        coverGutterRef.current.style.paddingBottom = scrollbarHeight > 0 ? `${scrollbarHeight}px` : ''
+      }
     }
 
     matchScrollbarGutter()
     const observer = new ResizeObserver(matchScrollbarGutter)
     observer.observe(scroller)
     return () => observer.disconnect()
-  }, [totalDuration, pixelsPerSecond, trackContainerRef, trackHeadersRef])
+  }, [totalDuration, pixelsPerSecond, trackContainerRef, trackHeadersRef, coverGutterRef])
 
   const syncTimelineScrollMirrors = useCallback(() => {
     const container = trackContainerRef.current
@@ -97,10 +104,13 @@ export function useTimelinePlayheadSync(options: UseTimelinePlayheadSyncOptions)
     if (trackHeadersRef.current) {
       trackHeadersRef.current.scrollTop = container.scrollTop
     }
+    if (coverGutterRef?.current) {
+      coverGutterRef.current.scrollTop = container.scrollTop
+    }
     if (rulerScrollRef.current) {
       rulerScrollRef.current.scrollLeft = container.scrollLeft
     }
-  }, [rulerScrollRef, trackContainerRef, trackHeadersRef])
+  }, [rulerScrollRef, trackContainerRef, trackHeadersRef, coverGutterRef])
 
   const centrePlayheadInView = useCallback((time: number) => {
     const container = trackContainerRef.current

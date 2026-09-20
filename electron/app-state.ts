@@ -23,8 +23,10 @@ export interface AppState {
   [key: string]: unknown
 }
 
+import { resolveUserDataDir } from '../core/src/app-paths'
+
 export function getAppStatePath(): string {
-  const userData = appInstance?.getPath ? appInstance.getPath('userData') : os.tmpdir()
+  const userData = appInstance?.getPath ? appInstance.getPath('userData') : resolveUserDataDir()
   return path.join(userData, 'app_state.json')
 }
 

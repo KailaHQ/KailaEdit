@@ -70,7 +70,7 @@ Khi có khoảng trống giữa các clip trên Timeline, bạn có thể tươn
 
 ---
 
-## 💎 Hoạt ảnh chuyển động với Keyframe (Keyframing)
+## 🔷 Hoạt ảnh chuyển động với Keyframe (Keyframing)
 
 KailaEdit hỗ trợ hệ thống **Keyframe chuyên nghiệp** giúp tạo hoạt ảnh chuyển động mượt mà cho bất kỳ thuộc tính nào:
 

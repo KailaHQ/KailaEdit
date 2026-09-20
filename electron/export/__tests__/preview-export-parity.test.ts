@@ -3,6 +3,7 @@ import { buildVideoFilterGraph } from '../video-filter'
 import { buildAudioPcmArgs } from '../audio-mix'
 import type { ExportClip } from '../timeline'
 import { getClipEffectStyles } from '../../../core/src/video-editor-utils'
+import { matteAlphaBand, matteFeatherSigma } from '../../../core/src/matte-edge'
 import {
   sampleClipAt,
   buildKeyframeFfmpegExpression,
@@ -111,6 +112,7 @@ function makePair(overrides: Partial<TimelineClip> = {}): {
     transform: timelineClip.transform,
     colorCorrection: timelineClip.colorCorrection,
     filter: timelineClip.filter,
+    effects: timelineClip.effects,
     keyframes: timelineClip.keyframes,
     transitionIn: timelineClip.transitionIn,
     transitionOut: timelineClip.transitionOut,
@@ -119,6 +121,8 @@ function makePair(overrides: Partial<TimelineClip> = {}): {
     mask: timelineClip.mask,
     chromaKey: timelineClip.chromaKey,
     blendMode: timelineClip.blendMode,
+    autoMatte: timelineClip.autoMatte,
+    stroke: timelineClip.stroke,
   }
 
   return { timelineClip, exportClip }
@@ -515,6 +519,74 @@ describe('KE-206: Preview vs Export Systematic Parity Suite', () => {
       expect(filterScript).toContain('despill=type=blue:mix=0.50')
     })
 
+    it('KE-1407: generates rgba format, erosion, and gblur for chromaKey in export filtergraph', () => {
+      const chromaKey = {
+        enabled: true,
+        color: '#00FF00',
+        similarity: 35,
+        smoothness: 15,
+        spill: 60,
+        featherEdge: 20,
+        cleanEdge: 50,
+      }
+      const pair = makePair({ chromaKey })
+      const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+      expect(filterScript).toContain('format=rgba,colorkey=color=#00FF00:similarity=0.3500:blend=0.1500')
+      expect(filterScript).toContain('despill=type=green:mix=0.60')
+      expect(filterScript).toContain('erosion=threshold0=0:threshold1=0:threshold2=0')
+      expect(filterScript).toContain('gblur=sigma=2.00:planes=8')
+      expect(filterScript).toContain('format=yuva420p')
+    })
+
+    it('KE-1407: WebGL shader math achieves exact parity with FFmpeg colorkey Chebyshev Linf metric', () => {
+      // Compare FFmpeg vf_colorkey.c formula vs WebGL shader formula
+      const keyColor = [0, 255, 0]
+      const similarity = 0.35
+      const blend = 0.15
+
+      const ffmpegColorkey = (r: number, g: number, b: number) => {
+        const diff = Math.max(Math.abs(r - keyColor[0]), Math.abs(g - keyColor[1]), Math.abs(b - keyColor[2])) / 255.0
+        if (diff > similarity) return 1.0
+        if (blend > 0.0001 && diff > similarity - blend) {
+          return (diff - (similarity - blend)) / blend
+        }
+        return 0.0
+      }
+
+      const webglColorkey = (r: number, g: number, b: number) => {
+        const color = [r / 255.0, g / 255.0, b / 255.0]
+        const u_chroma_color = [keyColor[0] / 255.0, keyColor[1] / 255.0, keyColor[2] / 255.0]
+        const diffVec = [
+          Math.abs(color[0] - u_chroma_color[0]),
+          Math.abs(color[1] - u_chroma_color[1]),
+          Math.abs(color[2] - u_chroma_color[2]),
+        ]
+        const diff = Math.max(diffVec[0], Math.max(diffVec[1], diffVec[2]))
+        const sim = similarity
+        const blendVal = Math.max(0.0001, blend)
+        if (diff > sim) return 1.0
+        if (diff > sim - blendVal) return (diff - (sim - blendVal)) / blendVal
+        return 0.0
+      }
+
+      const testPixels = [
+        [0, 255, 0],
+        [0, 240, 0],
+        [20, 200, 30],
+        [50, 180, 50],
+        [255, 0, 0],
+        [0, 0, 255],
+        [100, 100, 100],
+        [10, 215, 15],
+      ]
+
+      for (const [r, g, b] of testPixels) {
+        const ffAlpha = ffmpegColorkey(r, g, b)
+        const glAlpha = webglColorkey(r, g, b)
+        expect(Math.abs(ffAlpha - glAlpha)).toBeLessThan(1e-5)
+      }
+    })
+
     it('KE-503: maintains parity between CSS mix-blend-mode and FFmpeg blend=all_mode', () => {
       const blendModes: Array<{
         mode: 'multiply' | 'screen' | 'overlay' | 'add' | 'difference'
@@ -544,7 +616,375 @@ describe('KE-206: Preview vs Export Systematic Parity Suite', () => {
       const normalExport = buildVideoFilterGraph([normalPair.exportClip], canvasOpts)
       expect(normalExport.filterScript).not.toContain('blend=all_mode=')
     })
+
+    describe('KE-1403: Auto Matte Export and Filter Order Parity', () => {
+      it('generates alphamerge with baked matte input when autoMatte is enabled', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            cleanEdge: 0,
+            featherEdge: 0,
+            bake: {
+              path: '/cache/matte_clip1.mp4',
+              fingerprint: 'matte_test123',
+              frameCount: 150,
+              createdAt: Date.now(),
+            },
+          },
+        })
+
+        const { inputs, filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+        expect(inputs).toContain('/cache/matte_clip1.mp4')
+        expect(filterScript).toContain('alphamerge')
+
+        // alphamerge must appear after format=yuva420p
+        const yuvaIdx = filterScript.indexOf('format=yuva420p')
+        const alphaMergeIdx = filterScript.indexOf('alphamerge')
+        expect(yuvaIdx).toBeGreaterThan(-1)
+        expect(alphaMergeIdx).toBeGreaterThan(yuvaIdx)
+      })
+
+      /**
+       * This asserted `erosion` until the two sides were reconciled. Erosion is a
+       * morphological shrink — it removes whole pixels from the silhouette, taking thin
+       * detail with them, and no fragment shader can reproduce it, so the preview ran a
+       * `smoothstep` instead and the two never matched. Both are the shared alpha remap
+       * from core now; see the cleanEdge tests further down.
+       */
+      it('no longer erodes the matte for cleanEdge', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            cleanEdge: 50,
+            featherEdge: 0,
+            bake: {
+              path: '/cache/matte_clip1.mp4',
+              fingerprint: 'matte_test123',
+              frameCount: 150,
+              createdAt: Date.now(),
+            },
+          },
+        })
+
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+        expect(filterScript).not.toContain('erosion')
+        expect(filterScript).toContain('lut=y=')
+      })
+
+      it('applies gblur filter when featherEdge > 0', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            cleanEdge: 0,
+            featherEdge: 25,
+            bake: {
+              path: '/cache/matte_clip1.mp4',
+              fingerprint: 'matte_test123',
+              frameCount: 150,
+              createdAt: Date.now(),
+            },
+          },
+        })
+
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+        expect(filterScript).toContain('gblur=sigma=2.50')
+      })
+
+      it('strictly maintains order: yuva420p -> crop -> alphamerge -> colorkey -> geq mask', () => {
+        const pair = makePair({
+          transform: {
+            scale: 100,
+            positionX: 0,
+            positionY: 0,
+            rotation: 0,
+            cropTop: 5,
+            cropBottom: 5,
+            cropLeft: 5,
+            cropRight: 5,
+          },
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            cleanEdge: 25,
+            featherEdge: 10,
+            bake: {
+              path: '/cache/matte_clip1.mp4',
+              fingerprint: 'matte_test123',
+              frameCount: 150,
+              createdAt: Date.now(),
+            },
+          },
+          chromaKey: {
+            enabled: true,
+            color: '#00FF00',
+            similarity: 30,
+            smoothness: 10,
+            spill: 10,
+          },
+          mask: {
+            enabled: true,
+            shape: 'rectangle',
+            x: 50,
+            y: 50,
+            width: 80,
+            height: 80,
+            rotation: 0,
+            feather: 0,
+            invert: false,
+          },
+        })
+
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        const yuvaIdx = filterScript.indexOf('format=yuva420p')
+        const cropIdx = filterScript.indexOf('crop=')
+        const alphaMergeIdx = filterScript.indexOf('alphamerge')
+        const chromaIdx = filterScript.indexOf('colorkey=')
+        const maskIdx = filterScript.indexOf('geq=')
+
+        expect(yuvaIdx).toBeGreaterThan(-1)
+        expect(cropIdx).toBeGreaterThan(yuvaIdx)
+        expect(alphaMergeIdx).toBeGreaterThan(cropIdx)
+        expect(chromaIdx).toBeGreaterThan(alphaMergeIdx)
+        expect(maskIdx).toBeGreaterThan(chromaIdx)
+      })
+
+      it('ensures ExportClip maintains key visual properties matching TimelineClip schema', () => {
+        const requiredVisualProps: Array<keyof ExportClip> = [
+          'autoMatte',
+          'stroke',
+          'chromaKey',
+          'mask',
+          'blendMode',
+          'filter',
+          'effects',
+          'transform',
+          'colorCorrection',
+          'keyframes',
+        ]
+
+        const sampleClip = makePair({}).exportClip
+        for (const prop of requiredVisualProps) {
+          expect(prop in sampleClip).toBe(true)
+        }
+      })
+    })
+
+    describe('KE-1404: Stroke Layer Parity', () => {
+      it('generates no stroke inputs or overlays when stroke is disabled or style is none', () => {
+        const pair = makePair({
+          stroke: {
+            enabled: false,
+            style: 'solid',
+            color: '#FFFFFF',
+            width: 12,
+            opacity: 100,
+            offsetX: 0,
+            offsetY: 0,
+            glow: 50,
+            roughness: 50,
+            gap: 50,
+            seed: 0,
+          },
+        })
+        const { inputs, filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+        expect(inputs.some((arg) => arg.includes('stroke'))).toBe(false)
+        expect(filterScript).not.toContain('strk')
+      })
+
+      it('injects stroke input and overlays subject on top of stroke', () => {
+        const pair = makePair({
+          stroke: {
+            enabled: true,
+            style: 'solid',
+            color: '#FF0000',
+            width: 12,
+            opacity: 100,
+            offsetX: 0,
+            offsetY: 0,
+            glow: 50,
+            roughness: 50,
+            gap: 50,
+            seed: 0,
+          },
+        })
+        pair.exportClip.strokeBakePath = '/cache/stroke_clip1.mov'
+
+        const { inputs, filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        expect(inputs).toContain('/cache/stroke_clip1.mov')
+        expect(filterScript).toContain('overlay=shortest=1:format=auto')
+        // Stroke layer is input 0 to overlay, subject is input 1 to overlay
+        expect(filterScript).toMatch(/\[strk0_0\]\[cpre_strk0_0\]overlay=shortest=1:format=auto/)
+      })
+
+      /**
+       * The stroke bake covers the whole matte, not this clip's window of it — that is
+       * what lets every render-cache segment of a clip share one bake instead of paying
+       * for its own ~80-second render. The price is that the stroke no longer starts on
+       * the clip's first frame, so it has to be seeked exactly like the matte. Get this
+       * wrong and the outline sits seconds away from the subject in the exported file,
+       * with nothing to flag it.
+       */
+      it('seeks the stroke bake by the same offset as the matte', () => {
+        const pair = makePair({
+          trimStart: 30,
+          duration: 10,
+          stroke: {
+            enabled: true, style: 'solid', color: '#FF0000', width: 12, opacity: 100,
+            offsetX: 0, offsetY: 0, glow: 50, roughness: 50, gap: 50, seed: 0,
+          },
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+            // Covers 20s–60s of the source, so a clip trimmed to 30s starts 10s in.
+            bake: {
+              path: '/cache/matte.mp4', fingerprint: 'matte_x_20000_40000', frameCount: 1200,
+              createdAt: 0, sourceStart: 20, sourceSpan: 40,
+            },
+          },
+        })
+        pair.exportClip.strokeBakePath = '/cache/stroke_clip1.mov'
+
+        const { inputs } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        /** The `-ss` value ffmpeg is given for an input, or null if it is not seeked. */
+        const seekFor = (file: string): string | null => {
+          const i = inputs.indexOf(file)
+          expect(inputs[i - 1]).toBe('-i')
+          return inputs[i - 3] === '-ss' ? inputs[i - 2] : null
+        }
+
+        expect(seekFor('/cache/stroke_clip1.mov')).toBe(seekFor('/cache/matte.mp4'))
+        expect(Number(seekFor('/cache/matte.mp4'))).toBeCloseTo(10, 4)
+      })
+
+      /**
+       * `cleanEdge` was `erosion` repeated N times here while the preview ran a
+       * `smoothstep` on alpha. Erosion eats whole pixels off the silhouette — it takes
+       * fingers and hair with them — and a fragment shader cannot mirror it, so the two
+       * could never agree. Both sides read the band out of core now.
+       */
+      it('applies cleanEdge as the shared alpha remap, not as erosion', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true, model: 'rvm-mobilenetv3', quality: 'standard',
+            featherEdge: 0, cleanEdge: 50,
+            bake: { path: '/cache/matte.mp4', fingerprint: 'm', frameCount: 1, createdAt: 0, sourceStart: 0, sourceSpan: 10 },
+          },
+        })
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        expect(filterScript).not.toContain('erosion')
+        const { lo, hi } = matteAlphaBand(50)
+        expect(filterScript).toContain(`lut=y='clip((val-${(lo * 255).toFixed(3)})`)
+        expect(filterScript).toContain((255 / ((hi - lo) * 255)).toFixed(6))
+      })
+
+      it('leaves the matte untouched when both edge controls are 0', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true, model: 'rvm-mobilenetv3', quality: 'standard',
+            featherEdge: 0, cleanEdge: 0,
+            bake: { path: '/cache/matte.mp4', fingerprint: 'm', frameCount: 1, createdAt: 0, sourceStart: 0, sourceSpan: 10 },
+          },
+        })
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        expect(filterScript).not.toContain('erosion')
+        expect(filterScript).not.toContain('lut=y=')
+        expect(filterScript).not.toContain('gblur')
+      })
+
+      it('applies featherEdge as a blur on the sigma core defines', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true, model: 'rvm-mobilenetv3', quality: 'standard',
+            featherEdge: 50, cleanEdge: 0,
+            bake: { path: '/cache/matte.mp4', fingerprint: 'm', frameCount: 1, createdAt: 0, sourceStart: 0, sourceSpan: 10 },
+          },
+        })
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        expect(filterScript).toContain(`gblur=sigma=${matteFeatherSigma(50).toFixed(2)}`)
+      })
+
+      it('ensures correct filter ordering with stroke, alphamerge, colorkey, and mask', () => {
+        const pair = makePair({
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+            bake: {
+              path: '/cache/matte_clip1.mp4',
+              fingerprint: 'matte_test123',
+              frameCount: 150,
+              createdAt: Date.now(),
+            },
+          },
+          chromaKey: {
+            enabled: true,
+            color: '#00FF00',
+            similarity: 30,
+            smoothness: 10,
+            spill: 10,
+          },
+          mask: {
+            enabled: true,
+            shape: 'rectangle',
+            x: 50,
+            y: 50,
+            width: 80,
+            height: 80,
+            rotation: 0,
+            feather: 0,
+            invert: false,
+          },
+          stroke: {
+            enabled: true,
+            style: 'solid',
+            color: '#FFFFFF',
+            width: 10,
+            opacity: 100,
+            offsetX: 0,
+            offsetY: 0,
+            glow: 50,
+            roughness: 50,
+            gap: 50,
+            seed: 0,
+          },
+        })
+        pair.exportClip.strokeBakePath = '/cache/stroke_clip1.mov'
+
+        const { filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+
+        const yuvaIdx = filterScript.indexOf('format=yuva420p')
+        const alphaMergeIdx = filterScript.indexOf('alphamerge')
+        const chromaIdx = filterScript.indexOf('colorkey=')
+        const maskIdx = filterScript.indexOf('geq=')
+        const strokeOverlayIdx = filterScript.indexOf('overlay=shortest=1:format=auto')
+
+        expect(yuvaIdx).toBeGreaterThan(-1)
+        expect(alphaMergeIdx).toBeGreaterThan(yuvaIdx)
+        expect(chromaIdx).toBeGreaterThan(alphaMergeIdx)
+        expect(maskIdx).toBeGreaterThan(chromaIdx)
+        expect(strokeOverlayIdx).toBeGreaterThan(maskIdx)
+      })
+    })
   })
 })
+
 
 

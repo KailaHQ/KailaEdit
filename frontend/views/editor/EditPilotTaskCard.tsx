@@ -48,7 +48,7 @@ export function EditPilotTaskCard({ tasks, running, awaiting }: EditPilotTaskCar
 
   const completed = countCompletedTasks(tasks)
   const finished = !running && completed === tasks.length
-  // Stopped or failed part-way: saying "đang xử lý" next to a frozen spinner
+  // Stopped or failed part-way: saying "processing" next to a frozen spinner
   // would be a lie, so the card admits the run ended short.
   const halted = !running && !finished
   const Chevron = expanded ? ChevronUp : ChevronDown

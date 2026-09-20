@@ -16,6 +16,7 @@ import { registerWhisperHandlers } from './ipc/whisper-handlers'
 import { registerTemplateHandlers } from './ipc/template-handlers'
 import { logger } from './logger'
 import { initSessionLog } from './logging-management'
+import { renderCacheManager } from './export/render-cache-manager'
 import { checkForUpdatesOnStartup } from './updater'
 import { createWindow, getMainWindow } from './window'
 
@@ -42,6 +43,11 @@ if (!gotLock) {
 
   initSessionLog()
   logAppVersion()
+
+  // Bring the render cache up to the current format before anything can ask it for a
+  // segment or write one. It is lazy otherwise, and a directory migration that runs
+  // halfway through a session could drop a file the session itself had just produced.
+  renderCacheManager.init()
 
   registerAppHandlers()
   registerFileHandlers()

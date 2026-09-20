@@ -9,7 +9,7 @@ import {
   editPilotCommandOverridesSchema,
   editPilotConfigSchema,
 } from '../core/src/editpilot-agents'
-import { keyframeTrackSchema, clipMaskSchema, chromaKeySchema } from '../core/src/project-model'
+import { keyframeTrackSchema, clipMaskSchema, chromaKeySchema, autoMatteSchema, clipStrokeSchema, autoMatteModelValues, autoMatteQualityValues, autoMatteDeviceSchema } from '../core/src/project-model'
 import { WHISPER_PROGRESS_STEPS } from '../core/src/whisper-types'
 import { komfyTemplateSchema } from '../core/src/template-model'
 
@@ -134,6 +134,10 @@ const exportClip = z.object({
   keyframes: z.array(keyframeTrackSchema).optional(),
   mask: clipMaskSchema.optional(),
   chromaKey: chromaKeySchema.optional(),
+  autoMatte: autoMatteSchema.optional(),
+  stroke: clipStrokeSchema.optional(),
+  strokeBakePath: z.string().optional(),
+  assetId: z.string().nullable().optional(),
 })
 
 const exportSubtitle = z.object({
@@ -202,10 +206,48 @@ export const whisperTranscriptionResultSchema = z.object({
 
 export type WhisperTranscriptionResultSchema = z.infer<typeof whisperTranscriptionResultSchema>
 
+/** What a finished matte bake produced: the file, and which stretch of source it covers. */
+const matteBakeDescriptorSchema = z.object({
+  path: z.string(),
+  fingerprint: z.string(),
+  frameCount: z.number(),
+  sourceStart: z.number(),
+  sourceSpan: z.number(),
+  speed: z.number(),
+  reversed: z.boolean(),
+  model: z.string(),
+  quality: z.string(),
+  assetKey: z.string(),
+})
+
 export const electronAPISchemas = {
   readLocalFile: {
     input: z.object({ filePath: z.string() }),
     output: z.object({ data: z.string(), mimeType: z.string() }),
+  },
+  /**
+   * A byte range of a local media file, for the WebCodecs demuxer.
+   *
+   * It cannot use `fetch('file://…')`: the renderer's CSP allows `file:` for `img-src`
+   * and `media-src` but not for `connect-src`, so every demux was blocked and the whole
+   * hardware-decode path silently fell back to <video>. Widening `connect-src` would let
+   * the renderer read any local file it likes; going through main keeps the fetch off the
+   * renderer and puts the read behind `validatePath`.
+   *
+   * Ranged rather than whole-file so one 4K source cannot put a single multi-hundred-MB
+   * message through the IPC channel.
+   */
+  readMediaChunk: {
+    input: z.object({
+      filePath: z.string(),
+      offset: z.number().int().min(0),
+      length: z.number().int().min(1),
+    }),
+    output: z.object({
+      data: z.instanceof(Uint8Array),
+      /** Total size of the file, so the caller knows when it is done. */
+      totalSize: z.number(),
+    }),
   },
   getAppInfo: {
     input: z.object({}),
@@ -387,30 +429,6 @@ export const electronAPISchemas = {
     output: ipcResult({ content: z.string().optional() }),
   },
 
-  // Video export
-  exportNative: {
-    input: z.object({
-      clips: z.array(exportClip),
-      outputPath: z.string(),
-      codec: z.string(),
-      width: z.number(),
-      height: z.number(),
-      fps: z.number(),
-      quality: z.number(),
-      letterbox: z.object({ ratio: z.number(), color: z.string(), opacity: z.number() }).optional(),
-      subtitles: z.array(exportSubtitle).optional(),
-      transitions: z.array(exportTransition).optional(),
-      background: exportBackground.optional(),
-      markers: z.array(exportMarker).optional(),
-      videoBitrate: z.number().positive().optional(),
-      audioBitrate: z.number().positive().optional(),
-    }),
-    output: emptyResult,
-  },
-  exportCancel: {
-    input: z.object({ sessionId: z.string() }),
-    output: emptyResult,
-  },
 
   // Asynchronous render queue with progress events
   'render.start': {
@@ -428,6 +446,7 @@ export const electronAPISchemas = {
       background: exportBackground.optional(),
       markers: z.array(exportMarker).optional(),
       hardwareAcceleration: z.boolean().optional(),
+      autoMatteDevice: autoMatteDeviceSchema.optional(),
       videoBitrate: z.number().positive().optional(),
       audioBitrate: z.number().positive().optional(),
     }),
@@ -726,6 +745,38 @@ export const electronAPISchemas = {
       isEncrypted: z.boolean(),
     }),
   },
+
+  // ── AI Analysis (LLM / OpenAI Chat Completions API) ────────────────────
+  llmTestConnection: {
+    input: z.object({
+      endpoint: z.string().optional(),
+      apiKey: z.string().optional(),
+      model: z.string().optional(),
+    }),
+    output: z.object({
+      success: z.boolean(),
+      message: z.string().optional(),
+      error: z.string().optional(),
+    }),
+  },
+  llmSaveSecureKey: {
+    input: z.object({
+      apiKey: z.string(),
+    }),
+    output: z.object({
+      success: z.boolean(),
+      isEncrypted: z.boolean(),
+      error: z.string().optional(),
+    }),
+  },
+  llmGetSecureKey: {
+    input: z.object({}).optional().default({}),
+    output: z.object({
+      hasKey: z.boolean(),
+      maskedKey: z.string().optional(),
+      isEncrypted: z.boolean(),
+    }),
+  },
   whisperTranscribe: {
     input: z.object({
       jobId: z.string(),
@@ -864,6 +915,87 @@ export const electronAPISchemas = {
       error: z.string().optional(),
     }),
   },
+  matteBakeStart: {
+    input: z.object({
+      jobId: z.string(),
+      clipId: z.string(),
+      filePath: z.string(),
+      trimStart: z.number().min(0),
+      duration: z.number().positive(),
+      speed: z.number().default(1),
+      reversed: z.boolean().default(false),
+      model: z.enum(autoMatteModelValues).default('rvm-mobilenetv3'),
+      quality: z.enum(autoMatteQualityValues).default('standard'),
+      device: autoMatteDeviceSchema.default('auto'),
+      /** The media is a still: one frame to matte, and it never goes out of date. */
+      still: z.boolean().default(false),
+    }),
+    output: z.object({
+      started: z.boolean(),
+      cached: z.boolean().optional(),
+      provider: z.string().optional(),
+      path: z.string().optional(),
+      fingerprint: z.string().optional(),
+      frameCount: z.number().optional(),
+      error: z.string().optional(),
+      bake: matteBakeDescriptorSchema.optional(),
+    }),
+  },
+  matteGetDeviceInfo: {
+    input: z.object({}).optional(),
+    output: z.object({
+      /** Execution providers this build can actually create a session with. */
+      available: z.array(z.string()),
+      /** What 'auto' would pick right now. */
+      preferred: z.string(),
+      gpuAvailable: z.boolean(),
+      /** Provider of the session currently loaded, if any. */
+      active: z.string().nullable(),
+    }),
+  },
+  matteBakeMissing: {
+    input: z.object({
+      paths: z.array(z.string()).max(500),
+    }),
+    output: z.object({
+      /** The subset of `paths` that is no longer on disk. */
+      missing: z.array(z.string()),
+    }),
+  },
+  matteBakeCancel: {
+    input: z.object({
+      jobId: z.string(),
+    }),
+    output: z.object({
+      success: z.boolean(),
+    }),
+  },
+  matteBakeStatus: {
+    input: z.object({
+      jobId: z.string(),
+    }),
+    output: z.object({
+      status: z.enum(['idle', 'running', 'done', 'error', 'cancelled']),
+      percent: z.number().min(0).max(100),
+      phase: z.string().optional(),
+      mattePath: z.string().optional(),
+      fingerprint: z.string().optional(),
+      frameCount: z.number().optional(),
+      error: z.string().optional(),
+      bake: matteBakeDescriptorSchema.optional(),
+    }),
+  },
+  imageRemoveBackground: {
+    input: z.object({
+      imageSrc: z.string(),
+      quality: z.enum(['standard', 'high']).default('high'),
+    }),
+    output: z.object({
+      success: z.boolean(),
+      cutoutDataUrl: z.string().optional(),
+      error: z.string().optional(),
+    }),
+  },
 } as const
 
 // ── Event Schemas (Main Process -> Renderer) ──────────────────────────────
@@ -942,6 +1074,14 @@ export const electronEventSchemas = {
     step: z.enum(WHISPER_PROGRESS_STEPS).optional(),
     /** Untranslatable detail, such as an upstream error message. */
     detail: z.string().optional(),
+  }),
+  'matte:progress': z.object({
+    jobId: z.string(),
+    percent: z.number().min(0).max(100),
+    phase: z.enum(['extracting', 'inferring', 'encoding', 'done', 'error', 'cancelled']),
+    frame: z.number().optional(),
+    totalFrames: z.number().optional(),
+    error: z.string().optional(),
   }),
 } as const
 

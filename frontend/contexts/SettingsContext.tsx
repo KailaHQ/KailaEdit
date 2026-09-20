@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   type AppSettings,
   DEFAULT_APP_SETTINGS,
-  appSettingsSchema,
+  migrateAppSettings,
 } from '../../shared/app-settings-schema'
 import { useTranslation } from '../i18n/I18nContext'
 
@@ -35,9 +35,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         if (langStored === 'en' || langStored === 'vi') {
           parsed.language = langStored
         }
-        return appSettingsSchema.parse({ ...DEFAULT_APP_SETTINGS, ...parsed })
+        return migrateAppSettings(parsed)
       } else if (langStored === 'en' || langStored === 'vi') {
-        return appSettingsSchema.parse({ ...DEFAULT_APP_SETTINGS, language: langStored })
+        return migrateAppSettings({ language: langStored })
       }
     } catch {}
     return DEFAULT_APP_SETTINGS

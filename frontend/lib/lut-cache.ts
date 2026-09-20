@@ -38,7 +38,7 @@ export function loadLut(filterId: string): Promise<CubeLut> {
     }
 
     if (!cubeContent) {
-      throw new Error(`Không thể nạp file LUT cho filter '${filterId}'`)
+      throw new Error(`Failed to load LUT file for filter '${filterId}'`)
     }
 
     return parseCubeLut(cubeContent)

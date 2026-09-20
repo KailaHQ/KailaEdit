@@ -170,7 +170,7 @@ export const TimelineTrackHeaders: React.FC<TimelineTrackHeadersProps> = ({
   return (
     <div className="w-32 flex-shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col overflow-hidden">
       {/* Add track buttons - pinned above scrollable area */}
-      <div className="flex-shrink-0 h-7 flex items-center px-2 gap-1.5 border-b border-zinc-700/50">
+      <div className="flex-shrink-0 h-7 flex items-center px-2 gap-1.5 border-b border-zinc-700/50 bg-zinc-900">
         <button
           onClick={() => addTrack('video')}
           className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-0.5"
@@ -219,141 +219,144 @@ export const TimelineTrackHeaders: React.FC<TimelineTrackHeadersProps> = ({
             return (
               <React.Fragment key={track.id}>
                 <div
-                  className={`group flex-shrink-0 border-b border-zinc-800 text-xs relative ${
-                    track.type === 'subtitle'
-                      ? 'px-1.5 flex flex-col justify-center gap-0'
-                      : 'px-2 flex items-center justify-between'
-                  }`}
+                  className="group flex-shrink-0 border-b border-zinc-800/60 text-xs relative flex items-stretch"
                   style={{ height: trackRowHeight(track, { video: videoTrackHeight, audio: audioTrackHeight, subtitle: subtitleTrackHeight, sticker: stickerTrackHeight }) }}
                 >
-                  {track.type === 'subtitle' ? (
-                    <>
-                      {/* Row 1: track type */}
-                      <Tooltip content={track.name} side="right">
-                        <div className="flex items-center">
-                          <MessageSquare className={`h-3.5 w-3.5 flex-shrink-0 ${track.muted ? 'text-zinc-600' : 'text-amber-400/80'}`} />
-                        </div>
-                      </Tooltip>
-                      {/* Row 2: tools */}
-                      <div className="flex items-center gap-0">
-                        <Tooltip content="Track style settings" side="right">
-                          <button
-                            onClick={() => setSubtitleTrackStyleIdx(subtitleTrackStyleIdx === realIndex ? null : realIndex)}
-                            className={`p-0.5 rounded ${subtitleTrackStyleIdx === realIndex ? 'text-amber-400 bg-amber-900/30' : 'text-amber-500/60 hover:text-amber-400'}`}
-                          >
-                            <Palette className="h-3 w-3" />
-                          </button>
+                  {/* Track Controls */}
+                  <div className={`w-full flex-shrink-0 bg-zinc-900 flex ${
+                    track.type === 'subtitle'
+                      ? 'px-1.5 flex-col justify-center gap-0'
+                      : 'px-2 items-center justify-between'
+                  }`}>
+                    {track.type === 'subtitle' ? (
+                      <>
+                        {/* Row 1: track type */}
+                        <Tooltip content={track.name} side="right">
+                          <div className="flex items-center">
+                            <MessageSquare className={`h-3.5 w-3.5 flex-shrink-0 ${track.muted ? 'text-zinc-600' : 'text-amber-400/80'}`} />
+                          </div>
                         </Tooltip>
-                        <Tooltip content="Add subtitle" side="right">
-                          <button
-                            onClick={() => addSubtitleClip(realIndex)}
-                            className="p-0.5 rounded text-amber-500/60 hover:text-amber-400"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </Tooltip>
-                        <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
-                          <button
-                            onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, locked: !t.locked } : t))}
-                            className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                          >
-                            {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
-                          </button>
-                        </Tooltip>
-                        <Tooltip content={track.muted ? 'Show subtitles' : 'Hide subtitles'} side="right">
-                          <button
-                            onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, muted: !t.muted } : t))}
-                            className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                          >
-                            {track.muted ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="Delete track" side="right">
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete subtitle track "${track.name}"?`)) {
-                                setTracks(tracks.filter((_, i) => i !== realIndex))
-                                setSubtitles(prev => prev.filter(s => s.trackIndex !== realIndex))
-                              }
-                            }}
-                            className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="h-2.5 w-2.5" />
-                          </button>
-                        </Tooltip>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Tooltip content={`${track.name} (${contentLabel})`} side="right">
-                        <div className="flex flex-shrink-0 items-center">
-                          {renderTrackIcon(contentType, track.muted)}
-                        </div>
-                      </Tooltip>
-                      <div className="flex items-center gap-0 flex-shrink-0">
-                        <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
-                          <button
-                            onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, locked: !t.locked } : t))}
-                            className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                          >
-                            {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
-                          </button>
-                        </Tooltip>
-                        {track.kind !== 'audio' && (
-                          <Tooltip content={track.enabled === false ? 'Enable track output' : 'Disable track output'} side="right">
+                        {/* Row 2: tools */}
+                        <div className="flex items-center gap-0">
+                          <Tooltip content="Track style settings" side="right">
                             <button
-                              onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, enabled: !(t.enabled !== false) } : t))}
-                              className={`p-0.5 rounded ${track.enabled === false ? 'text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              onClick={() => setSubtitleTrackStyleIdx(subtitleTrackStyleIdx === realIndex ? null : realIndex)}
+                              className={`p-0.5 rounded ${subtitleTrackStyleIdx === realIndex ? 'text-amber-400 bg-amber-900/30' : 'text-amber-500/60 hover:text-amber-400'}`}
                             >
-                              {track.enabled === false ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+                              <Palette className="h-3 w-3" />
                             </button>
                           </Tooltip>
-                        )}
-                        {track.kind !== 'audio' && (hasAudioClips || (contentType !== 'text' && contentType !== 'adjustment')) && (
-                          <Tooltip content={track.muted ? 'Unmute' : 'Mute'} side="right">
+                          <Tooltip content="Add subtitle" side="right">
+                            <button
+                              onClick={() => addSubtitleClip(realIndex)}
+                              className="p-0.5 rounded text-amber-500/60 hover:text-amber-400"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
+                            <button
+                              onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, locked: !t.locked } : t))}
+                              className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                              {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
+                            </button>
+                          </Tooltip>
+                          <Tooltip content={track.muted ? 'Show subtitles' : 'Hide subtitles'} side="right">
                             <button
                               onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, muted: !t.muted } : t))}
                               className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                             >
-                              {track.muted ? <VolumeX className="h-2.5 w-2.5" /> : <Volume2 className="h-2.5 w-2.5" />}
+                              {track.muted ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
                             </button>
                           </Tooltip>
-                        )}
-                      {track.kind === 'audio' && (
-                        <button
-                          onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, muted: !t.muted } : t))}
-                          className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
-                            track.muted ? 'bg-red-500/80 text-white' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
-                          }`}
-                          title={track.muted ? 'Unmute track' : 'Mute track'}
-                        >
-                          M
-                        </button>
-                      )}
-                      {track.kind === 'audio' && (
-                        <button
-                          onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, solo: !t.solo } : t))}
-                          className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
-                            track.solo ? 'bg-yellow-500/80 text-black' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
-                          }`}
-                          title={track.solo ? 'Unsolo track' : 'Solo track'}
-                        >
-                          S
-                        </button>
-                      )}
-                      {tracks.length > 1 && !(track.kind === 'video' && (track.name === 'V1' || realIndex === tracks.findIndex(t => t.kind === 'video'))) && (
-                        <Tooltip content="Delete track" side="right">
-                          <button
-                            onClick={() => deleteTrack(realIndex)}
-                            className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="h-2.5 w-2.5" />
-                          </button>
+                          <Tooltip content="Delete track" side="right">
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete subtitle track "${track.name}"?`)) {
+                                  setTracks(tracks.filter((_, i) => i !== realIndex))
+                                  setSubtitles(prev => prev.filter(s => s.trackIndex !== realIndex))
+                                }
+                              }}
+                              className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Tooltip content={`${track.name} (${contentLabel})`} side="right">
+                          <div className="flex flex-shrink-0 items-center">
+                            {renderTrackIcon(contentType, track.muted)}
+                          </div>
                         </Tooltip>
-                      )}
-                    </div>
-                  </>
-                )}
+                        <div className="flex items-center gap-0 flex-shrink-0">
+                          <Tooltip content={track.locked ? 'Unlock' : 'Lock'} side="right">
+                            <button
+                              onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, locked: !t.locked } : t))}
+                              className={`p-0.5 rounded ${track.locked ? 'text-yellow-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                              {track.locked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
+                            </button>
+                          </Tooltip>
+                          {track.kind !== 'audio' && (
+                            <Tooltip content={track.enabled === false ? 'Enable track output' : 'Disable track output'} side="right">
+                              <button
+                                onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, enabled: !(t.enabled !== false) } : t))}
+                                className={`p-0.5 rounded ${track.enabled === false ? 'text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              >
+                                {track.enabled === false ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {track.kind !== 'audio' && (hasAudioClips || (contentType !== 'text' && contentType !== 'adjustment')) && (
+                            <Tooltip content={track.muted ? 'Unmute' : 'Mute'} side="right">
+                              <button
+                                onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, muted: !t.muted } : t))}
+                                className={`p-0.5 rounded ${track.muted ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              >
+                                {track.muted ? <VolumeX className="h-2.5 w-2.5" /> : <Volume2 className="h-2.5 w-2.5" />}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {track.kind === 'audio' && (
+                            <button
+                              onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, muted: !t.muted } : t))}
+                              className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
+                                track.muted ? 'bg-red-500/80 text-white' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                              }`}
+                              title={track.muted ? 'Unmute track' : 'Mute track'}
+                            >
+                              M
+                            </button>
+                          )}
+                          {track.kind === 'audio' && (
+                            <button
+                              onClick={() => setTracks(tracks.map((t, i) => i === realIndex ? { ...t, solo: !t.solo } : t))}
+                              className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${
+                                track.solo ? 'bg-yellow-500/80 text-black' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                              }`}
+                              title={track.solo ? 'Unsolo track' : 'Solo track'}
+                            >
+                              S
+                            </button>
+                          )}
+                          {tracks.length > 1 && !(track.kind === 'video' && (track.name === 'V1' || realIndex === tracks.findIndex(t => t.kind === 'video'))) && (
+                            <Tooltip content="Delete track" side="right">
+                              <button
+                                onClick={() => deleteTrack(realIndex)}
+                                className="p-0.5 rounded text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 className="h-2.5 w-2.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 {/* Track height resize handle */}
                 <div
                   className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10 group/resize hover:bg-blue-500/40 transition-colors"

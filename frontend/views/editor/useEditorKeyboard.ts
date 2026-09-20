@@ -5,6 +5,8 @@ import type { EditorState } from './editor-state'
 import {
   selectClips,
   selectContentDuration,
+  selectCropMode,
+  selectEyedropperMode,
   selectKeyboardCommandContext,
   selectSelectedGap,
   selectSelectedSubtitleId,
@@ -168,8 +170,21 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
           editorActions.selectAllClips()
           break
         case 'edit.deselect':
+          if (selectCropMode(state)) {
+            editorActions.setCropMode(false)
+            break
+          }
+          if (selectEyedropperMode(state)) {
+            editorActions.setEyedropperMode(false)
+            break
+          }
+          if (state.session.ui.previewAssetId) {
+            editorActions.setPreviewAssetId(null)
+            break
+          }
           if (state.session.selection.selectedKeyframe) {
             editorActions.clearSelectedKeyframe()
+            break
           }
           if (refs.selectedGapRef.current) {
             refs.clearSelectedGapRef.current()
@@ -375,6 +390,18 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
         case 'view.fullscreen':
           refs.toggleFullscreenRef.current()
           break
+        case 'view.cropMode': {
+          if (selectCropMode(state)) {
+            editorActions.setCropMode(false)
+            break
+          }
+          const allClips = selectClips(state)
+          const candidate = allClips.find(c => sel.has(c.id))
+          if (candidate && (candidate.type === 'video' || candidate.type === 'image')) {
+            editorActions.toggleCropMode()
+          }
+          break
+        }
         case 'app.settings':
           refs.openSettingsRef?.current()
           break

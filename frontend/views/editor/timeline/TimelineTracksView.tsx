@@ -54,6 +54,7 @@ export interface TimelineTracksViewProps {
   handleTimelineBgContextMenu: (e: React.MouseEvent) => void
   startSelectionLasso: (clientX: number, clientY: number, shiftKey: boolean) => void
   scrubFromEvent: (clientX: number) => void
+  handlePlayheadMouseDown?: (e: React.MouseEvent) => void
   setIsPlaying: (playing: boolean) => void
   setSelectedClipIds: (ids: Set<string>) => void
   setSelectedSubtitleId: (id: string | null) => void
@@ -124,6 +125,7 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
   handleTimelineBgContextMenu,
   startSelectionLasso,
   scrubFromEvent,
+  handlePlayheadMouseDown,
   setIsPlaying,
   setSelectedClipIds,
   setSelectedSubtitleId,
@@ -162,7 +164,7 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
     sticker: stickerTrackHeight,
   }), [videoTrackHeight, audioTrackHeight, subtitleTrackHeight, stickerTrackHeight])
 
-  const handlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
+  const localHandlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
@@ -175,20 +177,6 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
     const onMove = (ev: MouseEvent) => {
       ev.preventDefault()
       scrubFromEvent(ev.clientX)
-
-      // Edge auto-scrolling when scrubbing near the boundary of the track container
-      const container = trackContainerRef.current
-      if (container) {
-        const rect = container.getBoundingClientRect()
-        const edgeThreshold = 40
-        if (ev.clientX > rect.right - edgeThreshold) {
-          const intensity = Math.min(25, (ev.clientX - (rect.right - edgeThreshold)) * 0.8)
-          container.scrollLeft += Math.max(5, intensity)
-        } else if (ev.clientX < rect.left + edgeThreshold) {
-          const intensity = Math.min(25, ((rect.left + edgeThreshold) - ev.clientX) * 0.8)
-          container.scrollLeft -= Math.max(5, intensity)
-        }
-      }
     }
 
     const onUp = () => {
@@ -201,20 +189,22 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('blur', onUp)
-  }, [scrubFromEvent, setIsPlaying, trackContainerRef])
+  }, [scrubFromEvent, setIsPlaying])
+
+  const onPlayheadMouseDown = handlePlayheadMouseDown || localHandlePlayheadMouseDown
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 relative">
+    <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
       {/* Full-height playhead line with interactive draggable scrub handle */}
       <div
         ref={playheadOverlayRef}
         className="absolute -top-[2px] bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none"
-        style={{ left: `${currentTimeRef.current * pixelsPerSecond - (trackContainerRef.current?.scrollLeft || 0)}px` }}
+        style={{ left: `${Math.max(0, currentTimeRef.current * pixelsPerSecond - (trackContainerRef.current?.scrollLeft || 0))}px` }}
       >
         {/* Grab hit area: 16px wide, centered on this 2px line (-left-[7px] so 7px + 2px + 7px = 16px) */}
         <div
           className="absolute top-0 bottom-0 w-4 -left-[7px] cursor-ew-resize pointer-events-auto"
-          onMouseDown={handlePlayheadMouseDown}
+          onMouseDown={onPlayheadMouseDown}
         />
       </div>
       {/* Spacer matching the add-track button bar height */}

@@ -1,5 +1,7 @@
 import type { TimelineBackground, ClipMask, ChromaKey } from '../../core/src/project-model'
 import type { ExportClip } from './timeline'
+import { autoMatteBakeOffset } from '../../core/src/auto-matte'
+import { matteAlphaBand, matteFeatherSigma, hasMatteClean, hasMatteFeather } from '../../core/src/matte-edge'
 import { buildClipEffectChain } from './effects-filter'
 import { buildLutFilter } from './lut-filter'
 import { buildTransitionRuns, runTimeline, xfadeOffsets, type ExportTransition } from './transition-runs'
@@ -216,12 +218,12 @@ export function buildMaskChain(mask: ClipMask | undefined): string {
 export function buildChromaKeyChain(chromaKey: ChromaKey | undefined): string {
   if (!chromaKey || chromaKey.enabled === false) return ''
 
-  const { color, similarity, smoothness, spill } = chromaKey
+  const { color, similarity, smoothness, spill, featherEdge = 0, cleanEdge = 0 } = chromaKey
   const sim = Math.max(0.0001, Math.min(1.0, similarity / 100)).toFixed(4)
   const blend = Math.max(0, Math.min(1.0, smoothness / 100)).toFixed(4)
   const colorHex = color.startsWith('#') ? color : `#${color}`
 
-  let chain = `,colorkey=color=${colorHex}:similarity=${sim}:blend=${blend}`
+  let chain = `,format=rgba,colorkey=color=${colorHex}:similarity=${sim}:blend=${blend}`
 
   if (spill > 0) {
     const cleanHex = color.replace('#', '')
@@ -232,6 +234,20 @@ export function buildChromaKeyChain(chromaKey: ChromaKey | undefined): string {
     const mix = Math.max(0, Math.min(1.0, spill / 100)).toFixed(2)
     chain += `,despill=type=${type}:mix=${mix}`
   }
+
+  if (cleanEdge > 0) {
+    const n = Math.max(1, Math.round(cleanEdge / 25))
+    for (let i = 0; i < n; i++) {
+      chain += ',erosion=threshold0=0:threshold1=0:threshold2=0'
+    }
+  }
+
+  if (featherEdge > 0) {
+    const sigma = Math.max(0.1, featherEdge / 10).toFixed(2)
+    chain += `,gblur=sigma=${sigma}:planes=8`
+  }
+
+  chain += ',format=yuva420p'
 
   return chain
 }
@@ -371,11 +387,127 @@ export function buildVideoFilterGraph(
       chain += buildLutFilter(clip.filter)
       chain += buildClipEffectChain(clip.effects)
 
+      const hasAutoMatte = Boolean(clip.autoMatte?.enabled && clip.autoMatte.bake?.path)
+      /**
+       * Where this clip starts inside the baked matte.
+       *
+       * A matte no longer has to begin on the clip's first frame: one bake serves every
+       * trim that falls inside the range it covers. 0 for a bake that does start there,
+       * which is every bake made before ranges were recorded.
+       *
+       * The stroke input below is seeked by this SAME value. A stroke frame is drawn from
+       * the matte frame at the same instant, so the two share one clock; keeping it a
+       * single constant is what stops them drifting apart.
+       */
+      const matteOffset = autoMatteBakeOffset(clip.autoMatte?.bake, clip.trimStart ?? 0, clip.speed ?? 1)
       // Everything past this point needs an alpha channel.
-      chain += ',format=yuva420p'
+      // If chroma key is active without autoMatte, use format=rgba to preserve full 4:4:4 chroma before colorkey.
+      chain += (clip.chromaKey?.enabled && !hasAutoMatte) ? ',format=rgba' : ',format=yuva420p'
       chain += buildCropChain(transform)
+
+      if (hasAutoMatte && clip.autoMatte?.bake?.path) {
+        if (matteOffset > 0.0005) inputs.push('-ss', matteOffset.toFixed(6))
+        inputs.push('-i', clip.autoMatte.bake.path)
+        const matteInputIdx = inputIdx++
+
+        let matteChain = `[${matteInputIdx}:v]setpts=PTS-STARTPTS`
+        if (hasScaleKeyframes) {
+          const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
+          const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')
+          const dynamicScaleExpr = `max(0.01,(${scalePercentExpr})/100)`
+          matteChain += `,scale=w='max(2,round(${width}*${dynamicScaleExpr}))':h='max(2,round(${height}*${dynamicScaleExpr}))':force_original_aspect_ratio=decrease:eval=frame,setsar=1`
+        } else {
+          const scale = Math.max(1, transform?.scale ?? 100) / 100
+          const boxW = Math.max(2, Math.round(width * scale))
+          const boxH = Math.max(2, Math.round(height * scale))
+          matteChain += `,scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1`
+        }
+
+        if (clip.flipH) matteChain += ',hflip'
+        if (clip.flipV) matteChain += ',vflip'
+        matteChain += buildCropChain(transform)
+
+        // `cleanEdge` and `featherEdge` are defined in core, shared with the preview
+        // shader — see matte-edge.ts for what they used to do to each side separately.
+        //
+        // Clean was `erosion` repeated N times. Morphological erosion eats whole pixels
+        // off the silhouette and takes thin detail (fingers, hair) with them, and it is
+        // not something a fragment shader can mirror. It is a remap of alpha now: the
+        // same pointwise expression the preview runs, as a lut over the matte's luma,
+        // which alphamerge reads.
+        if (hasMatteClean(clip.autoMatte.cleanEdge)) {
+          const { lo, hi } = matteAlphaBand(clip.autoMatte.cleanEdge)
+          const loVal = (lo * 255).toFixed(3)
+          const span = Math.max(1e-6, hi - lo) * 255
+          matteChain += `,lut=y='clip((val-${loVal})*${(255 / span).toFixed(6)},0,255)'`
+        }
+
+        if (hasMatteFeather(clip.autoMatte.featherEdge)) {
+          const sigma = matteFeatherSigma(clip.autoMatte.featherEdge).toFixed(2)
+          matteChain += `,gblur=sigma=${sigma}`
+        }
+
+        const matteLabel = `m${runIdx}_${clipLabels.length}`
+        matteChain += `[${matteLabel}]`
+        filterParts.push(matteChain)
+
+        const preMatteLabel = `cpre${runIdx}_${clipLabels.length}`
+        chain += `[${preMatteLabel}]`
+        filterParts.push(chain)
+
+        const postMatteLabel = `cpost${runIdx}_${clipLabels.length}`
+        filterParts.push(`[${preMatteLabel}][${matteLabel}]alphamerge[${postMatteLabel}]`)
+        chain = `[${postMatteLabel}]null`
+      }
+
       chain += buildChromaKeyChain(clip.chromaKey)
       chain += buildMaskChain(clip.mask)
+
+      const hasStroke = Boolean(
+        clip.stroke?.enabled &&
+        clip.stroke.style !== 'none' &&
+        clip.strokeBakePath
+      )
+      if (hasStroke && clip.strokeBakePath) {
+        // Seeked exactly like the matte. The stroke is now baked across the WHOLE matte
+        // rather than this clip's window of it — one bake per clip instead of one per
+        // render-cache segment — so it starts where the matte starts, not where the clip
+        // does. Leaving this unseeked would put the outline `matteOffset` seconds ahead of
+        // the subject on any trimmed clip.
+        if (matteOffset > 0.0005) inputs.push('-ss', matteOffset.toFixed(6))
+        inputs.push('-i', clip.strokeBakePath)
+        const strokeInputIdx = inputIdx++
+
+        let strokeChain = `[${strokeInputIdx}:v]setpts=PTS-STARTPTS`
+        if (hasScaleKeyframes) {
+          const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
+          const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')
+          const dynamicScaleExpr = `max(0.01,(${scalePercentExpr})/100)`
+          strokeChain += `,scale=w='max(2,round(${width}*${dynamicScaleExpr}))':h='max(2,round(${height}*${dynamicScaleExpr}))':force_original_aspect_ratio=decrease:eval=frame,setsar=1`
+        } else {
+          const scale = Math.max(1, transform?.scale ?? 100) / 100
+          const boxW = Math.max(2, Math.round(width * scale))
+          const boxH = Math.max(2, Math.round(height * scale))
+          strokeChain += `,scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1`
+        }
+
+        if (clip.flipH) strokeChain += ',hflip'
+        if (clip.flipV) strokeChain += ',vflip'
+        strokeChain += buildCropChain(transform)
+        strokeChain += ',format=yuva420p'
+
+        const strokeLabel = `strk${runIdx}_${clipLabels.length}`
+        strokeChain += `[${strokeLabel}]`
+        filterParts.push(strokeChain)
+
+        const preStrokeLabel = `cpre_strk${runIdx}_${clipLabels.length}`
+        chain += `[${preStrokeLabel}]`
+        filterParts.push(chain)
+
+        const postStrokeLabel = `cpost_strk${runIdx}_${clipLabels.length}`
+        filterParts.push(`[${strokeLabel}][${preStrokeLabel}]overlay=shortest=1:format=auto[${postStrokeLabel}]`)
+        chain = `[${postStrokeLabel}]null`
+      }
 
       const hasRotKeyframes = hasKeyframesForProperty(clip as any, 'transform.rotation')
       if (hasRotKeyframes) {

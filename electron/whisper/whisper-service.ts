@@ -62,6 +62,7 @@ interface ActiveJob {
 class WhisperService {
   private activeJobs = new Map<string, ActiveJob>()
   private secretFilePath: string | null = null
+  private llmSecretFilePath: string | null = null
 
   private getSecretFilePath(): string {
     if (!this.secretFilePath) {
@@ -70,13 +71,16 @@ class WhisperService {
     return this.secretFilePath
   }
 
-  /**
-   * Save API Key encrypted using Electron safeStorage if available.
-   */
-  saveSecureApiKey(apiKey: string): { success: boolean; isEncrypted: boolean; error?: string } {
+  private getLlmSecretFilePath(): string {
+    if (!this.llmSecretFilePath) {
+      this.llmSecretFilePath = path.join(resolveUserDataDir(), 'llm-secret.bin')
+    }
+    return this.llmSecretFilePath
+  }
+
+  private saveSecureKeyToFile(filePath: string, apiKey: string): { success: boolean; isEncrypted: boolean; error?: string } {
     try {
       const trimmed = apiKey.trim()
-      const filePath = this.getSecretFilePath()
       if (!trimmed) {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath)
@@ -89,23 +93,18 @@ class WhisperService {
         fs.writeFileSync(filePath, encrypted)
         return { success: true, isEncrypted: true }
       } else {
-        // Fallback to base64 if safeStorage is unavailable in the environment
         const base64 = Buffer.from(trimmed, 'utf8').toString('base64')
         fs.writeFileSync(filePath, Buffer.from(`RAW:${base64}`, 'utf8'))
         return { success: true, isEncrypted: false }
       }
     } catch (err) {
-      logger.error(`[whisper-service] Failed to save secure API key: ${err}`)
+      logger.error(`[whisper-service] Failed to save secure key to ${filePath}: ${err}`)
       return { success: false, isEncrypted: false, error: String(err) }
     }
   }
 
-  /**
-   * Retrieve the stored API Key.
-   */
-  getStoredApiKey(): { apiKey: string; hasKey: boolean; isEncrypted: boolean } {
+  private getStoredKeyFromFile(filePath: string): { apiKey: string; hasKey: boolean; isEncrypted: boolean } {
     try {
-      const filePath = this.getSecretFilePath()
       if (!fs.existsSync(filePath)) {
         return { apiKey: '', hasKey: false, isEncrypted: false }
       }
@@ -127,9 +126,37 @@ class WhisperService {
 
       return { apiKey: '', hasKey: true, isEncrypted: false }
     } catch (err) {
-      logger.warn(`[whisper-service] Failed to read stored API key: ${err}`)
+      logger.warn(`[whisper-service] Failed to read stored key from ${filePath}: ${err}`)
       return { apiKey: '', hasKey: false, isEncrypted: false }
     }
+  }
+
+  /**
+   * Save Whisper API Key encrypted using Electron safeStorage if available.
+   */
+  saveSecureApiKey(apiKey: string): { success: boolean; isEncrypted: boolean; error?: string } {
+    return this.saveSecureKeyToFile(this.getSecretFilePath(), apiKey)
+  }
+
+  /**
+   * Retrieve the stored Whisper API Key.
+   */
+  getStoredApiKey(): { apiKey: string; hasKey: boolean; isEncrypted: boolean } {
+    return this.getStoredKeyFromFile(this.getSecretFilePath())
+  }
+
+  /**
+   * Save LLM API Key encrypted using Electron safeStorage if available.
+   */
+  saveSecureLlmApiKey(apiKey: string): { success: boolean; isEncrypted: boolean; error?: string } {
+    return this.saveSecureKeyToFile(this.getLlmSecretFilePath(), apiKey)
+  }
+
+  /**
+   * Retrieve the stored LLM API Key.
+   */
+  getStoredLlmApiKey(): { apiKey: string; hasKey: boolean; isEncrypted: boolean } {
+    return this.getStoredKeyFromFile(this.getLlmSecretFilePath())
   }
 
   /**
@@ -212,6 +239,87 @@ class WhisperService {
         return { success: false, error: 'Connection timed out (8s)' }
       }
       return { success: false, error: `Could not connect to ${norm}: ${err.message}` }
+    }
+  }
+
+  /**
+   * Test connection to the LLM Chat Completions endpoint with a minimal 1-token query.
+   */
+  async testLlmConnection(
+    endpoint?: string,
+    explicitApiKey?: string,
+    model?: string,
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const rawEndpoint = endpoint?.trim() || 'https://api.openai.com/v1'
+    const norm = this.normalizeEndpoint(rawEndpoint)
+    const effectiveKey = explicitApiKey?.trim() || this.getStoredLlmApiKey().apiKey
+    const effectiveModel = model?.trim() || 'gpt-4o-mini'
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (effectiveKey) {
+      headers['Authorization'] = `Bearer ${effectiveKey}`
+    }
+
+    const chatUrl = `${norm}/chat/completions`
+    logger.info(`[whisper-service] Testing LLM connection to ${chatUrl} (model=${effectiveModel})`)
+
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+
+      const res = await fetch(chatUrl, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: effectiveModel,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+        }),
+      })
+      clearTimeout(timeout)
+
+      if (res.ok) {
+        return {
+          success: true,
+          message: `Connected successfully (${res.status} OK, model: ${effectiveModel})`,
+        }
+      }
+
+      let errDetail = ''
+      try {
+        const errJson = await res.json()
+        errDetail = errJson.error?.message || JSON.stringify(errJson)
+      } catch {
+        errDetail = await res.text()
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        return {
+          success: false,
+          error: `Authentication failed (${res.status}): Please check your API Key.`,
+        }
+      }
+
+      if (res.status === 404) {
+        return {
+          success: false,
+          error: `Chat completions endpoint not found (404) at ${chatUrl}. Please verify the URL.`,
+        }
+      }
+
+      return {
+        success: false,
+        error: `Server responded with HTTP ${res.status}: ${errDetail.slice(0, 200)}`,
+      }
+    } catch (err: any) {
+      logger.warn(`[whisper-service] LLM connection test failed: ${err.message}`)
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Connection timed out (10s)' }
+      }
+      return { success: false, error: `Could not connect to ${chatUrl}: ${err.message}` }
     }
   }
 
@@ -425,21 +533,24 @@ class WhisperService {
         return { success: false, error: 'EMPTY_TRANSCRIPT' }
       }
 
-      const storedKey = this.getStoredApiKey()
-      const effectiveKey = params.apiKey || storedKey.apiKey
-      if (!effectiveKey) {
+      const storedLlmKey = this.getStoredLlmApiKey().apiKey || this.getStoredApiKey().apiKey
+      const effectiveKey = params.apiKey?.trim() || storedLlmKey
+
+      // Strictly resolve LLM endpoint — defaults to OpenAI and NEVER falls back to whisperEndpoint
+      const rawEndpoint = params.endpoint?.trim() || 'https://api.openai.com/v1'
+      const baseUrl = this.normalizeEndpoint(rawEndpoint)
+      const isCustomLocal = baseUrl !== 'https://api.openai.com/v1' && !baseUrl.includes('api.openai.com')
+
+      if (!effectiveKey && !isCustomLocal) {
         return {
           success: false,
-          error: 'Chưa cấu hình OpenAI API Key để phân tích Highlight. Vui lòng nhập API Key trong Cài đặt.',
+          error: 'MISSING_API_KEY',
         }
       }
 
-      let baseUrl = params.endpoint || 'https://api.openai.com/v1'
-      baseUrl = baseUrl.replace(/\/+$/, '')
       const chatUrl = `${baseUrl}/chat/completions`
-
       const prompt = buildHighlightExtractionPrompt(params.transcriptText, params.maxItems ?? 4)
-      const model = params.model || 'gpt-4o-mini'
+      const model = params.model?.trim() || 'gpt-4o-mini'
 
       logger.info(`[whisper-service] Analyzing highlights via ${chatUrl} (model=${model})`)
 

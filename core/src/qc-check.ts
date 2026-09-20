@@ -1,6 +1,8 @@
 import type { EditorModel, EditorState } from './editor-state'
 import type { Timeline, TimelineClip, SubtitleClip } from './project-model'
 import { getFilterDefinition } from './filters'
+import { isAutoMatteBakeValid } from './auto-matte'
+import { computeStrokesHash } from './custom-matte'
 
 export type QcIssueType =
   | 'ORPHAN_CLIP'
@@ -11,6 +13,9 @@ export type QcIssueType =
   | 'INVALID_FILTER'
   | 'INVALID_KEYFRAME'
   | 'INVALID_CHROMA_KEY'
+  | 'AUTO_MATTE_NOT_BAKED'
+  | 'CUSTOM_MATTE_UNAPPLIED'
+  | 'INVALID_STROKE'
 
 export interface QcIssue {
   type: QcIssueType
@@ -217,6 +222,81 @@ export function qcCheck(
           trackId: tracks[clip.trackIndex]?.id,
           clipId: clip.id,
           details: { clipType: clip.type },
+        })
+      }
+    }
+
+    // Check auto matte validity
+    if (clip.autoMatte && clip.autoMatte.enabled) {
+      const isValid = isAutoMatteBakeValid(clip.autoMatte.bake, {
+        trimStart: clip.trimStart || 0,
+        duration: clip.duration,
+        speed: clip.speed ?? 1,
+        reversed: Boolean(clip.reversed),
+        model: clip.autoMatte.model || 'rvm-mobilenetv3',
+        quality: clip.autoMatte.quality || 'standard',
+      })
+      const fileExists = !options?.fileExists || (clip.autoMatte.bake?.path ? options.fileExists(clip.autoMatte.bake.path) : false)
+
+      if (!isValid || !fileExists) {
+        issues.push({
+          type: 'AUTO_MATTE_NOT_BAKED',
+          severity: 'warning',
+          message: `Clip "${clip.id}" has auto matte enabled but matte is not baked or fingerprint is mismatched (export will retain background)`,
+          trackIndex: clip.trackIndex,
+          trackId: tracks[clip.trackIndex]?.id,
+          clipId: clip.id,
+          details: {
+            hasBake: Boolean(clip.autoMatte.bake),
+            fingerprintMatch: isValid,
+            bakePath: clip.autoMatte.bake?.path,
+          },
+        })
+      }
+    }
+
+    // Check custom matte validity
+    if (clip.customMatte && clip.customMatte.enabled && clip.customMatte.strokes && clip.customMatte.strokes.length > 0) {
+      const currentHash = computeStrokesHash(clip.customMatte.strokes)
+      if (clip.customMatte.appliedHash !== currentHash) {
+        issues.push({
+          type: 'CUSTOM_MATTE_UNAPPLIED',
+          severity: 'warning',
+          message: `Clip "${clip.id}" has custom matte strokes that have not been applied/rebaked`,
+          trackIndex: clip.trackIndex,
+          trackId: tracks[clip.trackIndex]?.id,
+          clipId: clip.id,
+          details: {
+            strokeCount: clip.customMatte.strokes.length,
+            appliedHash: clip.customMatte.appliedHash,
+            currentHash,
+          },
+        })
+      }
+    }
+
+    // Check stroke validity
+    if (clip.stroke && clip.stroke.enabled && clip.stroke.style !== 'none') {
+      const hex = clip.stroke.color ? clip.stroke.color.replace(/^#/, '') : ''
+      if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+        issues.push({
+          type: 'INVALID_STROKE',
+          severity: 'error',
+          message: `Clip "${clip.id}" has invalid stroke color "${clip.stroke.color}" (expected 6-digit hex format #RRGGBB)`,
+          trackIndex: clip.trackIndex,
+          trackId: tracks[clip.trackIndex]?.id,
+          clipId: clip.id,
+          details: { color: clip.stroke.color },
+        })
+      } else if (clip.stroke.width <= 0) {
+        issues.push({
+          type: 'INVALID_STROKE',
+          severity: 'warning',
+          message: `Clip "${clip.id}" has stroke width at ${clip.stroke.width}% (invisible stroke)`,
+          trackIndex: clip.trackIndex,
+          trackId: tracks[clip.trackIndex]?.id,
+          clipId: clip.id,
+          details: { width: clip.stroke.width },
         })
       }
     }

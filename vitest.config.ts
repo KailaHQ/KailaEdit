@@ -20,6 +20,7 @@ export default defineConfig({
       '**/release/**',
       '**/.claude/**',
       '**/.codex/**',
+      '**/_backup_pre_refactor/**',
     ],
   },
 })

@@ -30,6 +30,7 @@ files:
   - package.json
   - LICENSE.txt
   - NOTICES.md
+  - resources/models/**
   - "!**/*.map"
 
 asarUnpack:
@@ -39,6 +40,14 @@ asarUnpack:
   # per-platform package (@resvg/resvg-js-win32-x64-msvc and friends). A .node
   # cannot be loaded from inside an asar, so these have to stay unpacked.
   - node_modules/@resvg/**
+  # onnxruntime-node has native .node binding and shared libs (.dll / .dylib / .so)
+  - node_modules/onnxruntime-node/**
+  # Model weights for offline AI background removal
+  - resources/models/**
+  # Worker thread for parallel renderStroke must run from physical disk
+  - dist-electron/stroke-worker.js
+  # Worker thread for off-main-thread matte inference
+  - dist-electron/matte-worker.js
 
 extraResources:
   - from: resources/luts

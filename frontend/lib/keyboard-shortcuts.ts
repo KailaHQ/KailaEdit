@@ -63,6 +63,7 @@ export type ActionId =
   | 'nav.nextEdit'
   // View
   | 'view.fullscreen'
+  | 'view.cropMode'
   // App
   | 'app.settings'
 
@@ -142,8 +143,12 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
   { id: 'nav.prevEdit',        label: 'Go to Previous Edit Point', category: 'Transport', description: 'Jump playhead to previous cut on timeline' },
   { id: 'nav.nextEdit',        label: 'Go to Next Edit Point',     category: 'Transport', description: 'Jump playhead to next cut on timeline' },
   { id: 'view.fullscreen',     label: 'Fullscreen Preview', category: 'Timeline' },
+  { id: 'view.cropMode',       label: 'Toggle Crop Mode', category: 'Editing', description: 'Toggle crop mode for selected video or image clip' },
   { id: 'app.settings',        label: 'Settings', category: 'General', description: 'Open app settings' },
 ]
+
+/** Backward compatibility alias */
+export const SHORTCUT_DEFINITIONS = ACTION_REGISTRY
 
 // ── Keyboard Layout (mapping from ActionId to one or more key combos) ──
 export type KeyboardLayout = Partial<Record<ActionId, KeyCombo[]>>
@@ -222,6 +227,7 @@ export const KAILA_DEFAULT_LAYOUT: KeyboardLayout = {
   'nav.prevEdit': [k('arrowup')],
   'nav.nextEdit': [k('arrowdown')],
   'view.fullscreen': [k('`'), k('f11')],
+  'view.cropMode': [k('c', { shift: true }), k('c')],
   'app.settings': [k(',', { ctrl: true })],
 }
 
@@ -288,6 +294,7 @@ export const PREMIERE_LAYOUT: KeyboardLayout = {
   'nav.prevEdit': [k('arrowup')],
   'nav.nextEdit': [k('arrowdown')],
   'view.fullscreen': [k('`')],           // Premiere: ` = fullscreen
+  'view.cropMode': [k('c', { shift: true })],
 }
 
 // ═══════════════════════════════════════════
@@ -350,6 +357,7 @@ export const DAVINCI_LAYOUT: KeyboardLayout = {
   'nav.prevEdit': [k('arrowup')],
   'nav.nextEdit': [k('arrowdown')],
   'view.fullscreen': [k('p', { ctrl: true, shift: true })], // DaVinci: Ctrl+Shift+P
+  'view.cropMode': [k('c', { shift: true })],
 }
 
 // ═══════════════════════════════════════════
@@ -412,6 +420,7 @@ export const AVID_LAYOUT: KeyboardLayout = {
   'nav.prevEdit': [k('arrowup')],
   'nav.nextEdit': [k('arrowdown')],
   'view.fullscreen': [k('`'), k('f11')],
+  'view.cropMode': [k('c', { shift: true })],
 }
 
 // ── All Built-in Presets ──

@@ -20,9 +20,20 @@ _private/
 # Scratch & temporary development scripts
 scratch/
 /scratch/
+_backup_pre_refactor/
+/_backup_pre_refactor/
 *.tmp
 *.temp
 *.bak
+
+# On-device ML assets that are COPIES of files already in the tree.
+# `scripts/prepare-ml-assets.mjs` regenerates both on install, on `pnpm dev` and before
+# every build, so a fresh clone still works. Committing them would add ~95 MB of
+# duplicated binaries to the repo history permanently.
+#   public/models/ ← copy of resources/models/ (that one IS tracked — it is the master)
+#   public/wasm/   ← copy of node_modules/onnxruntime-web/dist/*.wasm
+/public/models/
+/public/wasm/
 
 # Logs
 *.log
@@ -93,6 +104,7 @@ coverage/
 
 # App local runtime & test project data
 .komfyedit-data/
+.kailaedit-data/
 
 # Database temporary files
 *.sqlite

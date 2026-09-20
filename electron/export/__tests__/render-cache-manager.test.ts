@@ -1,9 +1,10 @@
-﻿import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { RenderCacheManager } from '../render-cache-manager'
 import * as eventEmitter from '../../ipc/event-emitter'
+import { resolveUserDataDir } from '../../../core/src/app-paths'
 
 describe('RenderCacheManager', () => {
   let tempDir: string
@@ -14,6 +15,10 @@ describe('RenderCacheManager', () => {
     tempDir = path.join(os.tmpdir(), `komfy-test-rcache-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
     fs.mkdirSync(tempDir, { recursive: true })
     manager = new RenderCacheManager(tempDir)
+    // The app brings the cache directory up to the current format at startup, before
+    // anything reads or writes a segment. These tests write segments by hand, so they
+    // have to sit on the same side of that migration.
+    manager.init()
     emittedEvents.length = 0
 
     vi.spyOn(eventEmitter, 'emitToRenderer').mockImplementation((channel, payload) => {
@@ -103,5 +108,116 @@ describe('RenderCacheManager', () => {
     expect(freed).toBe(10)
     expect(fs.existsSync(file1)).toBe(false)
     expect(fs.existsSync(file2)).toBe(false)
+  })
+
+  it('resolves default cache dir under resolveUserDataDir() when Electron app is not available', () => {
+    const defaultManager = new RenderCacheManager()
+    const resolvedDir = defaultManager.getCacheDir()
+    const expectedDir = path.join(resolveUserDataDir(), 'render-cache')
+    expect(resolvedDir).toBe(expectedDir)
+    expect(fs.existsSync(resolvedDir)).toBe(true)
+  })
+})
+
+/**
+ * Added 18/09/2026, after twelve segment renders in one session produced no cache at all.
+ *
+ * The part file was named `segment_<hash>.mp4.part` and handed to ffmpeg as its output.
+ * ffmpeg chooses its muxer from the extension, does not know `.part`, and refused the
+ * file before writing a byte — "Error opening output file". The failure was silent on
+ * both sides, so the only visible symptom was the render cache never filling and the same
+ * segment being rendered over and over.
+ */
+describe('RenderCacheManager: paths ffmpeg can actually write', () => {
+  let tempDir: string
+  let manager: RenderCacheManager
+
+  beforeEach(() => {
+    tempDir = path.join(os.tmpdir(), `komfy-test-rcache-ext-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
+    fs.mkdirSync(tempDir, { recursive: true })
+    manager = new RenderCacheManager(tempDir)
+  })
+
+  afterEach(() => {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
+  })
+
+  it('gives the part file a container extension, not a trailing .part', () => {
+    const partPath = manager.getPartPath('deadbeef')
+    expect(path.extname(partPath)).toBe('.mp4')
+    expect(partPath.endsWith('.part')).toBe(false)
+    expect(partPath).toContain('.part.')
+  })
+
+  it('keeps the part file distinguishable from the finished segment', () => {
+    expect(manager.getPartPath('deadbeef')).not.toBe(manager.getSegmentPath('deadbeef'))
+  })
+
+  it('still recognises a part file as incomplete and clears it on startup', () => {
+    const partPath = manager.getPartPath('deadbeef')
+    fs.writeFileSync(partPath, 'half a render')
+    manager.cleanupInterruptedFiles()
+    expect(fs.existsSync(partPath)).toBe(false)
+  })
+
+  it('clears part files left by the previous naming too', () => {
+    const legacyPart = path.join(tempDir, 'segment_old.mp4.part')
+    fs.writeFileSync(legacyPart, 'half a render')
+    manager.cleanupInterruptedFiles()
+    expect(fs.existsSync(legacyPart)).toBe(false)
+  })
+})
+
+/**
+ * Segments written before the `.part` fix cannot have come from the renderer as it stands
+ * now, so what they contain is unknown — and a wrong segment is played back as if it were
+ * the picture. They go once, and the marker keeps it to once.
+ */
+describe('RenderCacheManager: one-time migration of an older cache', () => {
+  let tempDir: string
+  let manager: RenderCacheManager
+
+  beforeEach(() => {
+    tempDir = path.join(os.tmpdir(), `komfy-test-rcache-mig-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
+    fs.mkdirSync(tempDir, { recursive: true })
+    manager = new RenderCacheManager(tempDir)
+  })
+
+  afterEach(() => {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
+  })
+
+  it('drops every segment and matte it cannot vouch for, and leaves the rest alone', () => {
+    // v3 also drops mattes that look current: until the probe accounted for a rotated
+    // source, a portrait clip was baked squashed into landscape, and a matte's name says
+    // nothing about which reading of the media produced it.
+    const staleSegment = path.join(tempDir, 'segment_03aff5f2f702a96b.mp4')
+    const legacyMatte = path.join(tempDir, 'matte_0123456789abcdef.mp4')
+    const rangedMatte = path.join(tempDir, 'matte_0123456789abcdef_0_30000.mp4')
+    const customMatte = path.join(tempDir, 'custom_matte_clip-1_abcdef.mp4')
+    const unrelated = path.join(tempDir, 'something-else.txt')
+    for (const f of [staleSegment, legacyMatte, rangedMatte, customMatte, unrelated]) {
+      fs.writeFileSync(f, 'x'.repeat(2000))
+    }
+
+    manager.init()
+
+    expect(fs.existsSync(staleSegment)).toBe(false)
+    expect(fs.existsSync(legacyMatte)).toBe(false)
+    expect(fs.existsSync(rangedMatte)).toBe(false)
+    expect(fs.existsSync(customMatte)).toBe(false)
+    expect(fs.existsSync(unrelated)).toBe(true)
+  })
+
+  it('does not run a second time', () => {
+    manager.init()
+
+    const freshSegment = path.join(tempDir, 'segment_new.mp4')
+    fs.writeFileSync(freshSegment, 'x'.repeat(2000))
+
+    const second = new RenderCacheManager(tempDir)
+    second.init()
+
+    expect(fs.existsSync(freshSegment)).toBe(true)
   })
 })

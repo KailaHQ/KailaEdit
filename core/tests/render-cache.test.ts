@@ -3,6 +3,7 @@ import {
   fastHash64,
   findComplexSegments,
   computeSegmentContentHash,
+  MAX_CACHE_SEGMENT_SECONDS,
 } from '../src/render-cache'
 import {
   timelineClipSchema,
@@ -111,7 +112,8 @@ describe('findComplexSegments', () => {
     expect(segments[0].reasons).toContain('multi_layer')
   })
 
-  it('detects chroma key, masks, non-normal blend modes, and adjustments', () => {
+  it('detects non-normal blend modes and adjustments, while single-clip features render in-memory', () => {
+    // Single-clip effects (chroma, autoMatte, speed) render in-memory in realtime without cache baking
     const chromaTimeline = createTimeline({
       clips: [
         makeClip({
@@ -123,25 +125,35 @@ describe('findComplexSegments', () => {
         }),
       ],
     })
-    const chromaSegments = findComplexSegments(chromaTimeline)
-    expect(chromaSegments.length).toBe(1)
-    expect(chromaSegments[0].reasons).toContain('chromakey')
+    expect(findComplexSegments(chromaTimeline)).toEqual([])
 
-    const maskTimeline = createTimeline({
+    const autoMatteTimeline = createTimeline({
       clips: [
         makeClip({
-          id: 'c2',
+          id: 'c-matte',
           trackIndex: 0,
-          startTime: 1,
-          duration: 4,
-          mask: { enabled: true, shape: 'ellipse', x: 50, y: 50, width: 50, height: 50, rotation: 0, feather: 0, invert: false },
+          startTime: 2,
+          duration: 3,
+          autoMatte: { enabled: true, model: 'rvm-mobilenetv3', quality: 'standard', featherEdge: 0, cleanEdge: 0 },
         }),
       ],
     })
-    const maskSegments = findComplexSegments(maskTimeline)
-    expect(maskSegments.length).toBe(1)
-    expect(maskSegments[0].reasons).toContain('mask')
+    expect(findComplexSegments(autoMatteTimeline)).toEqual([])
 
+    const speedTimeline = createTimeline({
+      clips: [
+        makeClip({
+          id: 'spd1',
+          trackIndex: 0,
+          startTime: 0,
+          duration: 2,
+          speed: 10,
+        }),
+      ],
+    })
+    expect(findComplexSegments(speedTimeline)).toEqual([])
+
+    // Heavy multi-layer or compositing features DO trigger complex segments
     const blendTimeline = createTimeline({
       clips: [
         makeClip({
@@ -171,21 +183,6 @@ describe('findComplexSegments', () => {
     const adjSegments = findComplexSegments(adjTimeline)
     expect(adjSegments.length).toBe(1)
     expect(adjSegments[0].reasons).toContain('adjustment')
-
-    const speedTimeline = createTimeline({
-      clips: [
-        makeClip({
-          id: 'spd1',
-          trackIndex: 0,
-          startTime: 0,
-          duration: 2,
-          speed: 10,
-        }),
-      ],
-    })
-    const speedSegments = findComplexSegments(speedTimeline)
-    expect(speedSegments.length).toBe(1)
-    expect(speedSegments[0].reasons).toContain('speed')
   })
 
   it('merges adjacent or overlapping complex intervals', () => {
@@ -196,14 +193,14 @@ describe('findComplexSegments', () => {
           trackIndex: 0,
           startTime: 0,
           duration: 2,
-          chromaKey: { enabled: true, color: '#00ff00', similarity: 40, smoothness: 10, spill: 10 },
+          blendMode: 'multiply',
         }),
         makeClip({
           id: 'c2',
           trackIndex: 0,
           startTime: 2,
           duration: 3,
-          mask: { enabled: true, shape: 'rectangle', x: 50, y: 50, width: 50, height: 50, rotation: 0, feather: 0, invert: false },
+          type: 'adjustment',
         }),
       ],
     })
@@ -265,5 +262,119 @@ describe('computeSegmentContentHash', () => {
     expect(computeSegmentContentHash(segment, timelineSpeed, '480p')).not.toBe(originalHash)
 
     expect(computeSegmentContentHash(segment, baseTimeline, '720p')).not.toBe(originalHash)
+  })
+})
+
+/**
+ * Added 18/09/2026, from a log where one 60 s segment was rendered twice, 250 s apart,
+ * around a matte bake finishing.
+ *
+ * `autoMatte.bake` carries `createdAt: Date.now()`, and the whole object went into the
+ * segment hash. Finishing a bake therefore invalidated every cached segment the clip
+ * appeared in — even when the bake produced the same matte it already had — and the
+ * segment renders started again. Those renders re-cut the clips, which could start
+ * another bake, which invalidated the segments again.
+ */
+describe('computeSegmentContentHash: bake bookkeeping does not invalidate', () => {
+  const withBake = (bake: Record<string, unknown>) =>
+    createTimeline({
+      width: 1920,
+      height: 1080,
+      clips: [
+        makeClip({
+          id: 'c1',
+          assetId: 'a1',
+          trackIndex: 0,
+          startTime: 0,
+          duration: 5,
+          autoMatte: {
+            enabled: true,
+            model: 'rvm-mobilenetv3',
+            quality: 'standard',
+            featherEdge: 0,
+            cleanEdge: 0,
+            bake,
+          },
+        } as never),
+      ],
+    })
+
+  const segment = { id: 'seg-1', startTime: 0, endTime: 5, duration: 5, reasons: ['matte'] }
+  const bake = {
+    path: '/cache/matte.mp4',
+    fingerprint: 'matte_aaaaaaaaaaaaaaaa_0_5000',
+    frameCount: 150,
+    createdAt: 1_000,
+  }
+
+  it('ignores when the bake was made', () => {
+    const before = computeSegmentContentHash(segment, withBake(bake), '480p')
+    const after = computeSegmentContentHash(
+      segment,
+      withBake({ ...bake, createdAt: 9_999_999 }),
+      '480p',
+    )
+    expect(after).toBe(before)
+  })
+
+  it('still invalidates for a different matte', () => {
+    const before = computeSegmentContentHash(segment, withBake(bake), '480p')
+    const other = computeSegmentContentHash(
+      segment,
+      withBake({ ...bake, fingerprint: 'matte_bbbbbbbbbbbbbbbb_0_5000' }),
+      '480p',
+    )
+    expect(other).not.toBe(before)
+  })
+
+  it('still invalidates when the matte settings change', () => {
+    const timeline = withBake(bake)
+    const before = computeSegmentContentHash(segment, timeline, '480p')
+    const feathered = JSON.parse(JSON.stringify(timeline))
+    feathered.clips[0].autoMatte.featherEdge = 40
+    expect(computeSegmentContentHash(segment, feathered, '480p')).not.toBe(before)
+  })
+})
+
+/**
+ * A segment is cached by rendering it, and that renderer will not produce more than
+ * PREVIEW_MAX_SECONDS at a time. A longer segment came back truncated and was still
+ * published as ready for its whole span, so the preview played the cache past the end of
+ * the file and froze on the last frame.
+ */
+describe('findComplexSegments: nothing longer than the renderer will produce', () => {
+  it('splits a long overlap into cacheable pieces that still cover it', () => {
+    const timeline = createTimeline({
+      clips: [
+        makeClip({ id: 'base', assetId: 'a1', trackIndex: 0, startTime: 0, duration: 80 }),
+        makeClip({ id: 'over', assetId: 'a2', trackIndex: 1, startTime: 0, duration: 80 }),
+      ],
+    })
+
+    const segments = findComplexSegments(timeline)
+    expect(segments.length).toBeGreaterThan(1)
+    for (const seg of segments) {
+      expect(seg.duration).toBeLessThanOrEqual(MAX_CACHE_SEGMENT_SECONDS + 1e-6)
+    }
+
+    // Contiguous, and together they still cover the whole overlap.
+    expect(segments[0].startTime).toBeCloseTo(0, 3)
+    expect(segments[segments.length - 1].endTime).toBeCloseTo(80, 3)
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i].startTime).toBeCloseTo(segments[i - 1].endTime, 3)
+    }
+  })
+
+  it('leaves a short segment in one piece', () => {
+    const timeline = createTimeline({
+      clips: [
+        makeClip({ id: 'base', assetId: 'a1', trackIndex: 0, startTime: 0, duration: 5 }),
+        makeClip({ id: 'over', assetId: 'a2', trackIndex: 1, startTime: 0, duration: 5 }),
+      ],
+    })
+
+    const segments = findComplexSegments(timeline)
+    expect(segments).toHaveLength(1)
+    expect(segments[0].duration).toBeCloseTo(5, 3)
   })
 })

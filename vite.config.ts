@@ -49,6 +49,37 @@ export default defineConfig({
             }
           }
         }
+      },
+      {
+        entry: 'electron/matte/stroke-worker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            sourcemap: true,
+            rollupOptions: {
+              output: {
+                format: 'es',
+                entryFileNames: 'stroke-worker.js'
+              }
+            }
+          }
+        }
+      },
+      {
+        entry: 'electron/matte/matte-worker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            sourcemap: true,
+            rollupOptions: {
+              external: ['onnxruntime-node'],
+              output: {
+                format: 'es',
+                entryFileNames: 'matte-worker.js'
+              }
+            }
+          }
+        }
       }
     ]),
     renderer()

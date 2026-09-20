@@ -173,6 +173,14 @@ When changing behavior-sensitive areas such as timeline actions, keyboard shortc
 
 State architecture changes in this codebase have repeatedly caused regressions when product rules were only implicit.
 
+## Program Monitor and WebGL Compositing Limits
+
+`ProgramMonitor.tsx` implements multi-track visual compositing with WebGL canvas rendering:
+
+- **`MAX_COMPOSITING_CANVASES = 3` limitation**: Chromium imposes strict limits on simultaneous active WebGL contexts per page (typically 8–16, with severe memory and context loss hazards). To guarantee rock-solid preview stability without WebGL context loss, `ProgramMonitor.tsx` caps high-fidelity WebGL compositing canvases to 3 simultaneous layers.
+- **CSS Filter Fallback**: Any additional simultaneous compositing layers (4th layer and above) fall back to CSS filter approximations.
+- **Intentional Design Trade-off**: This is an intentional architecture trade-off implemented in KE-504 to prevent WebGL context loss during scrubbing and multi-track playback, not a bug.
+
 ## Working Checklist
 
 Use this checklist before merging editor changes:

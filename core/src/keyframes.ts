@@ -24,6 +24,11 @@ export interface SampledClipProperties {
   filterIntensity: number
   /** Percentage of text characters visible (0 to 100). Default is 100. */
   textProgress: number
+  chromaKeySimilarity?: number
+  chromaKeySmoothness?: number
+  chromaKeySpill?: number
+  chromaKeyFeatherEdge?: number
+  chromaKeyCleanEdge?: number
 }
 
 /**
@@ -189,6 +194,42 @@ export function sampleClipAt(clip: TimelineClip, timeInClip: number): SampledCli
     100,
   )
 
+  const chromaKeySimilarity = clip.chromaKey
+    ? sampleKeyframeTrack(
+        getKeyframeTrack(clip, 'chromaKey.similarity'),
+        timeInClip,
+        clip.chromaKey.similarity ?? 30,
+      )
+    : undefined
+  const chromaKeySmoothness = clip.chromaKey
+    ? sampleKeyframeTrack(
+        getKeyframeTrack(clip, 'chromaKey.smoothness'),
+        timeInClip,
+        clip.chromaKey.smoothness ?? 10,
+      )
+    : undefined
+  const chromaKeySpill = clip.chromaKey
+    ? sampleKeyframeTrack(
+        getKeyframeTrack(clip, 'chromaKey.spill'),
+        timeInClip,
+        clip.chromaKey.spill ?? 10,
+      )
+    : undefined
+  const chromaKeyFeatherEdge = clip.chromaKey
+    ? sampleKeyframeTrack(
+        getKeyframeTrack(clip, 'chromaKey.featherEdge'),
+        timeInClip,
+        clip.chromaKey.featherEdge ?? 0,
+      )
+    : undefined
+  const chromaKeyCleanEdge = clip.chromaKey
+    ? sampleKeyframeTrack(
+        getKeyframeTrack(clip, 'chromaKey.cleanEdge'),
+        timeInClip,
+        clip.chromaKey.cleanEdge ?? 0,
+      )
+    : undefined
+
   return {
     scale,
     positionX,
@@ -199,6 +240,11 @@ export function sampleClipAt(clip: TimelineClip, timeInClip: number): SampledCli
     speed,
     filterIntensity,
     textProgress,
+    chromaKeySimilarity,
+    chromaKeySmoothness,
+    chromaKeySpill,
+    chromaKeyFeatherEdge,
+    chromaKeyCleanEdge,
   }
 }
 

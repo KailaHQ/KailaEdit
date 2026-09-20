@@ -4,6 +4,7 @@ import { formatTime, formatRulerTime, parseTime } from '../video-editor-utils'
 import { useSettings } from '../../../contexts/SettingsContext'
 import { useRenderCacheStore } from '../render-cache-store'
 import { useEditorStore, useEditorActions } from '../editor-store'
+import { useTranslation } from '../../../i18n/I18nContext'
 import { selectMarkers } from '../editor-selectors'
 import { MarkerEditModal } from './MarkerEditModal'
 import type { TimelineMarker } from '../../../types/project-model'
@@ -42,6 +43,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
   const markers = useEditorStore(selectMarkers)
   const actions = useEditorActions()
+  const { t } = useTranslation()
 
   const [editingTimecode, setEditingTimecode] = useState(false)
   const [timecodeInput, setTimecodeInput] = useState('')
@@ -133,55 +135,57 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
   return (
     <>
       <div className="flex flex-shrink-0">
-        {/* Left column (w-32) */}
-        <div className="w-32 flex-shrink-0 flex flex-col">
+        {/* Left column (w-32) - Track header & timecode */}
+        <div className="w-32 flex-shrink-0 flex flex-col border-r border-zinc-800">
           {/* Timecode box */}
-          <div
-            className="h-6 border-b border-r border-zinc-800 bg-zinc-900 flex items-center justify-center cursor-text"
-            onClick={() => {
-              if (!editingTimecode) {
-                setTimecodeInput(formatTime(isPlaying ? playbackTimeRef.current : currentTimeRef.current, fps, timecodeFormat))
-                setEditingTimecode(true)
-                requestAnimationFrame(() => timecodeInputRef.current?.select())
-              }
-            }}
-          >
-            {editingTimecode ? (
-              <input
-                ref={timecodeInputRef}
-                autoFocus
-                className="w-full h-full bg-zinc-950 text-amber-400 text-[11px] font-mono font-medium text-center outline-none border-none tabular-nums tracking-tight px-1"
-                value={timecodeInput}
-                onChange={e => setTimecodeInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const t = parseTime(timecodeInput, fps, timecodeFormat)
-                    if (t !== null) {
-                      const clamped = Math.max(0, Math.min(totalDuration, t))
-                      setCurrentTime(clamped)
-                      playbackTimeRef.current = clamped
+          <div className="h-6 border-b border-zinc-800 bg-zinc-900 flex items-center justify-center">
+            <div
+              className="w-full h-full flex items-center justify-center cursor-text"
+              onClick={() => {
+                if (!editingTimecode) {
+                  setTimecodeInput(formatTime(isPlaying ? playbackTimeRef.current : currentTimeRef.current, fps, timecodeFormat))
+                  setEditingTimecode(true)
+                  requestAnimationFrame(() => timecodeInputRef.current?.select())
+                }
+              }}
+            >
+              {editingTimecode ? (
+                <input
+                  ref={timecodeInputRef}
+                  autoFocus
+                  className="w-full h-full bg-zinc-950 text-amber-400 text-[11px] font-mono font-medium text-center outline-none border-none tabular-nums tracking-tight px-1"
+                  value={timecodeInput}
+                  onChange={e => setTimecodeInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const t = parseTime(timecodeInput, fps, timecodeFormat)
+                      if (t !== null) {
+                        const clamped = Math.max(0, Math.min(totalDuration, t))
+                        setCurrentTime(clamped)
+                        playbackTimeRef.current = clamped
+                      }
+                      setEditingTimecode(false)
+                    } else if (e.key === 'Escape') {
+                      setEditingTimecode(false)
                     }
-                    setEditingTimecode(false)
-                  } else if (e.key === 'Escape') {
-                    setEditingTimecode(false)
-                  }
-                  e.stopPropagation()
-                }}
-                onClick={e => e.stopPropagation()}
-                onBlur={() => setEditingTimecode(false)}
-              />
-            ) : (
-              <span
-                ref={timelineTimecodeRef}
-                className="text-[11px] font-mono font-medium text-amber-400 tabular-nums tracking-tight select-none"
-              >
-                {formatTime(currentTimeRef.current, fps, timecodeFormat)}
-              </span>
-            )}
+                    e.stopPropagation()
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  onBlur={() => setEditingTimecode(false)}
+                />
+              ) : (
+                <span
+                  ref={timelineTimecodeRef}
+                  className="text-[11px] font-mono font-medium text-amber-400 tabular-nums tracking-tight select-none"
+                >
+                  {formatTime(currentTimeRef.current, fps, timecodeFormat)}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Markers track header */}
-          <div className="h-5 border-b border-r border-zinc-800 bg-zinc-900/90 flex items-center justify-between px-2 text-[10px] text-zinc-400 font-medium select-none">
+          <div className="h-5 border-b border-zinc-800 bg-zinc-900/90 flex items-center justify-between px-2 text-[10px] text-zinc-400 font-medium select-none">
             <div className="flex items-center gap-1.5">
               <Bookmark className="w-3 h-3 text-amber-400" />
               <span>Markers</span>
@@ -195,11 +199,17 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
               type="button"
               onClick={() => actions.addMarker({ time: isPlaying ? playbackTimeRef.current : currentTimeRef.current })}
               className="p-0.5 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors"
-              title="Thêm marker tại đầu đọc (Phím M)"
+              title={t('timeline.markers.addAtPlayhead')}
             >
               <Plus className="w-3 h-3" />
             </button>
           </div>
+        </div>
+
+        {/* Timeline Cover gutter on ruler (w-[64px]) */}
+        <div className="w-[64px] flex-shrink-0 flex flex-col select-none pointer-events-none">
+          <div className="h-6 bg-zinc-900 border-b border-zinc-800" />
+          <div className="h-5 bg-zinc-900/60 border-b border-zinc-800/80" />
         </div>
 
         {/* Ruler ticks, markers lane & playhead */}
@@ -228,7 +238,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
                     >
                       <div className={`h-full border-l ${isMajor ? 'border-zinc-700' : 'border-zinc-800'}`} />
                       {isMajor && (
-                        <span className="absolute left-1 bottom-0.5 text-[10px] text-zinc-500 whitespace-nowrap leading-none">
+                        <span className="absolute left-1 top-1 text-[10px] font-mono text-zinc-400 whitespace-nowrap leading-none select-none pointer-events-none">
                           {formatRulerTime(t, rulerInterval < 1, fps, timecodeFormat)}
                         </span>
                       )}
@@ -245,7 +255,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
                 return (
                   <div
                     key={seg.id || seg.hash}
-                    className={`absolute bottom-0 h-[3px] rounded-sm z-20 pointer-events-auto transition-colors ${
+                    className={`absolute bottom-0 h-[2.5px] rounded-sm z-20 pointer-events-auto transition-colors ${
                       seg.ready
                         ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
                         : seg.rendering
@@ -253,8 +263,8 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
                         : 'bg-amber-500/70'
                     }`}
                     style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
-                    title={`Render cache: ${seg.startTime.toFixed(1)}s - ${seg.endTime.toFixed(1)}s (${
-                      seg.ready ? 'Sẵn sàng (60fps cache)' : seg.rendering ? 'Đang render cache...' : 'Cần render cache'
+                    title={`${t('timeline.renderCache.title')}: ${seg.startTime.toFixed(1)}s - ${seg.endTime.toFixed(1)}s (${
+                      seg.ready ? t('timeline.renderCache.ready') : seg.rendering ? t('timeline.renderCache.rendering') : t('timeline.renderCache.needed')
                     })`}
                   />
                 )
@@ -266,7 +276,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
               className="h-5 bg-zinc-900/40 border-b border-zinc-800 relative cursor-pointer group"
               onClick={handleMarkerLaneClick}
               onDoubleClick={handleMarkerLaneDoubleClick}
-              title="Hàng Marker — Nhấp đúp để tạo marker, nhấp để chuyển playhead"
+              title={t('timeline.markers.laneTooltip')}
             >
               {markers.map((m) => {
                 const isDragging = draggingMarkerId === m.id
@@ -287,7 +297,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
                     }}
                     onMouseDown={(e) => handleMarkerMouseDown(e, m)}
                     onDoubleClick={(e) => handleMarkerDoubleClick(e, m)}
-                    title={`${m.label || 'Marker'} (${formatTime(displayTime, fps, timecodeFormat)})\nNhấp để chuyển tới, nhấp đúp để sửa, kéo để đổi vị trí`}
+                    title={`${m.label || t('timeline.markers.defaultLabel')} (${formatTime(displayTime, fps, timecodeFormat)})\n${t('timeline.markers.itemTooltip')}`}
                   >
                     <Bookmark className="w-2.5 h-2.5 fill-current flex-shrink-0" />
                     <span className="truncate max-w-[80px] select-none pointer-events-none">
@@ -308,7 +318,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
               <div
                 className="absolute top-0 -left-[6px] w-[14px] h-[18px] cursor-ew-resize pointer-events-auto select-none"
                 onMouseDown={handleRulerMouseDown}
-                title="Kéo để di chuyển vị trí phát (Scrub playhead)"
+                title={t('timeline.ruler.scrubTooltip')}
               >
                 <svg
                   width="14"

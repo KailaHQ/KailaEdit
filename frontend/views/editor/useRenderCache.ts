@@ -4,6 +4,9 @@ import { useEditorStore } from './editor-store'
 import { selectActiveTimeline } from './editor-selectors'
 import { useRenderCacheStore, type CachedSegmentInfo } from './render-cache-store'
 
+/** How long the timeline must sit still before the cache starts rendering segments. */
+const RENDER_CACHE_IDLE_MS = 2500
+
 export function useRenderCache() {
   const activeTimeline = useEditorStore(selectActiveTimeline)
   const activeTimelineRef = useRef(activeTimeline)
@@ -51,7 +54,15 @@ export function useRenderCache() {
 
     let cancelled = false
 
-    // Debounce checking and queueing by 250ms to allow smooth editing/scrubbing
+    // Wait for the user to actually stop before starting background work.
+    //
+    // A segment render is not cheap: it prepares mattes, can pull a stroke bake behind it,
+    // and every frame of that runs on the main process's own thread — so while it runs the
+    // main process answers no IPC and the whole app stutters. At 250 ms this fired between
+    // keystrokes: the user dragged a clip, the timeline changed, renders started, and by
+    // the time they finished their result was already stale. Waiting for a real pause
+    // costs nothing — the cache is an optimisation, and nobody is watching a segment that
+    // is still being edited.
     const timer = setTimeout(() => {
       window.electronAPI.renderCacheCheck({ hashes })
         .then((statusMap) => {
@@ -115,7 +126,7 @@ export function useRenderCache() {
           }
         })
         .catch(() => {})
-    }, 250)
+    }, RENDER_CACHE_IDLE_MS)
 
     return () => {
       cancelled = true

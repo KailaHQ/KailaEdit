@@ -3,6 +3,7 @@ import { extractAudioPeaks } from '../export/audio-peaks'
 import { observeLoudness, observeSilence } from '../media-analyzer'
 import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
+import { matteService } from '../matte/matte-service'
 import { getAllowedRoots } from '../config'
 import { validatePath } from '../path-validation'
 import { handle } from './typed-handle'
@@ -72,5 +73,55 @@ export function registerVideoProcessingHandlers(): void {
   handle('renderCacheClear', async () => {
     const freedBytes = renderCacheManager.clearCache()
     return { success: true, freedBytes }
+  })
+
+  handle('matteBakeStart', async (params) => {
+    const normalizedPath = validatePath(params.filePath, getAllowedRoots())
+    return matteService.startBake({
+      ...params,
+      filePath: normalizedPath,
+    })
+  })
+
+  handle('matteGetDeviceInfo', async () => {
+    const { onnxSessionManager } = await import('../matte/onnx-session')
+    const probe = await onnxSessionManager.probeProviders()
+    return {
+      available: probe.available,
+      preferred: probe.preferred,
+      gpuAvailable: probe.gpuAvailable,
+      active: onnxSessionManager.getActiveProvider(),
+    }
+  })
+
+  handle('matteBakeMissing', async ({ paths }) => {
+    // The render cache is a cache: it evicts under a size cap, Settings can clear it, and
+    // a format migration can drop it. A project holds absolute paths into it, so those
+    // paths go stale on their own. Nothing else notices — bake validity compares recorded
+    // fields, not the filesystem — so a clip kept reporting "matte ready" while its matte
+    // had been gone for hours and the preview quietly showed the background.
+    const fs = await import('fs')
+    const missing = paths.filter(p => {
+      try {
+        return !fs.existsSync(p) || fs.statSync(p).size <= 0
+      } catch {
+        return true
+      }
+    })
+    return { missing }
+  })
+
+  handle('matteBakeCancel', async ({ jobId }) => {
+    const success = matteService.cancelJob(jobId)
+    return { success }
+  })
+
+  handle('matteBakeStatus', async ({ jobId }) => {
+    return matteService.getJobStatus(jobId)
+  })
+
+  handle('imageRemoveBackground', async ({ imageSrc, quality }) => {
+    const { removeStillImageBackground } = await import('../matte/image-matte')
+    return removeStillImageBackground({ imageSrc, quality })
   })
 }

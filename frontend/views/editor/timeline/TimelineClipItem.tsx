@@ -14,6 +14,7 @@ import { getFilterDefinition } from '@core/filters'
 import { getAudioFadeDurations, hasKeyframesForProperty } from '@core/keyframes'
 import { TimelineKeyframeRow } from './TimelineKeyframeRow'
 import { TimelineAudioEnvelope } from './TimelineAudioEnvelope'
+import { ClipMatteProgress } from './ClipMatteProgress'
 
 // Custom scissors cursor SVG for the blade tool
 const SCISSORS_CURSOR_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='6' cy='6' r='3'/><path d='M8.12 8.12 12 12'/><path d='M20 4 8.12 15.88'/><circle cx='6' cy='18' r='3'/><path d='M14.8 14.8 20 20'/></svg>`
@@ -405,6 +406,11 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
           />
         )
       })()}
+
+      {/* Background-removal progress, on the clip being processed */}
+      {Boolean(clip.autoMatte?.enabled) && (
+        <ClipMatteProgress clipId={clip.id} clipWidthPx={clipWidthPx} />
+      )}
 
       {/* Keyframe row for selected clip or clip with keyframes */}
       {(selectedClipIds.has(clip.id) || Boolean(clip.keyframes && clip.keyframes.length > 0)) && (

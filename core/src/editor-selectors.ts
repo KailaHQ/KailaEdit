@@ -4,31 +4,31 @@ import {
   type ToolType,
 } from './video-editor-utils'
 import {
-  DEFAULT_CLIP_TRANSFORM,
-  DEFAULT_COLOR_CORRECTION,
   DEFAULT_SUBTITLE_STYLE,
   DEFAULT_TRACKS,
 } from './project-model'
 import type {
   Asset,
-  ClipTransform,
-  ColorCorrection,
   SubtitleClip,
   SubtitleStyle,
   Timeline,
   TimelineClip,
+  TimelineCover,
   TimelineMarker,
   Track,
   ClipMask,
   ChromaKey,
+  AutoMatte,
+  ClipStroke,
   ClipBlendMode,
+  CustomMatte,
+  BrushMode,
 } from './project-model'
 import {
   namedResolutionDisplayName,
   namedResolutionTier,
 } from './video-resolution'
 import type {
-  AssetListFilters,
   ClipCapabilities,
   ClipDimensions,
   ClipMetadata,
@@ -48,62 +48,8 @@ import type {
   TimelineListItem,
 } from './editor-state'
 
-export interface ExportLetterbox {
-  ratio: number
-  color: string
-  opacity: number
-}
-
-export interface ExportClipData {
-  path: string
-  type: string
-  startTime: number
-  duration: number
-  trimStart: number
-  speed: number
-  reversed: boolean
-  flipH: boolean
-  flipV: boolean
-  opacity: number
-  trackIndex: number
-  muted: boolean
-  volume: number
-  id: string
-  linkedClipIds?: string[]
-  transform?: ClipTransform
-  colorCorrection?: ColorCorrection
-  transitionIn?: { type: string; duration: number }
-  transitionOut?: { type: string; duration: number }
-  effects?: Array<{ type: string; enabled: boolean; params: Record<string, number> }>
-  textStyle?: {
-    text: string
-    fontSize: number
-    color: string
-    backgroundColor: string
-    positionX: number
-    positionY: number
-    strokeColor: string
-    strokeWidth: number
-    padding: number
-    opacity: number
-  }
-}
-
-export interface ExportSubtitleData {
-  text: string
-  startTime: number
-  endTime: number
-  style: SubtitleStyle
-}
-
-export interface ExportModalModel {
-  timeline: Timeline | null
-  clips: TimelineClip[]
-  tracks: Track[]
-  exportClips: ExportClipData[]
-  subtitleData: ExportSubtitleData[]
-  letterbox: ExportLetterbox | null
-}
+export * from './selectors/export-selectors'
+export * from './selectors/asset-selectors'
 
 export interface ClipAudioControlsModel {
   targetClipId: string
@@ -116,18 +62,6 @@ const EMPTY_SUBTITLES: SubtitleClip[] = []
 const EMPTY_MARKERS: TimelineMarker[] = []
 const DEFAULT_TIMELINE_TRACKS: Track[] = DEFAULT_TRACKS.map(track => ({ ...track }))
 const EMPTY_TIMELINE_IN_OUT_RANGE: TimelineInOutRange = { inPoint: null, outPoint: null }
-const LETTERBOX_RATIO_MAP: Record<string, number> = {
-  '2.35:1': 2.35,
-  '2.39:1': 2.39,
-  '2.76:1': 2.76,
-  '1.85:1': 1.85,
-  '4:3': 4 / 3,
-}
-
-function parseResolutionHeight(resolution?: string): number {
-  const match = resolution?.match(/(\d+)/)
-  return match ? parseInt(match[1], 10) : 0
-}
 
 export function getActiveTimelineFromEditorModel(editorModel: EditorModel): Timeline | null {
   if (editorModel.timelines.length === 0) return null
@@ -523,6 +457,14 @@ export function selectEyedropperMode(state: EditorState): boolean {
   return state.session.ui.eyedropperMode ?? false
 }
 
+export function selectCustomMatteBrushMode(state: EditorState): BrushMode | null {
+  return state.session.ui.customMatteBrushMode ?? null
+}
+
+export function selectCustomMatteBrushSize(state: EditorState): number {
+  return state.session.ui.customMatteBrushSize ?? 5
+}
+
 export function selectClipMask(state: EditorState, clipId: string): ClipMask | undefined {
   const timeline = selectActiveTimeline(state)
   return timeline?.clips.find(c => c.id === clipId)?.mask
@@ -531,6 +473,21 @@ export function selectClipMask(state: EditorState, clipId: string): ClipMask | u
 export function selectClipChromaKey(state: EditorState, clipId: string): ChromaKey | undefined {
   const timeline = selectActiveTimeline(state)
   return timeline?.clips.find(c => c.id === clipId)?.chromaKey
+}
+
+export function selectClipAutoMatte(state: EditorState, clipId: string): AutoMatte | undefined {
+  const timeline = selectActiveTimeline(state)
+  return timeline?.clips.find(c => c.id === clipId)?.autoMatte
+}
+
+export function selectClipCustomMatte(state: EditorState, clipId: string): CustomMatte | undefined {
+  const timeline = selectActiveTimeline(state)
+  return timeline?.clips.find(c => c.id === clipId)?.customMatte
+}
+
+export function selectClipStroke(state: EditorState, clipId: string): ClipStroke | undefined {
+  const timeline = selectActiveTimeline(state)
+  return timeline?.clips.find(c => c.id === clipId)?.stroke
 }
 
 export function selectClipBlendMode(state: EditorState, clipId: string): ClipBlendMode {
@@ -832,204 +789,13 @@ export function selectSelectedSubtitleEditorModel(state: EditorState): SelectedS
   return { subtitle, track, effectiveStyle }
 }
 
-export function selectExportLetterbox(state: EditorState): ExportLetterbox | null {
-  const clips = selectClips(state)
-  const tracks = selectTracks(state)
-  const adjustmentClips = clips.filter(
-    clip =>
-      clip.type === 'adjustment'
-      && clip.letterbox?.enabled
-      && tracks[clip.trackIndex]?.enabled !== false,
-  )
-  if (adjustmentClips.length === 0) return null
-
-  const best = adjustmentClips.reduce((currentBest, candidate) => (
-    candidate.duration > currentBest.duration ? candidate : currentBest
-  ))
-  const letterbox = best.letterbox!
-  return {
-    ratio: letterbox.aspectRatio === 'custom'
-      ? (letterbox.customRatio || 2.35)
-      : (LETTERBOX_RATIO_MAP[letterbox.aspectRatio] || 2.35),
-    color: letterbox.color || '#000000',
-    opacity: (letterbox.opacity ?? 100) / 100,
-  }
-}
-
-export function selectExportClipData(state: EditorState): ExportClipData[] {
-  const tracks = selectTracks(state)
-  return selectClips(state)
-    .filter(clip => clip.type === 'video' || clip.type === 'image' || clip.type === 'audio' || clip.type === 'text')
-    .filter(clip => tracks[clip.trackIndex]?.enabled !== false)
-    .map(clip => ({
-      path: selectClipPath(state, clip),
-      type: clip.type,
-      startTime: clip.startTime,
-      duration: clip.duration,
-      trimStart: clip.trimStart,
-      speed: clip.speed || 1,
-      reversed: clip.reversed || false,
-      flipH: clip.flipH || false,
-      flipV: clip.flipV || false,
-      opacity: clip.opacity ?? 100,
-      trackIndex: clip.trackIndex,
-      muted: clip.muted || false,
-      volume: clip.volume ?? 1,
-      id: clip.id,
-      linkedClipIds: clip.linkedClipIds,
-      transform: clip.transform ?? DEFAULT_CLIP_TRANSFORM,
-      colorCorrection: clip.colorCorrection ?? DEFAULT_COLOR_CORRECTION,
-      transitionIn: clip.transitionIn,
-      transitionOut: clip.transitionOut,
-      effects: clip.effects?.map(effect => ({
-        type: effect.type,
-        enabled: effect.enabled,
-        params: effect.params,
-      })),
-      textStyle: clip.textStyle && {
-        text: clip.textStyle.text,
-        fontSize: clip.textStyle.fontSize,
-        color: clip.textStyle.color,
-        backgroundColor: clip.textStyle.backgroundColor,
-        positionX: clip.textStyle.positionX,
-        positionY: clip.textStyle.positionY,
-        strokeColor: clip.textStyle.strokeColor,
-        strokeWidth: clip.textStyle.strokeWidth,
-        padding: clip.textStyle.padding,
-        opacity: clip.textStyle.opacity,
-      },
-    }))
-}
-
-export function selectExportSubtitleData(state: EditorState): ExportSubtitleData[] {
-  const subtitles = selectSubtitles(state)
-  const tracks = selectTracks(state)
-  return subtitles.map(subtitle => {
-    const track = tracks[subtitle.trackIndex]
-    return {
-      text: subtitle.text,
-      startTime: subtitle.startTime,
-      endTime: subtitle.endTime,
-      style: {
-        ...DEFAULT_SUBTITLE_STYLE,
-        ...(track?.subtitleStyle || {}),
-        ...(subtitle.style || {}),
-      },
-    }
-  })
-}
-
-export function selectExportModalModel(state: EditorState): ExportModalModel {
-  return {
-    timeline: selectActiveTimeline(state),
-    clips: selectClips(state),
-    tracks: selectTracks(state),
-    exportClips: selectExportClipData(state),
-    subtitleData: selectExportSubtitleData(state),
-    letterbox: selectExportLetterbox(state),
-  }
-}
-
-export interface AssetBinListItem {
-  id: string
-  name: string
-  count: number
-}
-
-export function selectAssetBins(state: EditorState): AssetBinListItem[] {
-  const assetCounts = state.editorModel.assets.reduce((counts, asset) => {
-    if (!asset.binId) return counts
-    counts.set(asset.binId, (counts.get(asset.binId) ?? 0) + 1)
-    return counts
-  }, new Map<string, number>())
-
-  return Object.entries(state.editorModel.bins)
-    .map(([id, name]) => ({
-      id,
-      name,
-      count: assetCounts.get(id) ?? 0,
-    }))
-    .sort((left, right) => left.name.localeCompare(right.name))
-}
-
-export function equalAssetBins(left: AssetBinListItem[], right: AssetBinListItem[]): boolean {
-  if (left === right) return true
-  if (left.length !== right.length) return false
-
-  return left.every((bin, index) => {
-    const other = right[index]
-    return (
-      bin.id === other.id
-      && bin.name === other.name
-      && bin.count === other.count
-    )
-  })
-}
-
-/**
- * The media panel is the list of files the user imported from their machine.
- * A sticker dropped on the timeline still needs an asset for clip lookups, but
- * showing it here left blank tiles the user never asked for. Projects saved
- * before `source` existed are recognised by the prompt addStickerClip writes.
- * Sound effect (SFX) clips ship with the app and should likewise never clutter
- * the user's imported media library.
- */
-function isUserImportedAsset(asset: Asset): boolean {
-  if (asset.source === 'sticker' || asset.source === 'sfx') return false
-  if (asset.prompt.startsWith('Sticker: ') || asset.prompt.startsWith('SFX: ')) return false
-  if (asset.path && (asset.path.startsWith('stickers/') || asset.path.startsWith('sfx/'))) return false
-  return true
-}
-
-export function selectFilteredAssets(state: EditorState, filters: AssetListFilters): Asset[] {
-  let result = selectAssets(state).filter(isUserImportedAsset)
-  if (filters.assetFilter && filters.assetFilter !== 'all') {
-    result = result.filter(asset => asset.type === filters.assetFilter)
-  }
-  if (filters.selectedBinId !== undefined && filters.selectedBinId !== null) {
-    result = result.filter(asset => asset.binId === filters.selectedBinId)
-  }
-  return result
-}
-
-export function selectSortedAssets(state: EditorState, filters: AssetListFilters): Asset[] {
-  const filteredAssets = selectFilteredAssets(state, filters)
-  if (filters.assetViewMode !== 'list') return filteredAssets
-
-  const sorted = [...filteredAssets]
-  const dir = filters.listSortDir === 'desc' ? -1 : 1
-  sorted.sort((a, b) => {
-    switch (filters.listSortCol) {
-      case 'type':
-        return dir * a.type.localeCompare(b.type)
-      case 'duration':
-        return dir * ((a.duration ?? 0) - (b.duration ?? 0))
-      case 'resolution':
-        return dir * (parseResolutionHeight(a.resolution) - parseResolutionHeight(b.resolution))
-      case 'date':
-        return dir * (a.createdAt - b.createdAt)
-      case 'color': {
-        const order = COLOR_LABELS.map((color) => color.id)
-        const idxA = a.colorLabel ? order.indexOf(a.colorLabel) : order.length
-        const idxB = b.colorLabel ? order.indexOf(b.colorLabel) : order.length
-        return dir * (idxA - idxB)
-      }
-      case 'name':
-      default: {
-        const nameA = (a.path?.split(/[/\\]/).pop() || a.type || '').toLowerCase()
-        const nameB = (b.path?.split(/[/\\]/).pop() || b.type || '').toLowerCase()
-        return dir * nameA.localeCompare(nameB)
-      }
-    }
-  })
-  return sorted
-}
-
-export function selectVisibleAssets(state: EditorState, filters: AssetListFilters): Asset[] {
-  return selectSortedAssets(state, filters)
-}
-
 /** Why the last edit was refused, or null when nothing was. */
 export function selectLastRejectedEdit(state: EditorState): { rule: string; message: string } | null {
   return state.session.ui.lastRejectedEdit
 }
+
+/** Cover metadata for the active timeline. */
+export function selectTimelineCover(state: EditorState): TimelineCover | undefined {
+  return selectActiveTimeline(state)?.cover
+}
+

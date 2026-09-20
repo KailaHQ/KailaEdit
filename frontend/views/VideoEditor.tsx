@@ -52,6 +52,7 @@ import { useEditorMediaImport } from './editor/useEditorMediaImport'
 import { useTimelineXmlExport } from './editor/useTimelineXmlExport'
 import { useProxyManager } from './editor/useProxyManager'
 import { useRenderCache } from './editor/useRenderCache'
+import { useMatteBakeAudit } from '../hooks/useMatteBake'
 import {
   createEditorStore,
   EditorStoreProvider,
@@ -84,6 +85,7 @@ function getStructuralFingerprint(model: EditorModel): string {
     activeTimeline?.fps ?? '',
     activeTimeline?.name ?? '',
     JSON.stringify(activeTimeline?.background ?? ''),
+    activeTimeline?.cover ? `${activeTimeline.cover.updatedAt ?? ''}:${activeTimeline.cover.templateId ?? ''}:${activeTimeline.cover.time}` : '',
   ].join(':')
 }
 
@@ -126,6 +128,7 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
   const { settings, openSettings } = useSettings()
   useProxyManager()
   useRenderCache()
+  useMatteBakeAudit()
 
   const getEditorState = useEditorGetState()
   const editorModel = useEditorStore(state => state.editorModel)

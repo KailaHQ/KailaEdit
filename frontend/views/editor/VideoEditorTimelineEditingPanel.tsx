@@ -67,7 +67,11 @@ import { useEditorActions, useEditorGetState, useEditorStore, useEditorSubscribe
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineRuler } from './timeline/TimelineRuler'
 import { TimelineTrackHeaders } from './timeline/TimelineTrackHeaders'
+import { TimelineCoverGutter } from './timeline/TimelineCoverGutter'
 import { TimelineTracksView } from './timeline/TimelineTracksView'
+import { CoverPickerModal } from './cover/CoverPickerModal'
+import { CoverDesignModal } from './cover/CoverDesignModal'
+import type { TimelineCover } from '@core/project-model'
 import { useTimelinePlayheadSync } from './timeline/useTimelinePlayheadSync'
 import { useTimelineContextMenu } from './timeline/useTimelineContextMenu'
 import { useSettings } from '../../contexts/SettingsContext'
@@ -207,6 +211,38 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     actions.setShowPropertiesPanel(applyStateAction(value, showPropertiesPanel))
   }, [actions, showPropertiesPanel])
 
+  // Cover modal states
+  const [isCoverPickerOpen, setIsCoverPickerOpen] = useState(false)
+  const [isCoverDesignOpen, setIsCoverDesignOpen] = useState(false)
+  const [coverFrameUrl, setCoverFrameUrl] = useState('')
+  const [coverSelectedTime, setCoverSelectedTime] = useState(0)
+  const [coverIsLocal, setCoverIsLocal] = useState(false)
+
+  const handleOpenCoverPicker = useCallback(() => {
+    setIsCoverPickerOpen(true)
+  }, [])
+
+  const handleOpenCoverDesign = useCallback((initialFrameDataUrl: string, selectedTime: number, isLocalImage: boolean) => {
+    const finalUrl =
+      initialFrameDataUrl ||
+      activeTimeline?.cover?.customImagePath ||
+      activeTimeline?.cover?.thumbnailDataUrl ||
+      ''
+    setCoverFrameUrl(finalUrl)
+    setCoverSelectedTime(selectedTime)
+    setCoverIsLocal(isLocalImage)
+    setIsCoverPickerOpen(false)
+    setIsCoverDesignOpen(true)
+  }, [activeTimeline?.cover])
+
+  const handleSaveCover = useCallback((cover: TimelineCover) => {
+    actions.setTimelineCover(cover)
+  }, [actions])
+
+  const handleRemoveCover = useCallback(() => {
+    actions.setTimelineCover(undefined)
+  }, [actions])
+
   const handleCopy = useCallback(() => { actions.copySelection() }, [actions])
   const handleCut = useCallback(() => { actions.cutSelection() }, [actions])
   const handlePaste = useCallback(() => { actions.pasteSelection() }, [actions])
@@ -229,7 +265,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const updateAsset = useCallback((_projectId: string, assetId: string, updates: Partial<Asset>) => {
     actions.updateAsset(assetId, updates)
   }, [actions])
-  const addClipToTimeline = useCallback((asset: Asset, trackIndex: number, startTime?: number) => {
+  const addClipToTimeline = useCallback((asset: Asset, trackIndex?: number, startTime?: number) => {
     // Add puts the asset in front of the existing edit on V1.
     actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime, position: 'start' })
   }, [actions])
@@ -428,6 +464,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const timelineRef = useRef<HTMLDivElement>(null)
   const trackContainerRef = useRef<HTMLDivElement>(null)
   const trackHeadersRef = useRef<HTMLDivElement>(null)
+  const coverGutterRef = useRef<HTMLDivElement>(null)
   const rulerScrollRef = useRef<HTMLDivElement>(null)
   const trackContentRef = useRef<HTMLDivElement>(null)
   const playheadRulerRef = useRef<HTMLDivElement>(null)
@@ -634,6 +671,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     lassoRect, setLassoRect,
     scrubFromEvent,
     handleRulerMouseDown,
+    handlePlayheadMouseDown,
     expandWithLinkedClips,
     handleClipMouseDown,
     handleResizeStart,
@@ -647,7 +685,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     getCurrentTime, setCurrentTime, setIsPlaying,
     snapEnabled, resolveClipPath, getMaxClipDuration, addClipToTimeline,
     assets, timelines, activeTimeline, currentProjectId,
-    timelineRef, trackContainerRef, trackContentRef,
+    timelineRef, rulerScrollRef, trackContainerRef, trackContentRef,
     orderedTracks, getTrackHeight, trackTopPx,
     splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
     audioTrackHeight, videoTrackHeight, subtitleTrackHeight, stickerTrackHeight,
@@ -666,6 +704,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     fitToViewRef,
     trackContainerRef,
     trackHeadersRef,
+    coverGutterRef,
     rulerScrollRef,
     playheadRulerRef,
     playheadOverlayRef,
@@ -845,6 +884,17 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   suppressGapClickRef={suppressGapClickRef}
                 />
 
+                {/* Timeline Cover gutter on timeline side */}
+                <TimelineCoverGutter
+                  coverGutterRef={coverGutterRef}
+                  orderedTracks={orderedTracks}
+                  tracks={tracks}
+                  rowHeights={rowHeights}
+                  cover={activeTimeline?.cover}
+                  onOpenCoverPicker={handleOpenCoverPicker}
+                  onRemoveCover={handleRemoveCover}
+                />
+
                 {/* Track content area */}
                 <TimelineTracksView
                   trackContainerRef={trackContainerRef}
@@ -886,6 +936,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   handleTimelineBgContextMenu={handleTimelineBgContextMenu}
                   startSelectionLasso={startSelectionLasso}
                   scrubFromEvent={scrubFromEvent}
+                  handlePlayheadMouseDown={handlePlayheadMouseDown}
                   setIsPlaying={setIsPlaying}
                   setSelectedClipIds={setSelectedClipIds}
                   setSelectedSubtitleId={setSelectedSubtitleId}
@@ -967,6 +1018,32 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           anchorPosition={selectedGapAnchor}
           onCloseGap={handleCloseGap}
           onDismiss={clearSelectedGap}
+        />
+      )}
+
+      {/* Cover Picker & Design Modals */}
+      {isCoverPickerOpen && (
+        <CoverPickerModal
+          isOpen={isCoverPickerOpen}
+          onClose={() => setIsCoverPickerOpen(false)}
+          onOpenDesign={handleOpenCoverDesign}
+          onRemoveCover={handleRemoveCover}
+          activeTimeline={activeTimeline}
+          assets={assets}
+        />
+      )}
+
+      {isCoverDesignOpen && (
+        <CoverDesignModal
+          isOpen={isCoverDesignOpen}
+          onClose={() => setIsCoverDesignOpen(false)}
+          onSave={handleSaveCover}
+          onDeleteCover={handleRemoveCover}
+          initialFrameDataUrl={coverFrameUrl}
+          selectedTime={coverSelectedTime}
+          isLocalImage={coverIsLocal}
+          currentCover={activeTimeline?.cover}
+          projectName={activeTimeline?.name || 'Project'}
         />
       )}
     </>

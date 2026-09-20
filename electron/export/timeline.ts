@@ -1,5 +1,5 @@
 import type { ExportClipEffect } from './effects-filter'
-import type { KeyframeTrack, ClipMask, ChromaKey } from '../../core/src/project-model'
+import type { KeyframeTrack, ClipMask, ChromaKey, AutoMatte, ClipStroke } from '../../core/src/project-model'
 import type { ClipBlendMode } from '../../core/src/blend-modes'
 
 export interface ExportClipTransform {
@@ -29,6 +29,7 @@ export interface ExportClip {
   /** Ids of clips this one is A/V-linked to. */
   linkedClipIds?: string[];
   id?: string;
+  assetId?: string | null;
   transform?: ExportClipTransform;
   colorCorrection?: ExportColorCorrection;
   transitionIn?: ExportClipTransition;
@@ -40,6 +41,9 @@ export interface ExportClip {
   mask?: ClipMask;
   chromaKey?: ChromaKey;
   blendMode?: ClipBlendMode;
+  autoMatte?: AutoMatte;
+  stroke?: ClipStroke;
+  strokeBakePath?: string;
 }
 
 /**
