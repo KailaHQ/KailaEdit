@@ -4,14 +4,15 @@ import { pathToFileUrl } from '../../../lib/file-url'
 import type { CubeLut } from '@core/lut'
 import type { ChromaKey, AutoMatte, ClipStroke, CustomMatte } from '@core/project-model'
 import { matteEngine } from './MatteEngine'
-import { matteTimeForSourceTime } from '@core/auto-matte'
-import { decideBakeMatteSync, STALE_MATTE_SECONDS } from '@core/matte-preview-policy'
+import { matteTimeForSourceTime, autoMattePlaybackRate } from '@core/auto-matte'
+import { decideBakeMatteSync, resolveMatteReadiness, type MatteReadiness, type MatteReadinessInput } from '@core/matte-preview-policy'
+import { FramePairCoordinator } from '@core/frame-pair-coordinator'
 import { matteAlphaBand, matteFeatherSigma } from '@core/matte-edge'
 import { rasterizeStrokes, computeStrokesHash } from '@core/custom-matte'
-import { WebCodecsPlayer } from './webcodecs/WebCodecsPlayer'
+import { BakedMattePair } from './BakedMattePair'
 
 export interface LutCanvasRef {
-  renderNow: (overrideSource?: HTMLVideoElement | HTMLImageElement | VideoFrame | null) => void
+  renderNow: (overrideSource?: HTMLVideoElement | HTMLImageElement | VideoFrame | null, scrub?: { sourceTime: number } | null) => void
   getCanvas: () => HTMLCanvasElement | null
   clear: () => void
   /**
@@ -28,6 +29,8 @@ export interface LutCanvasRef {
    * worst case degrades to "picture, not cut out" instead of "no picture".
    */
   hasContent: () => boolean
+  /** Current matte pipeline readiness state */
+  getMatteReadiness: () => MatteReadiness
 }
 
 export interface LutCanvasProps {
@@ -380,11 +383,12 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
   const lastSourceSeekAtRef = React.useRef<number>(0)
   const liveInferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const liveInferringRef = React.useRef(false)
-  const matteWebCodecsPlayerRef = React.useRef<WebCodecsPlayer | null>(null)
+  const bakedPairRef = React.useRef<BakedMattePair | null>(null)
+  const lastSourceRef = React.useRef<HTMLVideoElement | HTMLImageElement | VideoFrame | null>(null)
+  const sourceWatchRef = React.useRef<{ source: HTMLVideoElement; dispose: () => void } | null>(null)
+  const sourceClockRef = React.useRef(new WeakMap<HTMLVideoElement, number>())
+  const scrubTargetRef = React.useRef<{ source: HTMLVideoElement; time: number } | null>(null)
   const matteFrameRef = React.useRef<VideoFrame | null>(null)
-  const lastMattePathRef = React.useRef<string>('')
-  const isSeekingMatteRef = React.useRef(false)
-  const pendingMatteTimeRef = React.useRef<number | null>(null)
   /**
    * Size of whatever is currently on texture unit 2.
    *
@@ -396,12 +400,38 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
   const matteTextureSizeRef = React.useRef<{ width: number; height: number }>({ width: 1, height: 1 })
   /** Set by a completed draw, cleared by clearCanvas. See LutCanvasRef.hasContent. */
   const hasContentRef = React.useRef(false)
-  const lastClipIdRef = React.useRef<string | null>(null)
+  const matteReadinessRef = React.useRef<MatteReadiness>('preparing')
+  const lastClipIdRef = React.useRef<string | null>(clipId ?? null)
+
+  /**
+   * Generation counter — incremented on clip, bake, or project switch.
+   *
+   * Every async callback (WebCodecs seek, live inference, bake video load)
+   * captures the generation at dispatch time and compares it on arrival. If
+   * the generation has moved on, the result belongs to a superseded request
+   * and is silently dropped. This is the single guard that stops stale matte
+   * frames from being painted over a source that has already moved to a
+   * different clip or time.
+   *
+   * The counter lives INSIDE the coordinator and nowhere else. A second copy
+   * out here went out of step the moment `setMatteEnabled` bumped the
+   * coordinator's own counter on mount: every `decide()` then compared 0
+   * against 1, returned `skip`, and the canvas was cleared on every frame for
+   * as long as Remove BG was on — a black monitor. One counter, read through
+   * `coordinatorRef`, is what keeps that from coming back.
+   */
+  const coordinatorRef = React.useRef(new FramePairCoordinator())
+
+  React.useEffect(() => {
+    coordinatorRef.current.setMatteEnabled(Boolean(autoMatte?.enabled))
+  }, [autoMatte?.enabled])
 
   React.useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
+      sourceWatchRef.current?.dispose()
+      sourceWatchRef.current = null
       if (liveInferTimeoutRef.current !== null) {
         clearTimeout(liveInferTimeoutRef.current)
         liveInferTimeoutRef.current = null
@@ -412,7 +442,11 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
   // Reset matte validation state when switching clips unless a cached matte exists
   React.useEffect(() => {
     if (lastClipIdRef.current !== (clipId ?? null)) {
+      lastSourceRef.current = sourceElement
       lastClipIdRef.current = clipId ?? null
+      glRef.current?.clear(glRef.current.COLOR_BUFFER_BIT)
+      hasContentRef.current = false
+      coordinatorRef.current.nextGeneration() // KE-1802: invalidate all pending async operations
       const activeId = clipId || 'clip-preview'
       const cached = matteEngine.getCachedResult(activeId)
       if (!cached) {
@@ -425,6 +459,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     }
   }, [clipId])
 
+  React.useEffect(() => { if (sourceElement) lastSourceRef.current = sourceElement }, [sourceElement])
+
   /**
    * The current `draw`, for listeners that must not re-subscribe when it changes.
    *
@@ -432,70 +468,29 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
    * dependency and also owned the bake video would pause and blank that element every
    * time, so the listeners read it through here instead.
    */
-  const drawRef = React.useRef<() => void>(() => {})
+  const drawRef = React.useRef<(presentOnly?: boolean) => void>(() => {})
   const isPlayingRef = React.useRef(isPlaying)
   isPlayingRef.current = isPlaying
 
   const bakeFailedRef = React.useRef(false)
 
-  // Manage WebCodecs player for baked matte video (instant hardware decoding)
+  // One owner for paired snapshots; async completion redraws even while paused.
   React.useEffect(() => {
-    if (!bakeVideoPath || !autoMatte?.enabled || typeof VideoDecoder === 'undefined') {
-      if (matteWebCodecsPlayerRef.current) {
-        matteWebCodecsPlayerRef.current.destroy()
-        matteWebCodecsPlayerRef.current = null
-        matteFrameRef.current = null
-        lastMattePathRef.current = ''
-      }
-      return
-    }
-
-    if (lastMattePathRef.current === bakeVideoPath && matteWebCodecsPlayerRef.current?.isReady()) {
-      return
-    }
-
-    lastMattePathRef.current = bakeVideoPath
-    const player = new WebCodecsPlayer()
-    matteWebCodecsPlayerRef.current = player
-
-    let cancelled = false
-    player.load(bakeVideoPath).then((success) => {
-      if (cancelled || !isMountedRef.current || matteWebCodecsPlayerRef.current !== player) return
-      if (success) {
-        const isVideo = sourceElement instanceof HTMLVideoElement
-        const isFrame = typeof VideoFrame !== 'undefined' && sourceElement instanceof VideoFrame
-        const currentSourceTime = isVideo
-          ? sourceElement.currentTime
-          : isFrame
-            ? sourceElement.timestamp / 1_000_000
-            : 0
-        const wantTime = matteTimeForSourceTime(currentSourceTime, autoMatte.bake?.sourceStart ?? trimStart ?? 0, speed ?? 1)
-        player.seek(wantTime).then((frame) => {
-          if (cancelled || !isMountedRef.current || !frame) return
-          matteFrameRef.current = frame
-          bakeDecodedTimeRef.current = frame.timestamp / 1_000_000
-          hasValidMatteRef.current = true
-          if (!isPlayingRef.current) drawRef.current()
-        }).catch(() => {})
-      }
-    }).catch(err => {
-      console.warn('[LutCanvas] Failed to load matte with WebCodecsPlayer:', err)
-    })
-
+    if (!bakeVideoPath || !autoMatte?.enabled || typeof VideoDecoder === 'undefined') return
+    const pair = new BakedMattePair(bakeVideoPath, () => drawRef.current(true))
+    bakedPairRef.current = pair
+    hasValidMatteRef.current = false
     return () => {
-      cancelled = true
-      if (matteWebCodecsPlayerRef.current === player) {
-        player.destroy()
-        matteWebCodecsPlayerRef.current = null
-        matteFrameRef.current = null
-        lastMattePathRef.current = ''
-      }
+      pair.destroy()
+      if (bakedPairRef.current === pair) bakedPairRef.current = null
     }
-  }, [bakeVideoPath, autoMatte?.enabled])
+  }, [bakeVideoPath, autoMatte?.enabled, clipId])
 
   // Manage bake video element
   React.useEffect(() => {
     bakeFailedRef.current = false
+    // The paired decoder owns fallback too. Do not load a duplicate matte stream.
+    if (bakeVideoPath && autoMatte?.enabled && typeof VideoDecoder !== 'undefined') return
     if (!bakeVideoPath || !autoMatte?.enabled) {
       if (bakeVideoRef.current) {
         bakeVideoRef.current.pause()
@@ -829,11 +824,45 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
   }, [])
 
   // Draw loop
-  const draw = React.useCallback((overrideSource?: HTMLVideoElement | HTMLImageElement | VideoFrame | null) => {
+  const draw = React.useCallback((overrideSource?: HTMLVideoElement | HTMLImageElement | VideoFrame | null, presentOnly = false) => {
     const gl = glRef.current
     const program = programRef.current
     const canvas = canvasRef.current
-    const source = overrideSource ?? sourceElement
+    if (overrideSource) lastSourceRef.current = overrideSource
+    let source = overrideSource ?? lastSourceRef.current ?? sourceElement
+    // Pool sources can arrive imperatively without a React render. Attach readiness
+    // listeners here too, so frame zero / the final paused seek always wakes the canvas.
+    if (source instanceof HTMLVideoElement && sourceWatchRef.current?.source !== source) {
+      sourceWatchRef.current?.dispose()
+      const video = source
+      const redraw = () => drawRef.current()
+      const seeking = () => {
+        sourceClockRef.current.delete(video)
+        // Timeline-driven scrubbing has its own decoder and target. Pool seeks
+        // must not cancel every completed pair while the pointer keeps moving.
+        if (scrubTargetRef.current?.source !== video) bakedPairRef.current?.invalidate()
+      }
+      let frameCallback = 0
+      let watching = true
+      const onFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+        if (!watching) return
+        sourceClockRef.current.set(video, metadata.mediaTime)
+        redraw()
+        frameCallback = video.requestVideoFrameCallback(onFrame)
+      }
+      if (video.requestVideoFrameCallback) frameCallback = video.requestVideoFrameCallback(onFrame)
+      video.addEventListener('seeking', seeking)
+      for (const event of ['loadeddata', 'seeked', 'canplay']) video.addEventListener(event, redraw)
+      sourceWatchRef.current = {
+        source: video,
+        dispose: () => {
+          watching = false
+          if (frameCallback) video.cancelVideoFrameCallback(frameCallback)
+          video.removeEventListener('seeking', seeking)
+          for (const event of ['loadeddata', 'seeked', 'canplay']) video.removeEventListener(event, redraw)
+        },
+      }
+    }
     const currentFilterId = filterId
 
     const hasLut = Boolean(currentFilterId && lutTextureCacheRef.current.has(currentFilterId))
@@ -849,12 +878,16 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     }
 
     // Check if source element has visual data
-    const isVideo = source instanceof HTMLVideoElement
+    let isVideo = source instanceof HTMLVideoElement
     const isImage = source instanceof HTMLImageElement
-    const isFrame = typeof VideoFrame !== 'undefined' && source instanceof VideoFrame && source.format !== null
+    let isFrame = typeof VideoFrame !== 'undefined' && source instanceof VideoFrame && source.format !== null
 
-    if (isVideo && source.readyState < 2) return
-    if (isImage && !source.complete) {
+    const scrubTarget = source instanceof HTMLVideoElement && scrubTargetRef.current?.source === source
+      ? scrubTargetRef.current.time : undefined
+    const independentTarget = scrubTarget !== undefined && hasMatte && Boolean(bakeVideoPath) && typeof VideoDecoder !== 'undefined'
+    const independentScrub = independentTarget && !isPlaying
+    if (source instanceof HTMLVideoElement && (source.readyState < 2 || (source.seeking && !independentTarget))) return
+    if (source instanceof HTMLImageElement && !source.complete) {
       clearCanvas()
       return
     }
@@ -872,17 +905,43 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
       bakeVideoRef.current.networkState !== 3
     )
 
-    const sourceW = isVideo ? source.videoWidth : isImage ? source.naturalWidth : isFrame ? source.displayWidth : 0
-    const sourceH = isVideo ? source.videoHeight : isImage ? source.naturalHeight : isFrame ? source.displayHeight : 0
+    const sourceW = source instanceof HTMLVideoElement ? source.videoWidth : source instanceof HTMLImageElement ? source.naturalWidth : source.displayWidth
+    const sourceH = source instanceof HTMLVideoElement ? source.videoHeight : source instanceof HTMLImageElement ? source.naturalHeight : source.displayHeight
     if (!sourceW || !sourceH) return
 
-    const currentSourceTime = isVideo ? source.currentTime : isFrame ? source.timestamp / 1_000_000 : 0
+    let currentSourceTime = source instanceof HTMLVideoElement
+      ? sourceClockRef.current.get(source) ?? source.currentTime
+      : isFrame ? (source as VideoFrame).timestamp / 1_000_000 : 0
+    let pairedAlpha: VideoFrame | null = null
+    if (hasMatte && autoMatte && bakeVideoPath && typeof VideoDecoder !== 'undefined') {
+      // HTML currentTime is only a target. BakedMattePair decodes RGB and obtains its
+      // actual PTS before requesting alpha; never label a DOM snapshot with old rVFC metadata.
+      if (source instanceof HTMLVideoElement) currentSourceTime = scrubTarget ?? source.currentTime
+      const mapTime = (time: number) => matteTimeForSourceTime(
+        time, autoMatte.bake?.sourceStart ?? trimStart ?? 0, autoMatte.bake?.speed ?? 1,
+        Boolean(autoMatte.bake?.reversed), autoMatte.bake?.sourceSpan ?? 0,
+      )
+      // Decode completion only presents. Requesting again here can form an endless
+      // cache-hit microtask loop while currentTime advances, starving input and rAF.
+      const pair = presentOnly ? bakedPairRef.current?.getCurrentPair() : bakedPairRef.current?.request(
+        source, currentSourceTime, mapTime(currentSourceTime), isPlaying, mapTime, independentScrub)
+      matteReadinessRef.current = bakedPairRef.current?.error ? 'error' : pair ? 'ready' : 'preparing'
+      canvas.dataset.scrubProxy = bakedPairRef.current?.proxyState ?? 'idle'
+      if (!pair) return
+      canvas.dataset.pairWidth = String(pair.source.displayWidth)
+      source = pair.source
+      pairedAlpha = pair.alpha
+      currentSourceTime = pair.sourceTime
+      isVideo = false
+      isFrame = true
+    }
     const activeClipId = clipId || 'clip-preview'
 
     // Realtime ONNX inference helper for non-baked clips
     const runLiveInference = () => {
       if (liveInferringRef.current) return
       liveInferringRef.current = true
+      const capturedGeneration = coordinatorRef.current.getGeneration() // KE-1802: capture generation
       matteEngine.processFrame(source, {
         clipId: activeClipId,
         timestamp: currentSourceTime,
@@ -891,6 +950,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
       }).then(res => {
         liveInferringRef.current = false
         if (!isMountedRef.current || !res) return
+        // KE-1802: drop result if generation has advanced
+        if (!coordinatorRef.current.isGenerationCurrent(capturedGeneration)) return
 
         const stamp = `${activeClipId}:${res.timestamp}`
         if (lastMatteStampRef.current === stamp) return
@@ -926,66 +987,28 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
       })
     }
 
-    // --- LOCKSTEP FRAME GUARD (Paused / Scrubbing) ---
+    // --- LOCKSTEP FRAME GUARD ---
     // If background removal is active, request synchronization without blocking video display
-    if (!isPlaying && hasMatte && autoMatte) {
+    if (hasMatte && autoMatte && !pairedAlpha) {
       const wantMatteTime = matteTimeForSourceTime(
         currentSourceTime,
         autoMatte.bake?.sourceStart ?? trimStart ?? 0,
-        speed ?? 1,
+        autoMatte.bake?.speed ?? 1,
+        Boolean(autoMatte.bake?.reversed),
+        autoMatte.bake?.sourceSpan ?? 0,
       )
 
-      // 1. High-speed WebCodecs Matte Player path
-      const mattePlayer = matteWebCodecsPlayerRef.current
-      if (mattePlayer && mattePlayer.isReady() && bakeVideoPath) {
-        const currentMatteTime = matteFrameRef.current && matteFrameRef.current.format !== null
-          ? matteFrameRef.current.timestamp / 1_000_000
-          : -1
-        const matteDrift = Math.abs(currentMatteTime - wantMatteTime)
-
-        if (matteDrift > 0.03) {
-          if (!isSeekingMatteRef.current) {
-            isSeekingMatteRef.current = true
-            mattePlayer.seek(wantMatteTime).then((frame) => {
-              isSeekingMatteRef.current = false
-              if (!isMountedRef.current || !frame) return
-              matteFrameRef.current = frame
-              bakeDecodedTimeRef.current = frame.timestamp / 1_000_000
-              hasValidMatteRef.current = true
-
-              if (pendingMatteTimeRef.current !== null) {
-                const nextT = pendingMatteTimeRef.current
-                pendingMatteTimeRef.current = null
-                isSeekingMatteRef.current = true
-                mattePlayer.seek(nextT).then((nextF) => {
-                  isSeekingMatteRef.current = false
-                  if (!isMountedRef.current || !nextF) return
-                  matteFrameRef.current = nextF
-                  bakeDecodedTimeRef.current = nextF.timestamp / 1_000_000
-                  if (!isPlayingRef.current) drawRef.current()
-                }).catch(() => {
-                  isSeekingMatteRef.current = false
-                })
-              } else if (!isPlayingRef.current) {
-                drawRef.current()
-              }
-            }).catch(() => {
-              isSeekingMatteRef.current = false
-            })
-          } else {
-            pendingMatteTimeRef.current = wantMatteTime
-          }
-        }
-      } else if (isBakeUsable && bakeVideoRef.current) {
-        // 2. Fallback HTMLVideoElement Matte path
+      if (isBakeUsable && bakeVideoRef.current) {
+        // 2. Fallback HTMLVideoElement Matte path — clear any stale WebCodecs frame so it doesn't freeze the canvas
+        matteFrameRef.current = null
         const bakeVideo = bakeVideoRef.current
         const seekDrift = Math.abs(bakeVideo.currentTime - wantMatteTime)
 
         const isVideoSource = isVideo || isFrame
         if (isVideoSource) {
-          const clipSpeed = speed && speed > 0 ? speed : 1
-          if (bakeVideo.playbackRate !== clipSpeed) {
-            bakeVideo.playbackRate = clipSpeed
+          // Convert the stored bake rate to the current timeline rate.
+          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, speed)) {
+            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, speed)
           }
           if (seekDrift > 0.03) {
             if (!bakeVideo.seeking) {
@@ -997,6 +1020,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
           }
         }
       } else if (!bakeVideoPath || bakeFailedRef.current) {
+        // Fallback: clear stale WebCodecs frame
+        matteFrameRef.current = null
         // 3. Live inference path
         const stamp = `${activeClipId}:${currentSourceTime}`
         if (lastMatteStampRef.current !== stamp) {
@@ -1078,7 +1103,10 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     // Unit 2: Auto Matte (WebCodecs VideoFrame, Bake HTMLVideoElement, or Realtime inference)
     gl.activeTexture(gl.TEXTURE2)
     if (hasMatte && autoMatte) {
-      if (matteFrameRef.current && typeof VideoFrame !== 'undefined' && matteFrameRef.current instanceof VideoFrame) {
+      const isWebCodecsActive = Boolean(pairedAlpha)
+
+      matteFrameRef.current = pairedAlpha
+      if (isWebCodecsActive && matteFrameRef.current && typeof VideoFrame !== 'undefined' && matteFrameRef.current instanceof VideoFrame) {
         const frame = matteFrameRef.current
         gl.bindTexture(gl.TEXTURE_2D, bakeTextureRef.current)
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4)
@@ -1088,9 +1116,15 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
           height: frame.displayHeight || 1,
         }
         hasValidMatteRef.current = true
-      } else if (isBakeUsable && bakeVideoRef.current) {
+      } else if (!isWebCodecsActive && isBakeUsable && bakeVideoRef.current) {
         const bakeVideo = bakeVideoRef.current
-        const wantTime = matteTimeForSourceTime(currentSourceTime, autoMatte.bake?.sourceStart ?? trimStart ?? 0, speed ?? 1)
+        const wantTime = matteTimeForSourceTime(
+          currentSourceTime,
+          autoMatte.bake?.sourceStart ?? trimStart ?? 0,
+          autoMatte.bake?.speed ?? 1,
+          Boolean(autoMatte.bake?.reversed),
+          autoMatte.bake?.sourceSpan ?? 0,
+        )
         const drift = Math.abs(bakeVideo.currentTime - wantTime)
 
         const sync = decideBakeMatteSync({
@@ -1102,9 +1136,9 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
 
         const isVideoSource = isVideo || isFrame
         if (isVideoSource) {
-          const clipSpeed = speed && speed > 0 ? speed : 1
-          if (bakeVideo.playbackRate !== clipSpeed) {
-            bakeVideo.playbackRate = clipSpeed
+          // Legacy bakes may already contain a speed transform.
+          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, speed)) {
+            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, speed)
           }
           if (sync.seek) {
             if (!bakeVideo.seeking) {
@@ -1200,30 +1234,60 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
         }
       }
 
-      // One rule for both paths: never apply a matte that does not belong to this moment.
-      // Live inference can fall behind — it is skipped outright during playback on CPU —
-      // and a matte held from seconds ago is not a cut-out any more, it is a silhouette
-      // pasted across a subject that has since moved. Show the frame uncut instead.
-      // NOTE: This only applies to videos where the subject moves over time. Still images
-      // never go out of date, so their matte stays valid across all timeline positions.
-      let matteEnabled = hasValidMatteRef.current
-      if (matteEnabled && (isVideo || isFrame) && isPlaying) {
-        const currentSourceTime = isVideo ? source.currentTime : isFrame ? source.timestamp / 1_000_000 : 0
-        if (bakeVideoPath && bakeVideoRef.current) {
-          const wantTime = matteTimeForSourceTime(currentSourceTime, autoMatte?.bake?.sourceStart ?? trimStart ?? 0, speed ?? 1)
-          const drift = Math.abs(bakeVideoRef.current.currentTime - wantTime)
-          // Suppress matte only if the baked video genuinely drifts beyond STALE_MATTE_SECONDS.
-          // Never suppress purely on bakeVideo.seeking: video seeking is asynchronous (20-40ms),
-          // and dropping the matte during each seek step makes the background violently blink in/out.
-          if (drift > STALE_MATTE_SECONDS) {
-            matteEnabled = false
-          }
-        } else if (!bakeVideoPath && uploadedMatteTimeRef.current !== null) {
-          if (Math.abs(currentSourceTime - uploadedMatteTimeRef.current) > STALE_MATTE_SECONDS) {
-            matteEnabled = false
-          }
-        }
+      // KE-1802 & KE-1805: Consult FramePairCoordinator for presentation decision
+      const currentMatteTime = isWebCodecsActive && matteFrameRef.current
+        ? matteFrameRef.current.timestamp / 1_000_000
+        : (bakeVideoRef.current ? bakeVideoRef.current.currentTime : -1)
+      const wantMatteTime = matteTimeForSourceTime(
+        currentSourceTime,
+        autoMatte.bake?.sourceStart ?? trimStart ?? 0,
+        autoMatte.bake?.speed ?? 1,
+        Boolean(autoMatte.bake?.reversed),
+        autoMatte.bake?.sourceSpan ?? 0,
+      )
+      const drift = currentMatteTime >= 0 ? Math.abs(currentMatteTime - wantMatteTime) : 999
+
+      const readinessInput: MatteReadinessInput = {
+        matteEnabled: true,
+        hasBake: Boolean(bakeVideoPath),
+        bakeFailed: bakeFailedRef.current,
+        hasValidTexture: hasValidMatteRef.current,
+        drift: pairedAlpha || isImage ? 0 : !bakeVideoPath && uploadedMatteTimeRef.current !== null ? Math.abs(currentSourceTime - uploadedMatteTimeRef.current) : drift,
+        isInferring: liveInferringRef.current,
+        hasCachedResult: Boolean(matteEngine.getCachedResult(activeClipId)),
       }
+
+      // Paired snapshots carry the source request identity. Never compare source
+      // seconds to bake seconds (trim/speed put them in different time domains).
+      const sourceFrameId = Math.round(currentSourceTime * 1_000_000)
+      const alphaFrameId = pairedAlpha ? sourceFrameId
+        : !bakeVideoPath && uploadedMatteTimeRef.current !== null
+          ? Math.round(uploadedMatteTimeRef.current * 1_000_000)
+          : Math.abs(currentMatteTime - wantMatteTime) < 0.001 && !bakeVideoRef.current?.seeking ? sourceFrameId : -1
+      const decision = coordinatorRef.current.decide(
+        {
+          frameId: sourceFrameId,
+          pts: Math.round(currentSourceTime * 1_000_000),
+          duration: 33333,
+          dts: Math.round(currentSourceTime * 1_000_000),
+          isKeyframe: true,
+        },
+        alphaFrameId,
+        readinessInput,
+        coordinatorRef.current.getGeneration(),
+      )
+
+      if (decision.action === 'hold') {
+        // Sprint 20 Invariant: Hold the last valid composite — never flash raw background
+        return
+      }
+      if (decision.action === 'skip') {
+        clearCanvas()
+        return
+      }
+
+      // KE-1802: SPRINT 20 INVARIANT — Never disable the matte while autoMatte is enabled.
+      const matteEnabled = hasValidMatteRef.current
       gl.uniform1i(gl.getUniformLocation(program, 'u_matte_enabled'), matteEnabled ? 1 : 0)
       gl.uniform1i(gl.getUniformLocation(program, 'u_matte'), 2)
       // Both numbers are defined in core and shared with the export filtergraph.
@@ -1312,6 +1376,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    canvas.dataset.sourceTime = String(currentSourceTime)
+    canvas.dataset.matteTime = pairedAlpha ? String(pairedAlpha.timestamp / 1e6) : ''
     hasContentRef.current = true
     // `currentTime` deliberately absent.
     //
@@ -1323,9 +1389,9 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     // live matte inference per pointer move on any clip without a baked matte. Redraws come
     // from `renderNow()` on the frame-render path, which fires when the picture actually
     // changes.
-  }, [clearCanvas, filterId, intensity, chromaKey, autoMatte, customMatte, stroke, clipId, playbackResolution, bakeVideoPath, isPlaying, sourceElement])
+  }, [clearCanvas, filterId, intensity, chromaKey, autoMatte, customMatte, stroke, clipId, playbackResolution, bakeVideoPath, isPlaying, sourceElement, trimStart, speed])
 
-  drawRef.current = draw
+  drawRef.current = presentOnly => draw(undefined, presentOnly)
 
   /**
    * A still is decoded asynchronously, so the first draw after it is mounted or
@@ -1429,12 +1495,35 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
   React.useImperativeHandle(
     ref,
     () => ({
-      renderNow: (overrideSource?: HTMLVideoElement | HTMLImageElement | VideoFrame | null) => draw(overrideSource),
+      renderNow: (overrideSource, scrub) => {
+        if (scrub !== undefined) {
+          scrubTargetRef.current = scrub && Number.isFinite(scrub.sourceTime) && overrideSource instanceof HTMLVideoElement
+            ? { source: overrideSource, time: scrub.sourceTime } : null
+          if (overrideSource instanceof HTMLVideoElement) {
+            if (!isPlaying && scrubTargetRef.current && bakedPairRef.current?.proxyState === 'ready') overrideSource.dataset.matteScrubOwned = 'true'
+            else delete overrideSource.dataset.matteScrubOwned
+          }
+        }
+        draw(overrideSource)
+      },
       getCanvas: () => canvasRef.current,
       clear: clearCanvas,
       hasContent: () => hasContentRef.current,
+      getMatteReadiness: () => {
+        if (!autoMatte?.enabled) return 'missing'
+        if (bakedPairRef.current) return matteReadinessRef.current
+        return resolveMatteReadiness({
+          matteEnabled: true,
+          hasBake: Boolean(bakeVideoPath),
+          bakeFailed: bakeFailedRef.current,
+          hasValidTexture: hasValidMatteRef.current,
+          drift: Math.abs(bakeDecodedTimeRef.current - (sourceDecodedTimeRef.current || 0)),
+          isInferring: liveInferringRef.current,
+          hasCachedResult: Boolean(matteEngine.getCachedResult(clipId || 'clip-preview')),
+        })
+      },
     }),
-    [clearCanvas, draw],
+    [clearCanvas, draw, autoMatte?.enabled, bakeVideoPath, clipId, isPlaying],
   )
 
   const isVisible = Boolean(

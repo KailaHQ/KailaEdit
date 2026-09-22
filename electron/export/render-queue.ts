@@ -6,7 +6,7 @@ import { getAllowedRoots } from '../config'
 import { validatePath } from '../path-validation'
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
-import { autoMatteBakeOffset, autoMatteSourceRange } from '../../core/src/auto-matte'
+import { autoMatteBakeOffset, autoMatteRangeCovers, autoMatteSourceRange, isAutoMatteBakeValid, autoMattePlaybackRate } from '../../core/src/auto-matte'
 import {
   findFfmpegPath,
   runFfmpegWithProgress,
@@ -427,6 +427,7 @@ class RenderQueueManager {
       let activeMattePath: string | undefined
       let activeFingerprint: string | undefined
       let activeFrameCount: number | undefined
+      let activeBakeSpeed = 1
       // What the active matte file covers, in SOURCE seconds. An auto matte may cover
       // more than this clip (bakes are shared between trims); anything derived from it
       // below is cut to the clip, so it covers exactly the clip.
@@ -438,7 +439,17 @@ class RenderQueueManager {
       })
 
       if (clip.autoMatte?.enabled) {
-        const matteRes = await matteService.ensureBake(
+        const existing = clip.autoMatte.bake
+        const reusable = isAutoMatteBakeValid(existing, {
+          trimStart: clip.trimStart, duration: clip.duration, speed: clip.speed,
+          reversed: clip.reversed, model: clip.autoMatte.model || 'rvm-mobilenetv3',
+          quality: clip.autoMatte.quality || 'standard',
+          assetKey: process.platform === 'win32' ? path.resolve(clip.path).toLowerCase() : path.resolve(clip.path),
+        }) && existing?.status !== 'error' && fs.existsSync(existing.path)
+        const matteRes = reusable ? {
+          success: true, mattePath: existing.path, fingerprint: existing.fingerprint,
+          frameCount: existing.frameCount, bake: existing, error: undefined,
+        } : await matteService.ensureBake(
           {
             jobId: matteJobId,
             clipId,
@@ -464,9 +475,19 @@ class RenderQueueManager {
           }
         }
 
+        if (matteRes.bake?.status === 'partial' && matteRes.bake?.coverageActual) {
+          if (!autoMatteRangeCovers(matteRes.bake.coverageActual, clipRange)) {
+            return {
+              ok: false,
+              error: `Background removal coverage incomplete for clip ${clipId}: covered ${matteRes.bake.coverageActual.sourceSpan.toFixed(2)}s, needed ${clipRange.sourceSpan.toFixed(2)}s`,
+            }
+          }
+        }
+
         activeMattePath = matteRes.mattePath
         activeFingerprint = matteRes.fingerprint ?? ''
         activeFrameCount = matteRes.frameCount
+        activeBakeSpeed = matteRes.bake?.speed ?? 1
         activeRange = matteRes.bake
           ? { sourceStart: matteRes.bake.sourceStart, sourceSpan: matteRes.bake.sourceSpan }
           : clipRange
@@ -483,10 +504,11 @@ class RenderQueueManager {
           duration: clip.duration,
           speed: clip.speed ?? 1,
           baseMatteOffset: autoMatteBakeOffset(
-            activeRange ? { sourceStart: activeRange.sourceStart } : undefined,
+            activeRange ? { sourceStart: activeRange.sourceStart, speed: activeBakeSpeed } : undefined,
             clip.trimStart,
             clip.speed ?? 1,
           ),
+          baseMattePlaybackRate: autoMattePlaybackRate({ speed: activeBakeSpeed }, clip.speed ?? 1),
           strokes: clip.customMatte.strokes,
           onProgress: report,
         })
@@ -505,6 +527,7 @@ class RenderQueueManager {
         activeFrameCount = customRes.frameCount ?? activeFrameCount
         // The blended matte is rendered clip-aligned, whatever the base covered.
         activeRange = clipRange
+        activeBakeSpeed = clip.speed ?? 1
       }
 
       if (activeMattePath) {
@@ -518,7 +541,7 @@ class RenderQueueManager {
             createdAt: Date.now(),
             sourceStart: (activeRange ?? clipRange).sourceStart,
             sourceSpan: (activeRange ?? clipRange).sourceSpan,
-            speed: clip.speed ?? 1,
+            speed: activeBakeSpeed,
             reversed: Boolean(clip.reversed),
             model: clip.autoMatte?.model || 'rvm-mobilenetv3',
             quality: clip.autoMatte?.quality || 'standard',

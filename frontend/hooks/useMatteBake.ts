@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TimelineClip, AutoMatte, AutoMatteBake, AutoMatteModel, AutoMatteQuality, AutoMatteDevice } from '@core/project-model'
 import { isAutoMatteBakeValid } from '@core/auto-matte'
-import { selectAssets, selectClipPathFromAssets, selectClips } from '@core/editor-selectors'
+import { selectAssets, selectClipPathFromAssets, selectClips, selectCurrentTime } from '@core/editor-selectors'
 import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
 import { useSettings } from '../contexts/SettingsContext'
 
@@ -16,6 +16,7 @@ export interface MatteBakeState {
 interface ClipBakeRecord {
   jobId: string
   clipId: string
+  projectId?: string
   percent: number
   phase: string
   isBaking: boolean
@@ -115,22 +116,20 @@ export function isClipBaking(clipId: string | null | undefined): boolean {
  * Split out of the hook so the timeline clip box can cancel the job it is showing
  * progress for without mounting the whole properties-panel hook for that clip.
  */
-export async function cancelClipBake(clipId: string): Promise<void> {
+export function cancelClipBake(clipId: string): void {
   const record = activeClipBakes.get(clipId)
-  if (!record) return
+  if (!record || !record.isBaking) return
 
-  const jId = record.jobId
-  // Immediately remove from active state so UI clears without lag
+  if (window.electronAPI?.matteBakeCancel) {
+    window.electronAPI.matteBakeCancel({ jobId: record.jobId }).catch((err) => {
+      console.warn('[useMatteBake] Cancel failed:', err)
+    })
+  }
+
+  record.isBaking = false
+  record.phase = 'cancelled'
   activeClipBakes.delete(clipId)
   notifyListeners()
-
-  if (window.electronAPI?.matteBakeCancel && jId) {
-    try {
-      await window.electronAPI.matteBakeCancel({ jobId: jId })
-    } catch (err) {
-      console.warn('[useMatteBake] Cancel failed:', err)
-    }
-  }
 }
 
 /**
@@ -165,6 +164,9 @@ const auditedMissingPaths = new Set<string>()
 /** Clips this session has already re-baked on its own, so it never loops on a failure. */
 const autoBakedThisSession = new Set<string>()
 
+/** Track active project ID to reset sets and cancel other project bakes when switching projects. */
+let activeProjectId: string | null = null
+
 /**
  * Starts a bake for one clip. Shared by the Remove BG panel and by the keeper below, so
  * the two cannot drift into starting bakes on different terms.
@@ -176,8 +178,9 @@ async function beginClipBake(params: {
   setClipAutoMatte: (clipId: string, autoMatte: Partial<AutoMatte>) => void
   model?: AutoMatteModel
   quality?: AutoMatteQuality
+  projectId?: string
 }): Promise<void> {
-  const { clip, filePath, device, setClipAutoMatte } = params
+  const { clip, filePath, device, setClipAutoMatte, projectId } = params
   if (clip.type !== 'video' && clip.type !== 'image') return
   if (!window.electronAPI?.matteBakeStart) return
   // One job per clip. Without this a second caller overwrites the registry entry and the
@@ -192,6 +195,7 @@ async function beginClipBake(params: {
   activeClipBakes.set(clip.id, {
     jobId,
     clipId: clip.id,
+    projectId,
     isBaking: true,
     percent: 0,
     phase: 'extracting',
@@ -260,31 +264,49 @@ async function beginClipBake(params: {
  * Clearing the record puts the clip back into the honest state — "not baked" — which the
  * panel offers to fix and the preview falls back from.
  */
-export function useMatteBakeAudit(): void {
+export function useMatteBakeAudit(projectId?: string): void {
   const { setClipAutoMatte } = useEditorActions()
   const clips = useEditorStore(selectClips)
   const assets = useEditorStore(selectAssets)
+  const currentTime = useEditorStore(selectCurrentTime)
   const { settings } = useSettings()
 
   const deviceRef = useRef<AutoMatteDevice>(settings.autoMatteDevice)
   deviceRef.current = settings.autoMatteDevice
 
-  // Re-bake what the project still asks for.
-  //
-  // Remove BG being on is the user's standing instruction, saved with the project — but a
-  // bake lives in a cache that evicts, gets cleared from Settings, or is dropped by a
-  // format migration. Reopening the project then showed the background with the toggle
-  // still on and nothing running, because validity is a comparison of recorded fields and
-  // the only thing that ever started a bake was a click.
-  //
-  // This is deliberately NOT the effect that used to live in the properties panel. That
-  // one fired whenever the panel re-mounted, so merely clicking a clip started baking it,
-  // and a bake on one clip looked like it belonged to another. This runs once per clip per
-  // session, keyed off what the project says rather than off what is selected.
+  // Reset audit state when switching projects and cancel bakes from former project
+  useEffect(() => {
+    if (projectId && activeProjectId !== projectId) {
+      activeProjectId = projectId
+      auditedMissingPaths.clear()
+      autoBakedThisSession.clear()
+
+      // Cancel running bakes belonging to other projects
+      for (const [clipId, record] of activeClipBakes.entries()) {
+        if (record.projectId && record.projectId !== projectId && record.isBaking) {
+          cancelClipBake(clipId)
+        }
+      }
+    }
+  }, [projectId])
+
+  // Re-bake what the project still asks for, prioritizing clips under/closest to playhead.
   useEffect(() => {
     if (!window.electronAPI?.matteBakeStart) return
 
-    for (const clip of clips) {
+    // Sort candidate clips so the playhead clip is queued first
+    const sortedClips = [...clips].sort((a, b) => {
+      const aUnderPlayhead = currentTime >= a.startTime && currentTime <= a.startTime + a.duration
+      const bUnderPlayhead = currentTime >= b.startTime && currentTime <= b.startTime + b.duration
+      if (aUnderPlayhead && !bUnderPlayhead) return -1
+      if (!aUnderPlayhead && bUnderPlayhead) return 1
+
+      const distA = Math.min(Math.abs(currentTime - a.startTime), Math.abs(currentTime - (a.startTime + a.duration)))
+      const distB = Math.min(Math.abs(currentTime - b.startTime), Math.abs(currentTime - (b.startTime + b.duration)))
+      return distA - distB
+    })
+
+    for (const clip of sortedClips) {
       if (!clip.autoMatte?.enabled) continue
       if (clip.type !== 'video' && clip.type !== 'image') continue
       if (autoBakedThisSession.has(clip.id)) continue
@@ -304,15 +326,16 @@ export function useMatteBakeAudit(): void {
       if (!filePath) continue
 
       autoBakedThisSession.add(clip.id)
-      console.info(`[useMatteBake] Remove BG is on for ${clip.id} with no usable matte — baking it.`)
+      console.info(`[useMatteBake] Remove BG is on for ${clip.id} with no usable matte — baking it (playhead-prioritized).`)
       void beginClipBake({
         clip,
         filePath,
         device: deviceRef.current,
         setClipAutoMatte,
+        projectId,
       })
     }
-  }, [clips, assets, setClipAutoMatte])
+  }, [clips, assets, currentTime, projectId, setClipAutoMatte])
 
   useEffect(() => {
     if (!window.electronAPI?.matteBakeMissing) return

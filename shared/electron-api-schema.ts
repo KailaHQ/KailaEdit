@@ -218,6 +218,12 @@ const matteBakeDescriptorSchema = z.object({
   model: z.string(),
   quality: z.string(),
   assetKey: z.string(),
+  manifestPath: z.string().optional(),
+  status: z.enum(['complete', 'partial', 'error']).optional(),
+  coverageActual: z.object({
+    sourceStart: z.number(),
+    sourceSpan: z.number(),
+  }).optional(),
 })
 
 export const electronAPISchemas = {
@@ -961,6 +967,10 @@ export const electronAPISchemas = {
       /** The subset of `paths` that is no longer on disk. */
       missing: z.array(z.string()),
     }),
+  },
+  matteScrubProxy: {
+    input: z.object({ sourcePath: z.string(), mattePath: z.string() }),
+    output: z.object({ sourcePath: z.string().optional(), mattePath: z.string().optional(), error: z.string().optional() }),
   },
   matteBakeCancel: {
     input: z.object({

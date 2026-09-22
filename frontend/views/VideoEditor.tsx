@@ -128,7 +128,7 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
   const { settings, openSettings } = useSettings()
   useProxyManager()
   useRenderCache()
-  useMatteBakeAudit()
+  useMatteBakeAudit(currentProjectId)
 
   const getEditorState = useEditorGetState()
   const editorModel = useEditorStore(state => state.editorModel)

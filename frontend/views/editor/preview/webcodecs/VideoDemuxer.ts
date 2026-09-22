@@ -94,8 +94,36 @@ export function fileUrlToPath(fileUrl: string): string {
   return withoutScheme
 }
 
+/**
+ * Extracts the rotation angle (0, 90, 180, 270) from an MP4 `tkhd`
+ * transformation matrix.
+ *
+ * MP4Box exposes the matrix as a flat array of 9 numbers (`[a, b, u, c, d, v, x, y, w]`).
+ * For a pure rotation the angle is `atan2(b, a)`. Phone-recorded portrait
+ * video typically stores `rotation = 90` (or equivalently `-270`).
+ */
+function extractRotationDegrees(matrix: number[] | undefined): number {
+  if (!matrix || matrix.length < 6) return 0
+
+  // matrix layout (row-major, fixed-point 16.16 in the file but MP4Box
+  // already converts to float):
+  //   [ a  b  u ]     matrix[0] matrix[1] matrix[2]
+  //   [ c  d  v ]  =  matrix[3] matrix[4] matrix[5]
+  //   [ x  y  w ]     matrix[6] matrix[7] matrix[8]
+  //
+  // MP4Box stores these values pre-divided by their fixed-point scale, EXCEPT
+  // the last row which is 8.8 fixed point. For rotation we only need a, b.
+  const a = matrix[0]
+  const b = matrix[1]
+  const radians = Math.atan2(b, a)
+  const degrees = Math.round(radians * (180 / Math.PI))
+  // Normalize into [0, 360)
+  return ((degrees % 360) + 360) % 360
+}
+
 export class VideoDemuxer {
   private metadata: DemuxedVideoMetadata | null = null
+  private presentationSamples: VideoSampleRecord[] = []
 
   async demux(filePathOrUrl: string): Promise<DemuxedVideoMetadata> {
     const isRemote = filePathOrUrl.startsWith('http://') || filePathOrUrl.startsWith('https://')
@@ -109,6 +137,7 @@ export class VideoDemuxer {
     return new Promise((resolve, reject) => {
       const mp4boxfile = (MP4Box as any).createFile()
       let trackInfo: VideoDemuxTrackInfo | null = null
+      let presentationOffset = 0
       const samples: VideoSampleRecord[] = []
       const keyframeIndices: number[] = []
 
@@ -123,17 +152,47 @@ export class VideoDemuxer {
         }
 
         const primaryTrack = info.videoTracks[0]
+        // CTS includes codec reorder delay. HTMLVideoElement applies the edit list;
+        // WebCodecs does not. Use the same presentation origin as the HTML source.
+        const trak = mp4boxfile.getTrackById(primaryTrack.id)
+        const edits = trak?.edts?.elst?.entries ?? []
+        let emptyDuration = 0
+        for (const edit of edits) {
+          if (edit.media_time === -1) {
+            emptyDuration += edit.segment_duration / info.timescale
+          } else {
+            if (edit.media_rate_integer !== 1 || edit.media_rate_fraction !== 0) {
+              reject(new Error('Unsupported MP4 edit rate'))
+              return
+            }
+            presentationOffset = emptyDuration - edit.media_time / primaryTrack.timescale
+            break
+          }
+        }
         const description = extractTrackDescription(mp4boxfile, primaryTrack.id)
+        const rotation = extractRotationDegrees(primaryTrack.matrix)
+
+        // Coded dimensions — what the decoder needs.
+        const codedW = primaryTrack.video.width
+        const codedH = primaryTrack.video.height
+
+        // Display dimensions — swap when the container rotates 90° / 270°.
+        const swap = rotation === 90 || rotation === 270
+        const displayW = swap ? codedH : codedW
+        const displayH = swap ? codedW : codedH
 
         trackInfo = {
           id: primaryTrack.id,
           codec: primaryTrack.codec,
-          width: primaryTrack.video.width,
-          height: primaryTrack.video.height,
+          width: displayW,
+          height: displayH,
           duration: primaryTrack.duration / primaryTrack.timescale,
           timescale: primaryTrack.timescale,
           nb_samples: primaryTrack.nb_samples,
           description,
+          codedWidth: codedW,
+          codedHeight: codedH,
+          rotation,
         }
 
         // Request all samples for this track
@@ -151,8 +210,8 @@ export class VideoDemuxer {
         for (let i = 0; i < rawSamples.length; i++) {
           const s = rawSamples[i]
           const isKeyframe = Boolean(s.is_sync)
-          const pts = s.cts / timescale
-          const dts = s.dts / timescale
+          const pts = s.cts / timescale + presentationOffset
+          const dts = s.dts / timescale + presentationOffset
           const duration = s.duration / timescale
 
           const chunk = new EncodedVideoChunk({
@@ -179,7 +238,8 @@ export class VideoDemuxer {
           })
         }
 
-        const duration = trackInfo.duration || (samples.length > 0 ? samples[samples.length - 1].pts : 0)
+        if (samples.length < trackInfo.nb_samples) return
+        const duration = samples.reduce((end, s) => Math.max(end, s.pts + s.duration), 0)
         const fps = samples.length > 1 ? samples.length / Math.max(0.1, duration) : 30
 
         const meta: DemuxedVideoMetadata = {
@@ -191,6 +251,7 @@ export class VideoDemuxer {
         }
 
         this.metadata = meta
+        this.presentationSamples = [...samples].sort((a, b) => a.pts - b.pts)
         resolve(meta)
       }
 
@@ -204,27 +265,31 @@ export class VideoDemuxer {
     return this.metadata
   }
 
+  getSampleForTimestamp(time: number): VideoSampleRecord | null {
+    const samples = this.presentationSamples
+    if (!samples.length) return null
+    let lo = 0
+    let hi = samples.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (samples[mid].pts <= time + 0.000001) lo = mid + 1
+      else hi = mid
+    }
+    return samples[Math.max(0, lo - 1)]
+  }
+
   /**
    * Finds the list of EncodedVideoChunks needed to decode up to `targetTime`.
    * Finds the nearest previous keyframe (I-frame) and all subsequent delta frames up to `targetTime`.
    */
-  getChunksForTimestamp(targetTime: number): EncodedVideoChunk[] {
+  getChunksForTimestamp(targetTime: number, independentLookahead = 0): EncodedVideoChunk[] {
     if (!this.metadata || this.metadata.samples.length === 0) return []
 
     const samples = this.metadata.samples
     const keyframes = this.metadata.keyframeIndices
 
     // 1. Find the sample closest to or right at targetTime
-    let sampleIdx = 0
-    let minDiff = Infinity
-    for (let i = 0; i < samples.length; i++) {
-      const diff = Math.abs(samples[i].pts - targetTime)
-      if (diff < minDiff) {
-        minDiff = diff
-        sampleIdx = i
-      }
-      if (samples[i].pts > targetTime + 0.1) break
-    }
+    const sampleIdx = this.getSampleForTimestamp(targetTime)?.index ?? 0
 
     // 2. Find the nearest keyframe index <= sampleIdx
     let keyframeSampleIdx = 0
@@ -236,9 +301,15 @@ export class VideoDemuxer {
       }
     }
 
-    // 3. Collect chunks from keyframeSampleIdx to sampleIdx
+    // B-frame references precede the target in decode order. A bounded lookahead
+    // amortizes playback seeks without filling GPU memory with a whole long GOP.
+    let end = Math.min(keyframes.find(k => k > sampleIdx) ?? samples.length, sampleIdx + 7)
+    if (independentLookahead > 0) {
+      const ahead = samples.slice(sampleIdx, sampleIdx + 1 + Math.min(6, independentLookahead))
+      if (ahead.every(sample => sample.isKeyframe)) end = sampleIdx + ahead.length
+    }
     const chunks: EncodedVideoChunk[] = []
-    for (let i = keyframeSampleIdx; i <= sampleIdx; i++) {
+    for (let i = keyframeSampleIdx; i < end; i++) {
       if (samples[i].chunk) {
         chunks.push(samples[i].chunk!)
       }

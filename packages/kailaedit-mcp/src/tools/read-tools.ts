@@ -13,6 +13,7 @@ import {
   getEffectiveTimelineDimensions,
   detectBrollOpportunities,
   formatTranscriptForHighlights,
+  isAutoMatteBakeValid,
 } from '@komfyedit/core'
 import { listProjects, readProject } from '../project-reader.ts'
 import {
@@ -112,7 +113,37 @@ export async function handleReadTool(
               ...(c.transform ? { transform: c.transform } : {}),
               ...(c.mask ? { mask: c.mask } : {}),
               ...(c.chromaKey ? { chromaKey: c.chromaKey } : {}),
-              ...(c.autoMatte ? { autoMatte: c.autoMatte } : {}),
+              ...(c.autoMatte ? {
+                autoMatte: {
+                  ...c.autoMatte,
+                  ...(() => {
+                    const bake = c.autoMatte.bake
+                    if (!bake?.path) {
+                      return { bakeReady: false, bakeStatus: 'missing' }
+                    }
+                    const exists = fs.existsSync(bake.path)
+                    const isComplete = bake.status !== 'partial' && bake.status !== 'error'
+                    const valid = exists && isComplete && isAutoMatteBakeValid(bake, {
+                      trimStart: c.trimStart,
+                      duration: c.duration,
+                      speed: c.speed,
+                      reversed: c.reversed,
+                      model: c.autoMatte.model || 'rvm-mobilenetv3',
+                      quality: c.autoMatte.quality || 'standard',
+                    })
+                    return {
+                      bakeReady: valid,
+                      bakeStatus: !exists ? 'missing' : (bake.status ?? (valid ? 'complete' : 'invalid')),
+                      bakePath: bake.path,
+                      bakeFrameCount: bake.frameCount,
+                      bakeSpeed: bake.speed ?? 1,
+                      bakeNeedsSourceRateMigration: Number(bake.speed ?? 1) !== 1,
+                      mattePlaybackRate: (c.speed ?? 1) / (bake.speed ?? 1),
+                      ...(bake.coverageActual ? { coverageActual: bake.coverageActual } : {}),
+                    }
+                  })(),
+                },
+              } : {}),
               ...(c.customMatte ? { customMatte: c.customMatte } : {}),
               ...(c.stroke ? { stroke: c.stroke } : {}),
               ...(c.blendMode && c.blendMode !== 'normal' ? { blendMode: c.blendMode } : {}),

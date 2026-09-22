@@ -21,6 +21,7 @@ export interface CustomMatteBakeParams {
   speed?: number
   /** Seconds into the base matte where this clip begins. See autoMatteBakeOffset. */
   baseMatteOffset?: number
+  baseMattePlaybackRate?: number
   strokes: BrushStroke[]
   onProgress?: (percent: number) => void
 }
@@ -36,11 +37,11 @@ export function computeCustomMatteFingerprint(
    * frames were used. Without the window in here, two different trims of one clip would
    * hash the same and the second would be served the first one's file.
    */
-  window?: { offset: number; duration: number },
+  window?: { offset: number; duration: number; playbackRate?: number },
 ): string {
   const strokesHash = computeStrokesHash(strokes)
   const windowKey = window
-    ? `${window.offset.toFixed(4)}:${window.duration.toFixed(4)}`
+    ? `${window.offset.toFixed(4)}:${window.duration.toFixed(4)}:${(window.playbackRate ?? 1).toFixed(4)}`
     : 'full'
   const payload = [clipId, strokesHash, baseFingerprint || 'no-base', windowKey].join(':')
   return crypto.createHash('sha256').update(payload).digest('hex').substring(0, 16)
@@ -60,6 +61,7 @@ export class CustomMatteBakeService {
   public async ensureBake(params: CustomMatteBakeParams): Promise<CustomMatteBakeResult> {
     const { clipId, baseMattePath, baseMatteFingerprint, filePath, duration, strokes, onProgress } = params
     const baseMatteOffset = Math.max(0, params.baseMatteOffset ?? 0)
+    const baseMattePlaybackRate = params.baseMattePlaybackRate ?? 1
 
     if (!strokes || strokes.length === 0) {
       if (baseMattePath) {
@@ -71,6 +73,7 @@ export class CustomMatteBakeService {
     const fingerprint = computeCustomMatteFingerprint(clipId, strokes, baseMatteFingerprint, {
       offset: baseMatteOffset,
       duration,
+      playbackRate: baseMattePlaybackRate,
     })
     const cacheDir = renderCacheManager.getCacheDir()
     if (!fs.existsSync(cacheDir)) {
@@ -156,6 +159,8 @@ export class CustomMatteBakeService {
           ...(baseMatteOffset > 0.0005 ? ['-ss', baseMatteOffset.toFixed(6)] : []),
           '-i',
           baseMattePath,
+          '-vf',
+          `setpts=(PTS-STARTPTS)/${baseMattePlaybackRate.toFixed(6)},fps=${fps}`,
           '-f',
           'rawvideo',
           '-pix_fmt',

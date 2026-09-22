@@ -11,7 +11,15 @@
 
 export class FrameCache {
   private cache = new Map<number, VideoFrame>()
+  private pinnedKeys = new Set<number>()
   private maxFrames: number
+  private readonly maxBytes = 96 * 1024 * 1024
+
+  private get bytes(): number {
+    let total = 0
+    for (const frame of this.cache.values()) total += frame.displayWidth * frame.displayHeight * 4
+    return total
+  }
 
   constructor(maxFrames = 45) {
     this.maxFrames = maxFrames
@@ -19,6 +27,18 @@ export class FrameCache {
 
   private timeToKey(seconds: number): number {
     return Math.round(seconds * 1000)
+  }
+
+  pin(seconds: number): void {
+    this.pinnedKeys.add(this.timeToKey(seconds))
+  }
+
+  unpin(seconds: number): void {
+    this.pinnedKeys.delete(this.timeToKey(seconds))
+  }
+
+  isPinned(seconds: number): boolean {
+    return this.pinnedKeys.has(this.timeToKey(seconds))
   }
 
   get(seconds: number, toleranceSeconds = 0.015): VideoFrame | null {
@@ -49,22 +69,34 @@ export class FrameCache {
 
     if (this.cache.has(key)) {
       const old = this.cache.get(key)!
-      if (old !== frame) {
+      if (old !== frame && !this.pinnedKeys.has(key)) {
         old.close()
       }
       this.cache.delete(key)
     } else if (this.cache.size >= this.maxFrames) {
-      // Evict oldest entry (first item in Map)
-      const oldestKey = this.cache.keys().next().value
-      if (oldestKey !== undefined) {
-        const oldestFrame = this.cache.get(oldestKey)
+      // Evict oldest unpinned entry (first unpinned item in Map)
+      let evictedKey: number | undefined
+      for (const candidateKey of this.cache.keys()) {
+        if (!this.pinnedKeys.has(candidateKey) && candidateKey !== key) {
+          evictedKey = candidateKey
+          break
+        }
+      }
+      if (evictedKey !== undefined) {
+        const oldestFrame = this.cache.get(evictedKey)
         oldestFrame?.close()
-        this.cache.delete(oldestKey)
+        this.cache.delete(evictedKey)
       }
     }
 
     // Clone if needed or store directly (caller passes ownership)
     this.cache.set(key, frame)
+    while (this.cache.size > this.maxFrames || this.bytes > this.maxBytes) {
+      const victim = [...this.cache.keys()].find(candidate => !this.pinnedKeys.has(candidate))
+      if (victim === undefined) break
+      this.cache.get(victim)?.close()
+      this.cache.delete(victim)
+    }
   }
 
   has(seconds: number, toleranceSeconds = 0.015): boolean {
@@ -78,19 +110,25 @@ export class FrameCache {
     return false
   }
 
-  clear(): void {
-    for (const frame of this.cache.values()) {
+  clear(forceAll = false): void {
+    for (const [key, frame] of [...this.cache.entries()]) {
+      if (!forceAll && this.pinnedKeys.has(key)) {
+        continue
+      }
       try {
         frame.close()
       } catch {
         // already closed
       }
+      this.cache.delete(key)
     }
-    this.cache.clear()
+    if (forceAll) {
+      this.pinnedKeys.clear()
+    }
   }
 
   destroy(): void {
-    this.clear()
+    this.clear(true)
   }
 
   get size(): number {

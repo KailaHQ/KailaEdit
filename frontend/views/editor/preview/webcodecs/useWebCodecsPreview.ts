@@ -29,6 +29,7 @@ export function useWebCodecsPreview({
   const [isReady, setIsReady] = useState(false)
   const lastLoadedPathRef = useRef('')
   const isSupported = typeof VideoDecoder !== 'undefined'
+  const clipPath = enabled && activeClip?.asset?.type === 'video' ? resolveClipPath(activeClip) : ''
 
   // Initialize WebCodecsPlayer
   useEffect(() => {
@@ -50,15 +51,17 @@ export function useWebCodecsPreview({
   useEffect(() => {
     const player = playerRef.current
     if (!player || !enabled || !activeClip || activeClip.asset?.type !== 'video') {
+      lastLoadedPathRef.current = ''
       setIsReady(false)
       setVideoFrame(null)
       return
     }
 
-    const clipPath = resolveClipPath(activeClip)
     if (!clipPath || clipPath === lastLoadedPathRef.current) return
 
     lastLoadedPathRef.current = clipPath
+    setIsReady(false)
+    setVideoFrame(null)
     let isCancelled = false
 
     player.load(clipPath).then((success) => {
@@ -77,7 +80,7 @@ export function useWebCodecsPreview({
     return () => {
       isCancelled = true
     }
-  }, [activeClip, enabled, resolveClipPath])
+  }, [clipPath, enabled])
 
   // Seek on scrubbing / paused playhead updates
   useEffect(() => {
@@ -98,22 +101,17 @@ export function useWebCodecsPreview({
 
     player.seek(targetTime).then((frame) => {
       if (isCancelled || !frame) return
-      // NOT `prev.close()`.
-      //
-      // The frame belongs to the player's FrameCache — `set()` documents that the caller
-      // passes ownership, and the cache closes each frame when it is evicted or
-      // replaced. Closing it here too detached frames the cache was still holding, so a
-      // later cache hit handed back a closed VideoFrame (`format === null`). Both
-      // consumers check for that and skip it, which is why this showed up not as a crash
-      // but as the WebCodecs path quietly going dead: every seek fell through to the
-      // pooled <video>, and where that was not ready either the canvas drew nothing.
-      setVideoFrame(frame)
+      // React owns a clone, so a subsequent seek/cache eviction cannot detach
+      // the frame still being displayed. Release it after React replaces it.
+      setVideoFrame(frame.clone())
     }).catch(() => {})
 
     return () => {
       isCancelled = true
     }
   }, [activeClip, currentTime, enabled, isPlaying, isReady])
+
+  useEffect(() => () => videoFrame?.close(), [videoFrame])
 
   return {
     videoFrame,

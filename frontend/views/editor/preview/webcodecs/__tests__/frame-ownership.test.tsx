@@ -29,7 +29,7 @@ vi.mock('../WebCodecsPlayer', () => ({
     load = vi.fn().mockResolvedValue(true)
     // A new frame each seek, as a real cache miss would produce.
     seek = vi.fn().mockImplementation(async (t: number) => {
-      const frame = { timestamp: t * 1_000_000, format: 'I420', close: closeSpy }
+      const frame = { timestamp: t * 1_000_000, format: 'I420', close: closeSpy, clone: () => ({ timestamp: t * 1_000_000, format: 'I420', close: vi.fn() }) }
       frames.push(frame)
       return frame as unknown as VideoFrame
     })

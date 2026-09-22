@@ -618,6 +618,17 @@ describe('KE-206: Preview vs Export Systematic Parity Suite', () => {
     })
 
     describe('KE-1403: Auto Matte Export and Filter Order Parity', () => {
+      it.each([0.5, 2, 4])('retimes source alpha to %sx independently of its bake rate', speed => {
+        const pair = makePair({ speed, trimStart: 6, duration: 4 / speed,
+          autoMatte: { enabled: true, model: 'rvm-mobilenetv3', quality: 'standard', cleanEdge: 0, featherEdge: 0,
+            bake: { path: '/cache/source-matte.mp4', fingerprint: 'source', createdAt: 0,
+              frameCount: 600, sourceStart: 2, sourceSpan: 20, speed: 1 } } })
+        const { inputs, filterScript } = buildVideoFilterGraph([pair.exportClip], canvasOpts)
+        const matteInput = inputs.indexOf('/cache/source-matte.mp4')
+        expect(inputs.slice(matteInput - 3, matteInput)).toEqual(['-ss', '4.000000', '-i'])
+        expect(filterScript).toMatch(new RegExp(`\\[\\d+:v\\]setpts=PTS-STARTPTS,setpts=PTS/${speed.toFixed(6)}`))
+      })
+
       it('generates alphamerge with baked matte input when autoMatte is enabled', () => {
         const pair = makePair({
           autoMatte: {

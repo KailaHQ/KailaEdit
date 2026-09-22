@@ -12,6 +12,17 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-09-22
+
+### Fixed
+- **Synchronized playback with Remove Background.** Video playback no longer freezes the cutout mask on the initial frame while the underlying video keeps playing; the subject cutout now tracks smoothly frame-by-frame during playback.
+- **Prevented un-matted frame flashes.** Seeking or scrubbing a clip with Remove Background enabled no longer flashes raw uncut video frames before the cutout is ready; the player holds the prior frame or stays transparent until synchronized.
+- **Silhouette alignment when scrubbing.** Rapidly scrubbing through video with Remove Background enabled no longer leaves subject outlines drifting or trailing behind the picture.
+- **Automatic cutout recovery on project open.** Reopening a project now immediately restores background removal on timeline clips, prioritizing the frame right at the playhead without having to open the Remove Background panel or seek.
+- **Project-scoped background removal processing.** Switching between projects now cleanly cancels background removal jobs from the previous project, preventing unrelated jobs from running in the background.
+- **Export reliability with background removal.** Exporting a project now verifies that background removal covers the entire clip duration before rendering, preventing videos from exporting with background leaks.
+- **Playback speed on clips with Remove Background.** Changing a clip's speed no longer causes the video to play at double speed once background removal is processed.
+
 ## [1.0.6] - 2026-09-20
 
 ### Added

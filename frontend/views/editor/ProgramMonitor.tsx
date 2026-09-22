@@ -570,7 +570,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     currentTime,
     isPlaying,
     resolveClipPath: getClipPath,
-    enabled: true,
+    // Matte snapshots must share the transport's source. A second source decoder
+    // on the React clock competes with imperative playhead seeks and can redraw old frames.
+    enabled: !activeClip?.autoMatte?.enabled,
   })
 
   /**

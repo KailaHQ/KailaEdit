@@ -22,6 +22,13 @@ import {
   snapAutoMatteRange,
   type AutoMatteSourceRange,
 } from '../../core/src/auto-matte'
+import {
+  BAKE_MANIFEST_VERSION,
+  hasBakeManifestV2,
+  validateBakeManifestV2,
+  type BakeManifestV2,
+  type BakeFrameMapEntry,
+} from '../../core/src/source-frame-index'
 import type { AutoMatteModel, AutoMatteQuality, AutoMatteDevice } from '../../core/src/project-model'
 import { probeVideo } from '../media/probe'
 
@@ -67,6 +74,12 @@ export interface MatteBakeDescriptor {
   model: string
   quality: string
   assetKey: string
+  manifestPath?: string
+  status?: 'complete' | 'partial' | 'error'
+  coverageActual?: {
+    sourceStart: number
+    sourceSpan: number
+  }
 }
 
 interface ActiveBakeRecord {
@@ -218,8 +231,34 @@ function findCoveringBake(
         continue
       }
 
-      if (!best || parsed.range.sourceSpan < best.range.sourceSpan) {
-        best = { path: full, fingerprint, range: parsed.range }
+      // KE-1804: Validate sidecar manifest if present
+      let effectiveRange = parsed.range
+      const manifestPath = full.replace(/\.mp4$/, '.manifest.json')
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const raw = fs.readFileSync(manifestPath, 'utf-8')
+          const manifest = JSON.parse(raw)
+          if (hasBakeManifestV2(manifest)) {
+            const issues = validateBakeManifestV2(manifest)
+            if (issues.length > 0) {
+              logger.warn(`[matte-service] Skipping bake with invalid manifest ${manifestPath}: ${issues.join(', ')}`)
+              continue
+            }
+            if (manifest.status === 'partial') {
+              effectiveRange = manifest.coverageActual
+              if (!autoMatteRangeCovers(effectiveRange, need)) {
+                continue
+              }
+            }
+          }
+        } catch {
+          // Corrupted manifest — skip this unverified bake
+          continue
+        }
+      }
+
+      if (!best || effectiveRange.sourceSpan < best.range.sourceSpan) {
+        best = { path: full, fingerprint, range: effectiveRange }
       }
     }
   } catch {
@@ -300,9 +339,14 @@ export class MatteService {
       job.workerHost = null
     }
 
-    // Clean up partial file safely
+    // Clean up partial file and its manifest safely
     if (job.partPath) {
       removeEntryQuietly(job.partPath)
+      removeEntryQuietly(job.partPath.replace(/\.mp4$/, '.manifest.json'))
+    }
+    if (job.finalPath) {
+      // If the final MP4 was never completed, clean its manifest too
+      removeEntryQuietly(job.finalPath.replace(/\.mp4$/, '.manifest.json'))
     }
 
     emitToRenderer('matte:progress', {
@@ -338,7 +382,9 @@ export class MatteService {
     // Still part of the fingerprint so bakes made before the picker was removed keep
     // validating; it no longer changes how the model runs.
     const quality = (params.quality as AutoMatteQuality) || 'standard'
-    const speed = params.speed && params.speed > 0 ? params.speed : 1
+    // Segment at source rate. Playback speed must never discard source alpha frames
+    // or create a different cache group for the same source range.
+    const speed = 1
     const reversed = Boolean(params.reversed)
 
     // Windows paths are case-insensitive; elsewhere two names differing in case are two
@@ -557,7 +603,7 @@ export class MatteService {
       }
 
       // 3. Otherwise execute the bake
-      await this.executeBake(params, activeJob, ffmpegPath, clipW, clipH, fps, expectedFrames, bakeRange)
+      await this.executeBake({ ...params, speed }, activeJob, ffmpegPath, clipW, clipH, fps, expectedFrames, bakeRange)
     }
 
     const chained = this.bakeChain.then(queueTask, queueTask)
@@ -927,6 +973,53 @@ export class MatteService {
       }
     }
 
+    // KE-1804: Write BakeManifestV2 alongside the MP4.
+    // Records ACTUAL coverage (encodedFrames, not expectedFrames) so the consumer
+    // knows exactly which source frames this bake file covers.
+    const actualSourceSpan = (encodedFrames / fps) * speed
+    const frameDurationUs = Math.round(1_000_000 / fps)
+    const frameMap: BakeFrameMapEntry[] = []
+    for (let i = 0; i < encodedFrames; i++) {
+      // Source PTS: each bake ordinal maps to a source frame at the bake's fps
+      // The bake is in source-frame order (speed and reverse are already applied by ffmpeg)
+      const sourcePts = Math.round(bakeRange.sourceStart * 1_000_000) + i * frameDurationUs
+      frameMap.push({
+        ordinal: i,
+        sourceFrameId: i, // ordinal == source frame id within the bake's range
+        sourcePts,
+      })
+    }
+
+    const manifestV2: BakeManifestV2 = {
+      version: BAKE_MANIFEST_VERSION,
+      assetRevision: normalizeAssetKey(params.filePath),
+      model: (params.model as string) || 'rvm-mobilenetv3',
+      modelHash: '', // Will be populated when model integrity checking is added
+      pipelineVersion: 1,
+      geometry: `${clipW}x${clipH}`,
+      rotation: 0, // TODO: read from probe when rotation support lands
+      timebase: [1, fps],
+      alphaRange: [0, 255],
+      frameMap,
+      coverageActual: {
+        sourceStart: bakeRange.sourceStart,
+        sourceSpan: actualSourceSpan,
+      },
+      status: encodedFrames >= expectedFrames ? 'complete' : 'partial',
+      completedAt: new Date().toISOString(),
+    }
+
+    const manifestPath = job.finalPath.replace(/\.mp4$/, '.manifest.json')
+    const tmpManifestPath = `${manifestPath}.${Date.now()}.tmp`
+    try {
+      fs.writeFileSync(tmpManifestPath, JSON.stringify(manifestV2, null, 2), 'utf-8')
+      safeRename(tmpManifestPath, manifestPath)
+    } catch (err) {
+      removeEntryQuietly(tmpManifestPath)
+      // Non-fatal: the bake MP4 is still usable without the manifest (v1 fallback)
+      logger.warn(`[matte-service] Failed to write manifest atomically: ${err}`)
+    }
+
     job.status = {
       status: 'done',
       percent: 100,
@@ -939,12 +1032,15 @@ export class MatteService {
         fingerprint: job.fingerprint,
         frameCount: encodedFrames,
         sourceStart: bakeRange.sourceStart,
-        sourceSpan: bakeRange.sourceSpan,
+        sourceSpan: actualSourceSpan,
         speed,
         reversed,
         model: (params.model as string) || 'rvm-mobilenetv3',
         quality: (params.quality as string) || 'standard',
         assetKey: normalizeAssetKey(params.filePath),
+        manifestPath,
+        status: manifestV2.status,
+        coverageActual: manifestV2.coverageActual,
       },
     }
 
@@ -959,7 +1055,8 @@ export class MatteService {
     })
 
     logger.info(
-      `[matte-service] Bake completed successfully for ${job.jobId} (${encodedFrames} frames encoded to ${job.finalPath})`,
+      `[matte-service] Bake completed successfully for ${job.jobId} ` +
+        `(${encodedFrames} frames encoded to ${job.finalPath}, manifest: ${manifestPath})`,
     )
   }
 

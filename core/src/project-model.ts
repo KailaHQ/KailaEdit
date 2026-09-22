@@ -334,6 +334,7 @@ export const autoMatteBakeSchema = z.object({
    */
   sourceStart: z.number().optional(),
   sourceSpan: z.number().optional(),
+  /** Rate used to encode this file; new bakes use 1, independent of clip playback speed. */
   speed: z.number().optional(),
   reversed: z.boolean().optional(),
   model: z.string().optional(),

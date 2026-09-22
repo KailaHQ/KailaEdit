@@ -18,6 +18,7 @@ import {
   deriveFrameRenderState,
   sameFrameOverlayState,
   sameFrameRenderState,
+  getClipTargetTime,
 } from './preview-frame-engine'
 import type { UseVideoPoolManagerResult, VideoPoolRefs } from './useVideoPoolManager'
 import type { CachedSegmentInfo } from '../render-cache-store'
@@ -332,32 +333,13 @@ export function useFrameRenderer(
     }
 
     const hasActiveLut = Boolean(state.activeFilter && (state.activeFilter.intensity ?? 100) > 0)
-    // The element under the canvas has to go whenever the canvas cuts the frame — not
-    // just for chroma key. See clipNeedsAlphaCanvas.
-    //
-    // ...but only once that canvas actually has a frame on it. Hiding the source
-    // unconditionally turned every moment the canvas had nothing into a black monitor,
-    // and it has nothing more often than it looks: `draw` clears and bails when its
-    // `sourceElement` prop is null, and that prop is read from `activePoolPathRef`, a ref
-    // React does not re-render on. Waiting for content costs at most one frame of
-    // un-matted picture on the way in, and never shows black.
+    // Remove BG owns presentation from frame zero. A missing matte is preparing,
+    // never permission to reveal the raw DOM video under the transparent canvas.
     const canvasReady = (canvas: LutCanvasRef | null | undefined) => canvas?.hasContent() ?? false
-
-    // Two different questions, and they must not be conflated:
-    //
-    //   needsCanvas — should this clip be drawn by the canvas at all? A property of the
-    //     clip, nothing else. It decides whether `renderNow` runs or the canvas is
-    //     cleared.
-    //   isCutOut    — may the element underneath be hidden yet? Only once the canvas has
-    //     a frame to replace it with.
-    //
-    // Folding readiness into the first one deadlocks: no content means don't draw, and
-    // not drawing means no content, so the canvas is cleared forever and the monitor
-    // stays black. Readiness belongs to the hiding decision alone.
     const outgoingNeedsCanvas = clipNeedsAlphaCanvas(outgoingClip)
     const activeNeedsCanvas = clipNeedsAlphaCanvas(activeClip)
-    const outgoingIsCutOut = outgoingNeedsCanvas && canvasReady(lutCanvasRef.current)
-    const activeIsCutOut = activeNeedsCanvas && canvasReady(lutCanvasRef.current)
+    const outgoingIsCutOut = outgoingNeedsCanvas && (Boolean(outgoingClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
+    const activeIsCutOut = activeNeedsCanvas && (Boolean(activeClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
     // Anything less than this and the branch below CLEARS the canvas every frame, which
     // is the other half of why background removal did not show in the preview: the
     // cut-out was drawn and then wiped, and the clip's transform and opacity never
@@ -424,7 +406,8 @@ export function useFrameRenderer(
           ? activeImageRef.current
           : (activeClipPath ? videoPoolRef.current.get(activeClipPath) ?? null : null) ||
             (activePoolPathRef.current ? videoPoolRef.current.get(activePoolPathRef.current) ?? null : null)
-        lutCanvasRef.current?.renderNow(activeSourceEl)
+        lutCanvasRef.current?.renderNow(activeSourceEl, activeSourceEl instanceof HTMLVideoElement
+          ? { sourceTime: getClipTargetTime(activeClip, activeSourceEl.duration, atTime) } : null)
       } else {
         clearEffectStyle(lutCanvas)
         lutCanvasRef.current?.clear()
@@ -487,7 +470,7 @@ export function useFrameRenderer(
       const hasIncomingLut = Boolean(incomingFilter && (incomingFilter.intensity ?? 100) > 0)
       const incomingNeedsCanvas = clipNeedsAlphaCanvas(crossDissolve.incoming)
       const incomingIsCutOut =
-        incomingNeedsCanvas && canvasReady(incomingLutCanvasRef.current)
+        incomingNeedsCanvas && (Boolean(crossDissolve.incoming.autoMatte?.enabled) || canvasReady(incomingLutCanvasRef.current))
       // Same split as above — readiness must not gate whether the canvas draws.
       const hasIncomingCanvas = hasIncomingLut || incomingNeedsCanvas
 
@@ -567,7 +550,10 @@ export function useFrameRenderer(
         if (hasIncomingCanvas) {
           applyEffectStyle(incomingCanvas, inStyle)
           applyLayer(incomingCanvas, 'incoming', inStyle.transform)
-          incomingLutCanvasRef.current?.renderNow()
+          const incomingSource = crossDissolve.incoming.asset?.type === 'video'
+            ? incomingDissolveVideoRef.current : incomingDissolveImageRef.current
+          incomingLutCanvasRef.current?.renderNow(incomingSource, incomingSource instanceof HTMLVideoElement
+            ? { sourceTime: getClipTargetTime(crossDissolve.incoming, incomingSource.duration, atTime) } : null)
         } else {
           clearEffectStyle(incomingCanvas)
           incomingLutCanvasRef.current?.clear()
@@ -635,7 +621,7 @@ export function useFrameRenderer(
       const hasCompCanvas = assignedSlot !== undefined
       const isCutOut =
         clipNeedsAlphaCanvas(clip) &&
-        canvasReady(assignedSlot !== undefined ? compLutCanvasRefs[assignedSlot]?.current : null)
+        (Boolean(clip.autoMatte?.enabled) || canvasReady(assignedSlot !== undefined ? compLutCanvasRefs[assignedSlot]?.current : null))
 
       const clipStyle = getClipEffectStyles(
         inherited === clip.filter ? clip : { ...clip, filter: inherited },
@@ -652,7 +638,8 @@ export function useFrameRenderer(
         const compCanvas = compRef?.current?.getCanvas()
         if (compCanvas) {
           applyEffectStyle(compCanvas, clipStyle)
-          compRef?.current?.renderNow(element)
+          compRef?.current?.renderNow(element, element instanceof HTMLVideoElement
+            ? { sourceTime: getClipTargetTime(clip, element.duration, atTime) } : null)
         }
       }
 

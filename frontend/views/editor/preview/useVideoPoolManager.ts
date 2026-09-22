@@ -89,7 +89,16 @@ export function useVideoPoolManager(
     atTime: number,
     options: { forceSeek?: boolean; paused?: boolean },
   ) => {
-    const { forceSeek = false, paused = false } = options
+    const { forceSeek: requestedSeek = false, paused = false } = options
+    const scrubOwned = video.dataset?.matteScrubOwned === 'true' && Boolean(clip.autoMatte?.enabled && clip.autoMatte.bake?.path)
+    if (!scrubOwned && video.dataset) delete video.dataset.matteScrubOwned
+    const forceSeek = requestedSeek || (!paused && scrubOwned)
+    if (paused && scrubOwned) {
+      video.pause()
+      delete (video as { __pendingSeekTime?: number }).__pendingSeekTime
+      return // The matte pair's independent decoder owns scrub; do not decode the hidden full-size pool too.
+    }
+    if (!paused && scrubOwned) delete video.dataset.matteScrubOwned
     video.muted = true
     video.volume = 0
 
@@ -114,7 +123,8 @@ export function useVideoPoolManager(
     const shouldPause = paused || clip.reversed || drive.seekDriven
     // Allow the browser video element to decode and play smoothly at high speeds (e.g. 10x)
     // without triggering false drift corrections every few milliseconds.
-    const driftThreshold = shouldPause ? 0.04 : Math.max(0.4, 0.4 * currentSpeed)
+    const driftThreshold = shouldPause ? 0.000001 : Math.max(0.4, 0.4 * currentSpeed)
+    if (shouldPause && !video.paused) video.pause()
 
     const desiredRate = clip.reversed || drive.seekDriven ? 1 : drive.rate
     if (video.playbackRate !== desiredRate) {
@@ -132,7 +142,9 @@ export function useVideoPoolManager(
             const next = (video as { __pendingSeekTime?: number }).__pendingSeekTime
             if (typeof next === 'number' && !Number.isNaN(next)) {
               delete (video as { __pendingSeekTime?: number }).__pendingSeekTime
-              if (Math.abs(video.currentTime - next) > driftThreshold) {
+              // This listener outlives the render that installed it. Never use an
+              // old playback drift tolerance to discard a subsequent paused seek.
+              if (Math.abs(video.currentTime - next) > 0.000001) {
                 video.currentTime = next
               }
             }
@@ -142,9 +154,6 @@ export function useVideoPoolManager(
         return
       }
       delete (video as { __pendingSeekTime?: number }).__pendingSeekTime
-      if (forceSeek && Math.abs(video.currentTime - targetTime) < 0.001) {
-        video.currentTime = targetTime + 0.001
-      }
       video.currentTime = targetTime
     }
 

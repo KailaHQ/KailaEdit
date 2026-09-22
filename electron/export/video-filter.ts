@@ -1,6 +1,6 @@
 import type { TimelineBackground, ClipMask, ChromaKey } from '../../core/src/project-model'
 import type { ExportClip } from './timeline'
-import { autoMatteBakeOffset } from '../../core/src/auto-matte'
+import { autoMatteBakeOffset, autoMattePlaybackRate } from '../../core/src/auto-matte'
 import { matteAlphaBand, matteFeatherSigma, hasMatteClean, hasMatteFeather } from '../../core/src/matte-edge'
 import { buildClipEffectChain } from './effects-filter'
 import { buildLutFilter } from './lut-filter'
@@ -400,6 +400,7 @@ export function buildVideoFilterGraph(
        * single constant is what stops them drifting apart.
        */
       const matteOffset = autoMatteBakeOffset(clip.autoMatte?.bake, clip.trimStart ?? 0, clip.speed ?? 1)
+      const matteRate = autoMattePlaybackRate(clip.autoMatte?.bake, clip.speed ?? 1)
       // Everything past this point needs an alpha channel.
       // If chroma key is active without autoMatte, use format=rgba to preserve full 4:4:4 chroma before colorkey.
       chain += (clip.chromaKey?.enabled && !hasAutoMatte) ? ',format=rgba' : ',format=yuva420p'
@@ -411,6 +412,7 @@ export function buildVideoFilterGraph(
         const matteInputIdx = inputIdx++
 
         let matteChain = `[${matteInputIdx}:v]setpts=PTS-STARTPTS`
+        if (matteRate !== 1) matteChain += `,setpts=PTS/${matteRate.toFixed(6)}`
         if (hasScaleKeyframes) {
           const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
           const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')
@@ -479,6 +481,7 @@ export function buildVideoFilterGraph(
         const strokeInputIdx = inputIdx++
 
         let strokeChain = `[${strokeInputIdx}:v]setpts=PTS-STARTPTS`
+        if (matteRate !== 1) strokeChain += `,setpts=PTS/${matteRate.toFixed(6)}`
         if (hasScaleKeyframes) {
           const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
           const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')

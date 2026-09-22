@@ -7,6 +7,7 @@ import {
 import {
   autoMatteBakeKey,
   autoMatteBakeOffset,
+  autoMattePlaybackRate,
   autoMatteSourceRange,
   computeAutoMatteFingerprint,
   downsampleRatioForInferenceSize,
@@ -18,6 +19,32 @@ import {
 import { setClipAutoMatte } from '../src/editor-actions'
 import { selectClipAutoMatte } from '../src/editor-selectors'
 import { createInitialEditorState, type EditorState } from '../src/editor-state'
+
+describe('matte reuse after changing playback speed', () => {
+  it.each([0.25, 0.5, 1, 2, 4])('keeps the same source bake at %sx', speed => {
+    const bake = { path: '/matte.mp4', fingerprint: 'bake', frameCount: 2400, createdAt: 0,
+      sourceStart: 0, sourceSpan: 80, speed: 1 }
+    expect(isAutoMatteBakeValid(bake, { trimStart: 0, duration: 80 / speed, speed,
+      model: 'rvm-mobilenetv3', quality: 'standard' })).toBe(true)
+    expect(autoMattePlaybackRate(bake, speed)).toBe(speed)
+    expect(matteTimeForSourceTime(17, bake.sourceStart, bake.speed)).toBe(17)
+  })
+
+  it('retimes legacy accelerated bakes using their original rate', () => {
+    expect(autoMattePlaybackRate({ speed: 2 }, 0.5)).toBe(0.25)
+    expect(autoMatteBakeOffset({ sourceStart: 10, speed: 2 }, 16, 0.5)).toBe(3)
+  })
+
+  it('requires one source-rate migration for a legacy bake with missing alpha frames', () => {
+    const bake = { path: '/legacy.mp4', fingerprint: 'legacy', frameCount: 1890, createdAt: 0,
+      sourceStart: 0, sourceSpan: 80.01, speed: 1.27 }
+    for (const speed of [1, 1.27, 0.5, 2]) {
+      const params = { trimStart: 0, duration: 80 / speed, speed, model: 'rvm-mobilenetv3', quality: 'standard' }
+      expect(isAutoMatteBakeValid(bake, params)).toBe(false)
+      expect(isAutoMatteBakeValid({ ...bake, speed: 1, frameCount: 2400 }, params)).toBe(true)
+    }
+  })
+})
 
 describe('autoMatteSchema & Model', () => {
   it('parses valid autoMatte settings and sets defaults', () => {
@@ -196,7 +223,7 @@ describe('computeAutoMatteFingerprint', () => {
       quality: 'standard',
     }
     expect(isAutoMatteBakeValid(bake, baseParams)).toBe(true)
-    expect(isAutoMatteBakeValid(bake, { ...baseParams, speed: 2 })).toBe(false)
+    expect(isAutoMatteBakeValid(bake, { ...baseParams, speed: 2 })).toBe(true)
     expect(isAutoMatteBakeValid(bake, { ...baseParams, reversed: true })).toBe(false)
     expect(isAutoMatteBakeValid(bake, { ...baseParams, model: 'modnet' })).toBe(false)
     expect(isAutoMatteBakeValid(bake, { ...baseParams, quality: 'high' })).toBe(false)
@@ -385,12 +412,12 @@ describe('Bake fingerprint: producer and consumer agree', () => {
   const range = snapAutoMatteRange(autoMatteSourceRange(params))
   const producedBake = {
     path: '/cache/matte.mp4',
-    fingerprint: computeAutoMatteFingerprint({ ...params, ...range }),
+    fingerprint: computeAutoMatteFingerprint({ ...params, ...range, speed: 1 }),
     frameCount: 240,
     createdAt: Date.now(),
     sourceStart: range.sourceStart,
     sourceSpan: range.sourceSpan,
-    speed: clip.speed,
+    speed: 1,
     reversed: clip.reversed,
     model: 'rvm-mobilenetv3',
     quality: 'standard',
@@ -451,8 +478,9 @@ describe('Bake fingerprint: producer and consumer agree', () => {
   })
 
   it('places a clip at the right point inside a shared bake', () => {
-    // Offset is in MATTE seconds, so a sped-up clip divides by its speed.
-    expect(autoMatteBakeOffset({ sourceStart: 10 }, 16, 2)).toBeCloseTo(3, 6)
+    // Offset uses the stored bake rate, independent of the current clip rate.
+    expect(autoMatteBakeOffset({ sourceStart: 10, speed: 2 }, 16, 0.5)).toBeCloseTo(3, 6)
+    expect(autoMatteBakeOffset({ sourceStart: 10, speed: 1 }, 16, 2)).toBeCloseTo(6, 6)
     // A bake that does start on the clip's first frame needs no seek.
     expect(autoMatteBakeOffset({ sourceStart: 2.5 }, 2.5, 1)).toBe(0)
     // Nor does one with no range recorded — that is the old behaviour, unchanged.
@@ -529,3 +557,20 @@ describe('downsampleRatioForInferenceSize', () => {
     expect(downsampleRatioForInferenceSize(NaN)).toBe(1)
   })
 })
+
+describe('matteTimeForSourceTime with reverse support', () => {
+  it('handles reverse time mapping when sourceSpan is provided', () => {
+    // sourceSpan=10, speed=1, sourceStart=0. At sourceTime=2, reverse position is 8s
+    expect(matteTimeForSourceTime(2, 0, 1, true, 10)).toBe(8)
+    // At sourceTime=10, reverse position is 0s
+    expect(matteTimeForSourceTime(10, 0, 1, true, 10)).toBe(0)
+    // At sourceTime=0, reverse position is 10s
+    expect(matteTimeForSourceTime(0, 0, 1, true, 10)).toBe(10)
+  })
+
+  it('handles reverse with speed 2x', () => {
+    // sourceSpan=10, speed=2. At sourceTime=2, remaining=8s -> /2 = 4s
+    expect(matteTimeForSourceTime(2, 0, 2, true, 10)).toBe(4)
+  })
+})
+

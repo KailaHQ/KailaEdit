@@ -74,7 +74,8 @@ describe('MatteService Deduplication & Queueing (KE-1503)', () => {
       clipId: 'clip-1',
       filePath: fakeVideo,
       trimStart: 10,
-      duration: 10,
+      duration: 5,
+      speed: 2,
       model: 'rvm-mobilenetv3',
     })
 
@@ -96,6 +97,7 @@ describe('MatteService Deduplication & Queueing (KE-1503)', () => {
     expect(job2Status.phase).toBe('done')
     expect(job2Status.percent).toBe(100)
     expect(job2Status.mattePath).toBeTruthy()
+    expect(job2Status.bake?.speed).toBe(1)
 
     // executeBake was NEVER called for job-2!
     expect(executeBakeCalls).toEqual(['job-1'])
@@ -147,6 +149,19 @@ describe('MatteService Deduplication & Queueing (KE-1503)', () => {
     // Job-2 never ran executeBake
     expect(executeBakeCalls).toEqual(['job-1'])
     expect(matteService.getJobStatus('job-2').status).toBe('cancelled')
+  })
+
+  it('first bake on a fast clip still segments at source rate and retains all source frames', async () => {
+    const fakeVideo = path.join(tmpDir, 'fast.mp4')
+    fs.writeFileSync(fakeVideo, 'fixture')
+    const execute = vi.spyOn(matteService as any, 'executeBake').mockResolvedValue(undefined)
+    const result = await matteService.startBake({ jobId: 'fast', clipId: 'fast-clip', filePath: fakeVideo,
+      trimStart: 0, duration: 5, speed: 2 })
+    await (matteService as any).bakeChain
+    expect(result.bake).toMatchObject({ speed: 1, sourceStart: 0, sourceSpan: 10 })
+    expect(execute.mock.calls[0][0]).toMatchObject({ speed: 1 })
+    const fps = execute.mock.calls[0][5] as number
+    expect(result.frameCount).toBe(Math.round(10 * fps))
   })
 
   it('continues queue even if a previous job throws an error', async () => {

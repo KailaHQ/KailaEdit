@@ -140,3 +140,71 @@ export function decideBakeMatteSync(input: BakeMatteSyncInput): BakeMatteSyncDec
     drop: false,
   }
 }
+
+// ---------------------------------------------------------------------------
+// MatteReadiness — unified state for the matte pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary of the matte pipeline's readiness.
+ *
+ * This replaces the scattered booleans (`hasValidMatteRef`, `matteEnabled`,
+ * `bakeFailedRef`) with a single enum that the compositing stack and LutCanvas
+ * both read to decide what to show.
+ *
+ * Invariant: when `autoMatte.enabled` is true and readiness is NOT 'ready',
+ * the compositor must NOT show the raw source — it shows the last valid
+ * composite or hides the layer entirely.
+ */
+export type MatteReadiness =
+  | 'ready'       // Alpha is present and matches the current source frame.
+  | 'preparing'   // Alpha is being computed/sought; show last valid composite.
+  | 'stale'       // Alpha exists but belongs to a different frame; hold it.
+  | 'error'       // Pipeline failed (load error, inference crash); notify user.
+  | 'missing'     // No bake, no live inference, no cached result at all.
+
+export interface MatteReadinessInput {
+  /** Whether autoMatte is enabled on the clip. */
+  matteEnabled: boolean
+  /** A bake file exists and is usable. */
+  hasBake: boolean
+  /** The bake video failed to load. */
+  bakeFailed: boolean
+  /** A valid matte texture is currently on the GPU. */
+  hasValidTexture: boolean
+  /** Drift between source and matte, seconds. */
+  drift: number
+  /** Live inference is currently running. */
+  isInferring: boolean
+  /** A cached inference result exists for this clip. */
+  hasCachedResult: boolean
+}
+
+/**
+ * Resolves the matte readiness from the current pipeline state.
+ *
+ * This is a pure function — the caller reads refs and passes values, and the
+ * decision is deterministic. LutCanvas and MonitorCompositingStack both call
+ * this so they agree on visibility.
+ */
+export function resolveMatteReadiness(input: MatteReadinessInput): MatteReadiness {
+  if (!input.matteEnabled) return 'missing'
+
+  // Error state: bake is present but can't load
+  if (input.hasBake && input.bakeFailed) return 'error'
+
+  // Ready: valid texture with acceptable drift
+  if (input.hasValidTexture && input.drift <= STALE_MATTE_SECONDS) return 'ready'
+
+  // Stale: we have a texture but it's too far from the current frame
+  if (input.hasValidTexture && input.drift > STALE_MATTE_SECONDS) return 'stale'
+
+  // Preparing: inference is running or bake is being loaded
+  if (input.isInferring || (input.hasBake && !input.bakeFailed)) return 'preparing'
+
+  // We have a cached result we could upload
+  if (input.hasCachedResult) return 'preparing'
+
+  // Nothing at all
+  return 'missing'
+}

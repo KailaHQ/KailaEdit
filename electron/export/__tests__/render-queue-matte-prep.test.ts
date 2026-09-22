@@ -114,6 +114,18 @@ describe('render-queue: auto matte and stroke preparation before export', () => 
     })
   })
 
+  it('reuses the editor bake after speed change without invoking inference', async () => {
+    const exists = vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    const clip = makeClip({ speed: 2, duration: 5, autoMatte: { enabled: true,
+      bake: { path: '/cache/existing.mp4', fingerprint: 'existing', frameCount: 300,
+        sourceStart: 2, sourceSpan: 10, speed: 1 } } })
+    const res = await prepare(makeJob(), [clip])
+    expect(res.ok).toBe(true)
+    expect(matteService.ensureBake).not.toHaveBeenCalled()
+    expect(clip.autoMatte.bake).toMatchObject({ path: '/cache/existing.mp4', speed: 1 })
+    exists.mockRestore()
+  })
+
   it('bakes the stroke and sets strokeBakePath — the field the filtergraph needs', async () => {
     const clip: any = makeClip({
       autoMatte: { enabled: true },

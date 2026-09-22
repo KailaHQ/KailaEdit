@@ -83,6 +83,16 @@ export function registerVideoProcessingHandlers(): void {
     })
   })
 
+  handle('matteScrubProxy', async ({ sourcePath, mattePath }) => {
+    const source = validatePath(sourcePath, getAllowedRoots())
+    const matte = validatePath(mattePath, getAllowedRoots())
+    const { ensureScrubProxy } = await import('../matte/scrub-proxy')
+    try {
+      const [sourceProxy, matteProxy] = await Promise.all([ensureScrubProxy(source), ensureScrubProxy(matte)])
+      return { sourcePath: sourceProxy, mattePath: matteProxy }
+    } catch (error) { return { error: String(error) } }
+  })
+
   handle('matteGetDeviceInfo', async () => {
     const { onnxSessionManager } = await import('../matte/onnx-session')
     const probe = await onnxSessionManager.probeProviders()

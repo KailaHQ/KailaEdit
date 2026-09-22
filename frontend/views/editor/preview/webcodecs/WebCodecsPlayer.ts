@@ -11,6 +11,7 @@ export class WebCodecsPlayer {
   private metadata: DemuxedVideoMetadata | null = null
   private isLoaded = false
   private currentPath = ''
+  private generation = 0
 
   constructor() {
     this.decoder = new HardwareVideoDecoder({
@@ -25,15 +26,21 @@ export class WebCodecsPlayer {
     }
 
     this.destroy()
+    const generation = this.generation
     this.currentPath = filePathOrUrl
 
     try {
-      this.metadata = await this.demuxer.demux(filePathOrUrl)
+      const demuxer = new VideoDemuxer()
+      const metadata = await demuxer.demux(filePathOrUrl)
+      if (generation !== this.generation) return false
+      this.demuxer = demuxer
+      this.metadata = metadata
       if (!this.metadata || !this.metadata.trackInfo) {
         return false
       }
 
       const configured = await this.decoder.configure(this.metadata.trackInfo)
+      if (generation !== this.generation) return false
       this.isLoaded = configured
       return configured
     } catch (err) {
@@ -43,30 +50,36 @@ export class WebCodecsPlayer {
     }
   }
 
-  async seek(timestampSec: number): Promise<VideoFrame | null> {
+  async seek(timestampSec: number, independentLookahead = 0): Promise<VideoFrame | null> {
     if (!this.isLoaded || !this.metadata) {
       return null
     }
 
     // 1. Check LRU Frame Cache first (0ms instantaneous lookup)
-    const cached = this.frameCache.get(timestampSec)
+    const sample = this.demuxer.getSampleForTimestamp(timestampSec)
+    if (!sample) return null
+    const generation = this.generation
+    const cached = this.frameCache.get(sample.pts, 0)
     if (cached) {
-      if (this.currentFrame && this.currentFrame !== cached) {
-        // We do not close currentFrame if it's referenced in the cache
-      }
-      this.currentFrame = cached
-      return cached
+      this.currentFrame?.close()
+      this.currentFrame = cached.clone()
+      return this.currentFrame
     }
 
     // 2. Fetch chunks from nearest keyframe
-    const chunks = this.demuxer.getChunksForTimestamp(timestampSec)
+    const chunks = this.demuxer.getChunksForTimestamp(timestampSec, independentLookahead)
     if (chunks.length === 0) {
       return null
     }
 
     // 3. Decode chunks via hardware
-    const frame = await this.decoder.decodeChunks(chunks, timestampSec)
+    const frame = await this.decoder.decodeChunks(chunks, sample.pts)
+    if (generation !== this.generation) {
+      frame?.close()
+      return null
+    }
     if (frame) {
+      this.currentFrame?.close()
       this.currentFrame = frame
     }
     return frame
@@ -80,16 +93,30 @@ export class WebCodecsPlayer {
     return this.metadata
   }
 
+  getSampleForTime(time: number) {
+    return this.demuxer.getSampleForTimestamp(time)
+  }
+
+  pin(timestampSec: number): void {
+    this.frameCache.pin(timestampSec)
+  }
+
+  unpin(timestampSec: number): void {
+    this.frameCache.unpin(timestampSec)
+  }
+
   isReady(): boolean {
     return this.isLoaded
   }
 
   destroy(): void {
+    this.generation++
     this.isLoaded = false
     this.currentPath = ''
+    this.currentFrame?.close()
     this.currentFrame = null
     this.decoder.close()
-    this.frameCache.clear()
+    this.frameCache.destroy()
     this.metadata = null
   }
 }

@@ -172,7 +172,10 @@ export function isAutoMatteBakeValid(
 
   if ((bake.model ?? 'rvm-mobilenetv3') !== params.model) return false
   if ((bake.quality ?? 'standard') !== params.quality) return false
-  if (Number(bake.speed ?? 1) !== Number(params.speed ?? 1)) return false
+  // Pre-source-rate bakes dropped/duplicated frames via setpts + fps. Reusing these
+  // cannot recover missing alpha. Migrate once to the source-rate cache group;
+  // thereafter any clip speed reuses the same bake without another inference job.
+  if (Number(bake.speed ?? 1) !== 1) return false
   if (Boolean(bake.reversed) !== Boolean(params.reversed)) return false
   if (params.assetKey && bake.assetKey && bake.assetKey !== params.assetKey) return false
 
@@ -195,16 +198,24 @@ export function isAutoMatteBakeValid(
 /**
  * Where the clip's first frame sits inside the baked matte, in MATTE seconds.
  *
- * The bake has the clip's speed applied to it, so one matte second is `speed` seconds of
- * source — the same conversion `matteTimeForSourceTime` does.
+ * New bakes run at source speed 1. Legacy bakes retain their recorded speed;
+ * the clip's current speed never changes this offset. The third argument is
+ * retained for compatibility with callers from before bake.speed owned the clock.
  */
 export function autoMatteBakeOffset(
-  bake: { sourceStart?: number } | undefined | null,
+  bake: { sourceStart?: number; speed?: number } | undefined | null,
   trimStart: number,
-  speed: number = 1,
+  _speed: number = 1,
 ): number {
   if (!bake || bake.sourceStart === undefined) return 0
-  return matteTimeForSourceTime(trimStart || 0, bake.sourceStart, speed)
+  return matteTimeForSourceTime(trimStart || 0, bake.sourceStart, bake.speed ?? 1)
+}
+
+/** Playback rate of a bake relative to timeline time, including legacy sped-up bakes. */
+export function autoMattePlaybackRate(bake: { speed?: number } | undefined, clipSpeed = 1): number {
+  const sourceRate = Number.isFinite(clipSpeed) && clipSpeed > 0 ? clipSpeed : 1
+  const bakedRate = bake?.speed && Number.isFinite(bake.speed) && bake.speed > 0 ? bake.speed : 1
+  return sourceRate / bakedRate
 }
 
 
@@ -219,13 +230,62 @@ export function autoMatteBakeOffset(
  * ahead of the picture by exactly `trimStart`, and off by the speed factor on top. On an
  * untrimmed clip at 1x the two happen to agree, which is why this survived.
  */
+export {
+  resolveSourceFrame,
+  timelineToSourceTimeUs,
+  findFrameAtTime,
+  buildSourceFrameIndex,
+  hasBakeManifestV2,
+  validateBakeManifestV2,
+  bakeOrdinalForSourceFrame,
+  type SourceFrameIndex,
+  type SourceFrameEntry,
+  type BakeManifestV2,
+  type BakeFrameMapEntry,
+} from './source-frame-index'
+
+import {
+  resolveSourceFrame,
+  type SourceFrameIndex,
+  type SourceFrameEntry,
+} from './source-frame-index'
+
+/**
+ * Maps a position in source media time to the position within the baked matte video.
+ * Supports reverse playback when reversed is true and sourceSpan is provided.
+ */
 export function matteTimeForSourceTime(
   sourceTime: number,
   matteSourceStart: number,
   speed: number = 1,
+  reversed: boolean = false,
+  sourceSpan: number = 0,
 ): number {
   const safeSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1
+  if (reversed && sourceSpan > 0) {
+    const elapsed = sourceTime - (matteSourceStart || 0)
+    return Math.max(0, (sourceSpan - elapsed) / safeSpeed)
+  }
   return Math.max(0, (sourceTime - (matteSourceStart || 0)) / safeSpeed)
+}
+
+/**
+ * Resolves the source frame identity for a given clip and timeline position.
+ * Returns null if no SourceFrameIndex is available for the asset.
+ */
+export function resolveClipSourceFrame(
+  index: SourceFrameIndex | null | undefined,
+  clip: { trimStart?: number; speed?: number; reversed?: boolean },
+  timelineOffsetSec: number,
+): SourceFrameEntry | null {
+  if (!index) return null
+  return resolveSourceFrame(
+    index,
+    timelineOffsetSec,
+    clip.trimStart ?? 0,
+    clip.speed ?? 1,
+    Boolean(clip.reversed),
+  )
 }
 
 /**
