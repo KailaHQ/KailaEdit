@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { Asset, TimelineClip, Track } from '../../../types/project-model'
-import { packTrack1, resolveOverlaps, type ToolType } from '../video-editor-utils'
+import { packMainVideoTrack, mainVideoTrackIndex, resolveOverlaps, type ToolType } from '../video-editor-utils'
 
 export interface ResizingClipState {
   clipId: string
@@ -16,6 +16,8 @@ export interface ResizingClipState {
   adjacentOrigTrimStart?: number
   adjacentOrigTrimEnd?: number
   adjacentOrigStartTime?: number
+  trackIndex: number
+  track1Order?: string[]
 }
 
 interface UseTimelineResizeParams {
@@ -31,6 +33,7 @@ interface UseTimelineResizeParams {
   setSelectedClipIds: React.Dispatch<React.SetStateAction<Set<string>>>
   expandWithLinkedClips: (ids: Set<string>) => Set<string>
   activeTimeline: any
+  setCurrentTime?: (time: number) => void
 }
 
 export function useTimelineResize({
@@ -46,11 +49,13 @@ export function useTimelineResize({
   setSelectedClipIds,
   expandWithLinkedClips,
   activeTimeline,
+  setCurrentTime,
 }: UseTimelineResizeParams) {
   const [resizingClip, setResizingClip] = useState<ResizingClipState | null>(null)
 
   /**
    * How far left the left edge of a clip may be dragged.
+   * Can go down to (originalStartTime - originalTrimStart / speed) to restore cut media at the in-point.
    */
   const earliestTrimStartTime = useCallback((
     clip: TimelineClip,
@@ -58,7 +63,7 @@ export function useTimelineResize({
     originalTrimStart: number,
   ): number => {
     if (!Number.isFinite(getMaxClipDuration(clip))) return 0
-    return Math.max(0, originalStartTime - originalTrimStart)
+    return originalStartTime - (originalTrimStart / clip.speed)
   }, [getMaxClipDuration])
 
   const sourceDurationOf = useCallback((clip: TimelineClip): number | null => {
@@ -171,7 +176,104 @@ export function useTimelineResize({
       return
     }
 
-    // === RIPPLE TRIM ===
+    // === MAGNETIC TRACK TRIM (Layer 1 / V1) ===
+    // On magnetic track, clips sit end to end with no gaps or overlaps.
+    // Every resize updates duration/trims and repacks via packMainVideoTrack in real time:
+    // - Right edge:
+    //   - Pushing left (deltaTime < 0): cuts video from right down to min 0.5s.
+    //   - Pulling right (deltaTime > 0): restores cut video up to source media end (stops at end).
+    //   - Downstream clips ripple left/right in real-time.
+    // - Left edge:
+    //   - Pushing right (deltaTime > 0): cuts video from start to drag position.
+    //   - Pulling left (deltaTime < 0): restores cut video from start until trimStart reaches 0 (stops at start).
+    const mainIndex = mainVideoTrackIndex(tracks)
+    const effectiveMainIndex = mainIndex >= 0 ? mainIndex : 0
+    const isMagnetic = clip.trackIndex === effectiveMainIndex
+
+    if (isMagnetic && resizingClip.tool !== 'roll') {
+      const sourceDuration = sourceDurationOf(clip)
+      const currentTransitions = activeTimeline?.transitions ?? []
+      const linkedIds = new Set<string>(clip.linkedClipIds || [])
+
+      if (resizingClip.edge === 'right') {
+        const maxDuration = sourceDuration !== null && sourceDuration > 0
+          ? Math.max(0.5, (sourceDuration - resizingClip.originalTrimStart) / clip.speed)
+          : Infinity
+
+        let proposedDuration = resizingClip.originalDuration + deltaTime
+        if (snapEnabled) {
+          const snapThreshold = 0.2
+          const newEndTime = resizingClip.originalStartTime + proposedDuration
+          if (Math.abs(newEndTime - getCurrentTime()) < snapThreshold) {
+            proposedDuration = getCurrentTime() - resizingClip.originalStartTime
+          }
+          for (const otherClip of clips) {
+            if (otherClip.id === clip.id) continue
+            if (Math.abs(newEndTime - otherClip.startTime) < snapThreshold) {
+              proposedDuration = otherClip.startTime - resizingClip.originalStartTime
+            }
+          }
+        }
+
+        const newDuration = Math.max(0.5, Math.min(proposedDuration, maxDuration))
+        const trimEnd = sourceDuration !== null && sourceDuration > 0
+          ? Math.max(0, sourceDuration - resizingClip.originalTrimStart - newDuration * clip.speed)
+          : clip.trimEnd
+
+        setClips(prev => {
+          const updated = prev.map(c => {
+            if (c.id === clip.id || linkedIds.has(c.id)) {
+              return { ...c, duration: newDuration, trimEnd }
+            }
+            return c
+          })
+          return packMainVideoTrack(tracks, updated, currentTransitions)
+        })
+
+        if (setCurrentTime) {
+          setCurrentTime(Math.max(0, resizingClip.originalStartTime + newDuration - 0.04))
+        }
+        return
+      } else {
+        // Left edge on Track 1
+        const minDelta = -resizingClip.originalTrimStart / clip.speed
+        const maxDelta = resizingClip.originalDuration - 0.5
+        let proposedDelta = deltaTime
+
+        if (snapEnabled) {
+          const snapThreshold = 0.2
+          const proposedStartTime = resizingClip.originalStartTime + proposedDelta
+          if (Math.abs(proposedStartTime - getCurrentTime()) < snapThreshold) {
+            proposedDelta = getCurrentTime() - resizingClip.originalStartTime
+          }
+        }
+
+        const clampedDelta = Math.max(minDelta, Math.min(maxDelta, proposedDelta))
+        const newTrimStart = Math.max(0, resizingClip.originalTrimStart + clampedDelta * clip.speed)
+        const newDuration = Math.max(0.5, resizingClip.originalDuration - clampedDelta)
+
+        setClips(prev => {
+          const updated = prev.map(c => {
+            if (c.id === clip.id || linkedIds.has(c.id)) {
+              return {
+                ...c,
+                duration: newDuration,
+                trimStart: newTrimStart,
+              }
+            }
+            return c
+          })
+          return packMainVideoTrack(tracks, updated, currentTransitions)
+        })
+
+        if (setCurrentTime) {
+          setCurrentTime(Math.max(0, resizingClip.originalStartTime))
+        }
+        return
+      }
+    }
+
+    // === RIPPLE TRIM (Overlay tracks) ===
     if (resizingClip.tool === 'ripple') {
       if (resizingClip.edge === 'left') {
         let newStartTime = resizingClip.originalStartTime + deltaTime
@@ -218,7 +320,7 @@ export function useTimelineResize({
       return
     }
 
-    // === STANDARD TRIM ===
+    // === STANDARD TRIM (Overlay tracks) ===
     if (resizingClip.edge === 'left') {
       let newStartTime = resizingClip.originalStartTime + deltaTime
       const earliestStart = earliestTrimStartTime(
@@ -304,7 +406,7 @@ export function useTimelineResize({
         return c
       }))
     }
-  }, [resizingClip, clips, pixelsPerSecond, snapEnabled, getCurrentTime, earliestTrimStartTime, maxDurationFromInPoint, sourceDurationOf, setClips])
+  }, [resizingClip, clips, pixelsPerSecond, snapEnabled, getCurrentTime, earliestTrimStartTime, maxDurationFromInPoint, sourceDurationOf, setClips, tracks, setCurrentTime])
 
   const handleResizeStart = useCallback((e: React.MouseEvent, clip: TimelineClip, edge: 'left' | 'right') => {
     e.stopPropagation()
@@ -324,6 +426,16 @@ export function useTimelineResize({
       }
     }
 
+    const mainIndex = mainVideoTrackIndex(tracks)
+    const effectiveMainIndex = mainIndex >= 0 ? mainIndex : 0
+    const isMagnetic = clip.trackIndex === effectiveMainIndex
+    const track1Order = isMagnetic
+      ? clips
+          .filter(c => c.trackIndex === effectiveMainIndex)
+          .sort((a, b) => a.startTime - b.startTime)
+          .map(c => c.id)
+      : undefined
+
     setResizingClip({
       clipId: clip.id,
       edge,
@@ -338,19 +450,72 @@ export function useTimelineResize({
       adjacentOrigTrimStart: adjacentClip?.trimStart,
       adjacentOrigTrimEnd: adjacentClip?.trimEnd,
       adjacentOrigStartTime: adjacentClip?.startTime,
+      trackIndex: clip.trackIndex,
+      track1Order,
     })
   }, [tracks, setSelectedClipIds, expandWithLinkedClips, activeTool, clips])
 
   const finalizeResize = useCallback(() => {
     if (resizingClip) {
       const currentTransitions = activeTimeline?.transitions ?? []
+      const mainIndex = mainVideoTrackIndex(tracks)
+      const effectiveMainIndex = mainIndex >= 0 ? mainIndex : 0
+      const isMagnetic = resizingClip.trackIndex === effectiveMainIndex
+
       setClips(prev => {
-        const resolved = resolveOverlaps(prev, new Set([resizingClip.clipId]), currentTransitions)
-        return packTrack1(resolved, 0, currentTransitions)
+        if (isMagnetic) {
+          if (resizingClip.track1Order && resizingClip.track1Order.length > 0) {
+            const orderMap = new Map<string, number>()
+            resizingClip.track1Order.forEach((id, idx) => orderMap.set(id, idx))
+            const track1Clips = prev
+              .filter(c => c.trackIndex === effectiveMainIndex)
+              .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
+
+            const overlapAfter = new Map<string, number>()
+            for (const transition of currentTransitions) {
+              overlapAfter.set(transition.leftClipId, transition.duration)
+            }
+            const remappedTrack1 = new Map<string, TimelineClip>()
+            const clipDeltas = new Map<string, number>()
+            let currentCursor = 0
+
+            for (const c of track1Clips) {
+              const delta = currentCursor - c.startTime
+              clipDeltas.set(c.id, delta)
+              remappedTrack1.set(c.id, {
+                ...c,
+                startTime: currentCursor,
+              })
+              const overlap = Math.min(overlapAfter.get(c.id) ?? 0, c.duration)
+              currentCursor += c.duration - overlap
+            }
+
+            return prev.map(c => {
+              if (c.trackIndex === effectiveMainIndex) {
+                return remappedTrack1.get(c.id) || c
+              }
+              if (c.linkedClipIds?.length) {
+                for (const linkedId of c.linkedClipIds) {
+                  if (clipDeltas.has(linkedId)) {
+                    return {
+                      ...c,
+                      startTime: Math.max(0, c.startTime + clipDeltas.get(linkedId)!),
+                    }
+                  }
+                }
+              }
+              return c
+            })
+          }
+          return packMainVideoTrack(tracks, prev, currentTransitions)
+        }
+
+        const resolved = resolveOverlaps(prev, new Set([resizingClip.clipId]), currentTransitions, effectiveMainIndex)
+        return packMainVideoTrack(tracks, resolved, currentTransitions)
       })
       setResizingClip(null)
     }
-  }, [resizingClip, activeTimeline, setClips])
+  }, [resizingClip, activeTimeline, setClips, tracks])
 
   useEffect(() => {
     if (resizingClip) {

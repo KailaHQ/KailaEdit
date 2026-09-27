@@ -3,6 +3,7 @@ import {
   fastHash64,
   findComplexSegments,
   computeSegmentContentHash,
+  previewFrameSize,
   MAX_CACHE_SEGMENT_SECONDS,
 } from '../src/render-cache'
 import {
@@ -262,6 +263,26 @@ describe('computeSegmentContentHash', () => {
     expect(computeSegmentContentHash(segment, timelineSpeed, '480p')).not.toBe(originalHash)
 
     expect(computeSegmentContentHash(segment, baseTimeline, '720p')).not.toBe(originalHash)
+  })
+
+  it('invalidates when the frame shape changes', () => {
+    const landscape = computeSegmentContentHash(segment, baseTimeline, '480p', 16 / 9)
+    const portrait = computeSegmentContentHash(segment, baseTimeline, '480p', 9 / 16)
+    expect(portrait).not.toBe(landscape)
+  })
+})
+
+describe('previewFrameSize', () => {
+  it('keeps the timeline shape, with the resolution on the short side', () => {
+    expect(previewFrameSize('480p', 16 / 9)).toEqual({ width: 854, height: 480 })
+    expect(previewFrameSize('480p', 9 / 16)).toEqual({ width: 480, height: 854 })
+    expect(previewFrameSize('720p', 1)).toEqual({ width: 720, height: 720 })
+    expect(previewFrameSize('360p', 4 / 5)).toEqual({ width: 360, height: 450 })
+  })
+
+  it('falls back to 16:9 without a usable ratio', () => {
+    expect(previewFrameSize('480p')).toEqual({ width: 854, height: 480 })
+    expect(previewFrameSize('480p', 0)).toEqual({ width: 854, height: 480 })
   })
 })
 

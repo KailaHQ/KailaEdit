@@ -115,7 +115,7 @@ export function insertAssetsToTimeline(state: EditorState, params: InsertAssetsT
       : clip)
   }
 
-  return replaceActiveTimeline(state, timeline => ({
+  const updatedTimelineState = replaceActiveTimeline(state, timeline => ({
     ...timeline,
     tracks: nextTracks,
     clips: packMainVideoTrack(
@@ -123,6 +123,24 @@ export function insertAssetsToTimeline(state: EditorState, params: InsertAssetsT
       resolveOverlaps([...shiftForPrepend(timeline.clips), ...insertedClips], insertedIds),
       timeline.transitions,
     ),
+  }))
+
+  const currentTime = selectCurrentTime(state)
+  const isPlayheadInInsertedSpan = currentTime >= startCursor && currentTime <= cursor
+  const nextCurrentTime = isPlayheadInInsertedSpan ? currentTime : startCursor
+
+  return updateSession(updatedTimelineState, session => ({
+    ...session,
+    selection: {
+      ...session.selection,
+      clipIds: insertedIds,
+      subtitleId: null,
+      gap: null,
+    },
+    transport: {
+      ...session.transport,
+      currentTime: nextCurrentTime,
+    },
   }))
 }
 

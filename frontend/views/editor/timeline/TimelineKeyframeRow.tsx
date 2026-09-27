@@ -6,6 +6,8 @@ import { selectSelectedKeyframe } from '../editor-selectors'
 export interface TimelineKeyframeRowProps {
   clip: TimelineClip
   pixelsPerSecond: number
+  drawnStart?: number
+  drawnDuration?: number
 }
 
 interface KeyframeGroup {
@@ -66,6 +68,8 @@ const EASING_OPTIONS: EasingOption[] = [
 export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
   clip,
   pixelsPerSecond,
+  drawnStart,
+  drawnDuration,
 }) => {
   const selectedKeyframe = useEditorStore(selectSelectedKeyframe)
   const {
@@ -134,20 +138,31 @@ export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
 
       let isDragging = false
 
+      const snapThresholdPx = 14
+      const snapSec = Math.max(0.06, snapThresholdPx / pixelsPerSecond)
+
       const onPointerMove = (moveEvent: PointerEvent) => {
         const deltaX = moveEvent.clientX - startX
         if (Math.abs(deltaX) > 2) {
           isDragging = true
         }
 
-        const newT = Math.max(0, Math.min(clipDuration, startT + deltaX / pixelsPerSecond))
+        let targetT = Math.max(0, Math.min(clipDuration, startT + deltaX / pixelsPerSecond))
+        // Magnetic snap to boundaries so dragging to end guaranteed snaps to final frame
+        if (clipDuration - targetT <= snapSec) {
+          targetT = clipDuration
+        } else if (targetT <= snapSec) {
+          targetT = 0
+        }
+
+        const newT = targetT
         const actualDeltaPx = (newT - startT) * pixelsPerSecond
 
         handleEl.style.transform = `translate3d(${actualDeltaPx}px, 0, 0)`
         handleEl.style.zIndex = '30'
 
         if (badgeEl) {
-          badgeEl.textContent = `${newT.toFixed(2)}s`
+          badgeEl.textContent = newT >= clipDuration - 0.005 ? `End (${newT.toFixed(2)}s)` : `${newT.toFixed(2)}s`
           badgeEl.style.display = 'block'
         }
 
@@ -173,11 +188,19 @@ export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
         }
 
         const finalDeltaX = upEvent.clientX - startX
-        const finalT = Math.max(0, Math.min(clipDuration, startT + finalDeltaX / pixelsPerSecond))
+        let finalT = Math.max(0, Math.min(clipDuration, startT + finalDeltaX / pixelsPerSecond))
+        if (clipDuration - finalT <= snapSec) {
+          finalT = clipDuration
+        } else if (finalT <= snapSec) {
+          finalT = 0
+        }
 
         if (isDragging && Math.abs(finalT - startT) > 0.005) {
           // Atomically move all keyframed properties at this timestamp
           moveKeyframeGroup(clip.id, startT, finalT)
+          // Ensure playhead and selectedKeyframe lock strictly to the dropped keyframe position
+          setCurrentTime(clip.startTime + finalT)
+          setSelectedKeyframe({ clipId: clip.id, t: finalT })
         } else {
           // Plain click: seek playhead to this keyframe
           setCurrentTime(clip.startTime + group.t)
@@ -208,11 +231,16 @@ export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
     return null
   }
 
+  const clipDrawnStart = drawnStart ?? clip.startTime
+  const clipDrawnDuration = drawnDuration ?? clip.duration
+  const clipWidthPx = Math.max(clipDrawnDuration * pixelsPerSecond, 4)
+  const offsetFromClipStart = clipDrawnStart - clip.startTime
+
   return (
     <>
       {/* Centered Keyframe Lane across the media */}
       <div
-        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-6 z-20 flex items-center select-none pointer-events-none"
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-6 z-30 flex items-center select-none pointer-events-none"
         onMouseDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
@@ -221,7 +249,10 @@ export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
 
         <div className="relative w-full h-full">
           {keyframeGroups.map(group => {
-            const leftPx = group.t * pixelsPerSecond
+            const leftPx = (group.t - offsetFromClipStart) * pixelsPerSecond
+            // Ensure diamond is fully visible at edges while reaching close to the cut seam
+            const halfDiamond = 6
+            const visualLeftPx = Math.max(halfDiamond, Math.min(clipWidthPx - halfDiamond, leftPx))
             const propsLabel = group.points
               .map(p => `${p.property}: ${Math.round(p.point.value * 100) / 100} (${p.point.easing})`)
               .join('\n')
@@ -234,8 +265,8 @@ export const TimelineKeyframeRow: React.FC<TimelineKeyframeRowProps> = ({
             return (
               <div
                 key={group.id}
-                style={{ left: `${leftPx}px` }}
-                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+                style={{ left: `${visualLeftPx}px` }}
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto z-30"
               >
                 <div
                   title={tooltip}

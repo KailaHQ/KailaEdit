@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { findComplexSegments, computeSegmentContentHash } from '@core/render-cache'
+import { getEffectiveTimelineDimensions } from '@core/video-resolution'
 import { useEditorStore } from './editor-store'
-import { selectActiveTimeline } from './editor-selectors'
+import { selectActiveTimeline, selectAssets } from './editor-selectors'
 import { useRenderCacheStore, type CachedSegmentInfo } from './render-cache-store'
 
 /** How long the timeline must sit still before the cache starts rendering segments. */
@@ -11,6 +12,13 @@ export function useRenderCache() {
   const activeTimeline = useEditorStore(selectActiveTimeline)
   const activeTimelineRef = useRef(activeTimeline)
   activeTimelineRef.current = activeTimeline
+  const assets = useEditorStore(selectAssets)
+  // The same frame the monitor draws into. Without it the segment was rendered 16:9
+  // whatever the project was, and a 9:16 timeline played back scrambled.
+  const aspectRatio = useMemo(
+    () => getEffectiveTimelineDimensions(activeTimeline, assets).aspectRatio,
+    [activeTimeline, assets],
+  )
 
   // 1. Listen for background render-cache status events from Electron
   useEffect(() => {
@@ -43,7 +51,7 @@ export function useRenderCache() {
     }
 
     const segmentsWithHash = complexSegments.map((seg) => {
-      const hash = computeSegmentContentHash(seg, activeTimeline, '480p')
+      const hash = computeSegmentContentHash(seg, activeTimeline, '480p', aspectRatio)
       return {
         ...seg,
         hash,
@@ -101,6 +109,7 @@ export function useRenderCache() {
                 transitions: currentTimeline.transitions || [],
                 background: currentTimeline.background,
                 resolution: '480p',
+                aspectRatio,
               }).then((res) => {
                 if (cancelled) return
                 if (res.success && res.cachePath) {
@@ -132,5 +141,5 @@ export function useRenderCache() {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [activeTimeline])
+  }, [activeTimeline, aspectRatio])
 }

@@ -88,4 +88,13 @@ describe('the box the user grabs', () => {
     expect(small.width).toBeCloseTo(fitted.width * 0.1, 4)
     expect(large.width).toBeCloseTo(fitted.width * 0.9, 4)
   })
+
+  it('supports independent scaleX and scaleY for shapes', () => {
+    const fitted = fitMediaInFrame(frame, { width: 512, height: 512 })
+    const box = clipScreenBox(frame, { width: 512, height: 512 }, { scaleX: 60, scaleY: 20 })
+
+    expect(box.width).toBeCloseTo(fitted.width * 0.6, 4)
+    expect(box.height).toBeCloseTo(fitted.height * 0.2, 4)
+  })
 })
+

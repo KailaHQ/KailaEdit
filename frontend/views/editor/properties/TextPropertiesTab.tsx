@@ -4,6 +4,8 @@ import { TEXT_PRESETS, TEXT_ANIMATIONS } from '@core/text-presets'
 
 import { useEditorActions } from '../editor-store'
 
+import { FontPicker } from '../FontPicker'
+
 export interface TextPropertiesTabProps {
   selectedClip: TimelineClip
 }
@@ -96,21 +98,11 @@ export function TextPropertiesTab({ selectedClip }: TextPropertiesTabProps) {
       {/* Font family */}
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-zinc-400">Font</span>
-        <select
-          value={ts.fontFamily.split(',')[0].trim()}
-          onChange={(e) => updateText({ fontFamily: `${e.target.value}, sans-serif` })}
-          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-cyan-500/50 max-w-[120px]"
-        >
-          <option value="Inter">Inter</option>
-          <option value="Arial">Arial</option>
-          <option value="Helvetica">Helvetica</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Courier New">Courier New</option>
-          <option value="Verdana">Verdana</option>
-          <option value="Impact">Impact</option>
-          <option value="Comic Sans MS">Comic Sans MS</option>
-        </select>
+        <FontPicker
+          value={ts.fontFamily}
+          onChange={(newVal) => updateText({ fontFamily: newVal })}
+          dropdownAlign="right"
+        />
       </div>
 
       {/* Font size */}
@@ -163,6 +155,22 @@ export function TextPropertiesTab({ selectedClip }: TextPropertiesTabProps) {
           }`}
         >
           <em>Italic</em>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const isUpper = ts.text === ts.text.toUpperCase() && ts.text !== ts.text.toLowerCase()
+            updateText({ text: isUpper ? ts.text.toLowerCase() : ts.text.toUpperCase() })
+          }}
+          className={`px-2 py-1 rounded text-[10px] border font-bold ${
+            ts.text === ts.text.toUpperCase() && ts.text !== ts.text.toLowerCase()
+              ? 'bg-cyan-600/30 text-cyan-300 border-cyan-500/40'
+              : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+          }`}
+          title="All Caps (Chữ in hoa)"
+        >
+          aA
         </button>
       </div>
 

@@ -1497,35 +1497,93 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                           top: `${pxY}px`,
                           width: `${pxW}px`,
                           transform: `translate(-50%, -50%) rotate(${el.rotation || 0}deg)`,
-                          zIndex: el.zIndex,
+                          zIndex: isInline ? el.zIndex + 20 : el.zIndex,
                           opacity: el.opacity ?? 1,
                         }}
                       >
                         {isInline ? (
-                          <input
-                            type="text"
-                            autoFocus
-                            ref={input => {
-                              if (input && document.activeElement !== input) {
-                                input.focus()
-                                input.select()
-                              }
-                            }}
-                            value={tEl.text}
-                            onChange={e => handleUpdateElement(el.id, { text: e.target.value })}
-                            onMouseDown={e => e.stopPropagation()}
-                            onClick={e => e.stopPropagation()}
-                            onDoubleClick={e => e.stopPropagation()}
-                            onBlur={() => setInlineEditingId(null)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') setInlineEditingId(null)
-                            }}
-                            className="w-full bg-zinc-900/95 text-white rounded px-2 py-1 text-center outline-none border border-sky-400 font-bold shadow-2xl"
-                            style={{
-                              fontSize: `${(tEl.fontSize || 28) * (zoom / 0.65)}px`,
-                              fontFamily: tEl.fontFamily || 'Inter, sans-serif',
-                            }}
-                          />
+                          <div className="relative w-full">
+                            <textarea
+                              autoFocus
+                              ref={textarea => {
+                                if (textarea) {
+                                  textarea.style.height = 'auto'
+                                  textarea.style.height = `${Math.max(textarea.scrollHeight, 24)}px`
+                                  if (document.activeElement !== textarea) {
+                                    textarea.focus()
+                                    textarea.select()
+                                  }
+                                }
+                              }}
+                              value={tEl.text}
+                              onChange={e => {
+                                handleUpdateElement(el.id, { text: e.target.value })
+                                e.target.style.height = 'auto'
+                                e.target.style.height = `${Math.max(e.target.scrollHeight, 24)}px`
+                              }}
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={e => e.stopPropagation()}
+                              onDoubleClick={e => e.stopPropagation()}
+                              onBlur={() => setInlineEditingId(null)}
+                              onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  setInlineEditingId(null)
+                                } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                  e.preventDefault()
+                                  setInlineEditingId(null)
+                                }
+                              }}
+                              className="w-full outline-none resize-none overflow-hidden block border-2 border-sky-400 rounded cursor-text"
+                              style={{
+                                width: '100%',
+                                color: tEl.color || '#ffffff',
+                                fontSize: `${(tEl.fontSize || 28) * (zoom / 0.65)}px`,
+                                fontFamily: tEl.fontFamily || 'Inter, sans-serif',
+                                fontWeight: tEl.fontWeight || 'bold',
+                                fontStyle: tEl.fontStyle || 'normal',
+                                textDecoration: tEl.textDecoration || 'none',
+                                textTransform: tEl.textTransform || 'none',
+                                textAlign: tEl.textAlign || 'center',
+                                letterSpacing: tEl.letterSpacing ? `${tEl.letterSpacing}px` : undefined,
+                                lineHeight: tEl.lineHeight || 1.2,
+                                wordBreak: 'break-word',
+                                whiteSpace: 'pre-wrap',
+                                backgroundColor: tEl.backgroundBadge?.enabled
+                                  ? tEl.backgroundBadge.color
+                                  : tEl.backgroundColor && tEl.backgroundColor !== 'transparent'
+                                    ? tEl.backgroundColor
+                                    : 'transparent',
+                                padding: tEl.backgroundBadge?.enabled
+                                  ? `${tEl.backgroundBadge.paddingY}px ${tEl.backgroundBadge.paddingX}px`
+                                  : '0px',
+                                borderRadius: tEl.backgroundBadge?.enabled
+                                  ? `${tEl.backgroundBadge.borderRadius}px`
+                                  : '4px',
+                                textShadow: tEl.shadow?.enabled
+                                  ? `${tEl.shadow.offsetX}px ${tEl.shadow.offsetY}px ${tEl.shadow.blur}px ${tEl.shadow.color}`
+                                  : '0 2px 8px rgba(0,0,0,0.8)',
+                                WebkitTextStroke: tEl.stroke?.enabled
+                                  ? `${tEl.stroke.width}px ${tEl.stroke.color}`
+                                  : undefined,
+                                caretColor: '#38bdf8',
+                                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25)',
+                              }}
+                            />
+
+                            {/* Corner handles & edge pills to match the exact focus state */}
+                            <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-sky-500 rounded-full shadow pointer-events-none" />
+                            <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-sky-500 rounded-full shadow pointer-events-none" />
+                            <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-sky-500 rounded-full shadow pointer-events-none" />
+                            <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-sky-500 rounded-full shadow pointer-events-none" />
+                            <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-1.5 h-3.5 bg-white border border-sky-500 rounded-full shadow pointer-events-none" />
+                            <div className="absolute top-1/2 -right-1 -translate-y-1/2 w-1.5 h-3.5 bg-white border border-sky-500 rounded-full shadow pointer-events-none" />
+
+                            {/* Dimension badge at bottom-right */}
+                            <div className="absolute -bottom-6 right-0 px-1.5 py-0.5 bg-zinc-900/90 border border-zinc-700/80 rounded text-[10px] text-zinc-300 font-mono shadow pointer-events-none whitespace-nowrap">
+                              {Math.round(pxW)} × {Math.round(pxH || 54)} px
+                            </div>
+                          </div>
                         ) : (
                           <div
                             style={{

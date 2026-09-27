@@ -7,6 +7,7 @@ import { validatePath } from '../path-validation'
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
 import { autoMatteBakeOffset, autoMatteRangeCovers, autoMatteSourceRange, isAutoMatteBakeValid, autoMattePlaybackRate } from '../../core/src/auto-matte'
+import { previewFrameSize } from '../../core/src/render-cache'
 import {
   findFfmpegPath,
   runFfmpegWithProgress,
@@ -89,6 +90,8 @@ export interface RenderPreviewParams {
   endTime?: number
   duration?: number
   resolution?: '480p' | '360p' | '720p'
+  /** Timeline width / height. Omitted means 16:9. */
+  aspectRatio?: number
   outputPath?: string
   fps?: number
   background?: any
@@ -243,12 +246,7 @@ class RenderQueueManager {
       }
     }
 
-    const resMap: Record<string, { width: number; height: number }> = {
-      '360p': { width: 640, height: 360 },
-      '480p': { width: 854, height: 480 },
-      '720p': { width: 1280, height: 720 },
-    }
-    const res = resMap[params.resolution || '480p'] || resMap['480p']
+    const res = previewFrameSize(params.resolution || '480p', params.aspectRatio)
 
     const previewDir = path.join(os.tmpdir(), 'komfyedit-previews')
     try {

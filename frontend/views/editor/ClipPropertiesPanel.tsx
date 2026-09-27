@@ -5,6 +5,7 @@ import {
   selectCurrentTime,
   selectSelectedClipAudioControls,
   selectSelectedClipForProperties,
+  selectSelectedKeyframe,
 } from './editor-selectors'
 import { useEditorStore } from './editor-store'
 import { sampleClipAt } from '@core/keyframes'
@@ -28,13 +29,23 @@ export function ClipPropertiesPanel() {
   const selectedClip = useEditorStore(selectSelectedClipForProperties)
   const clipAudioControls = useEditorStore(selectSelectedClipAudioControls, shallow)
   const currentTime = useEditorStore(selectCurrentTime)
+  const selectedKeyframe = useEditorStore(selectSelectedKeyframe)
 
   const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('video')
   const [videoSubTab, setVideoSubTab] = useState<'basic' | 'remove-bg' | 'mask' | 'retouch'>('basic')
 
   if (!selectedClip) return null
 
-  const timeInClip = Math.max(0, Math.min(selectedClip.duration, currentTime - selectedClip.startTime))
+  const playheadTimeInClip = Math.max(0, Math.min(selectedClip.duration, currentTime - selectedClip.startTime))
+  // When a keyframe on this clip is selected (e.g. dragged to the end or clicked), bind property edits directly to that keyframe's exact timestamp
+  const isKeyframeSelected = Boolean(
+    selectedKeyframe &&
+    selectedKeyframe.clipId === selectedClip.id &&
+    Math.abs(selectedKeyframe.t - playheadTimeInClip) <= 0.1
+  )
+  const timeInClip = isKeyframeSelected && selectedKeyframe
+    ? selectedKeyframe.t
+    : playheadTimeInClip
   const sampledClip = sampleClipAt(selectedClip, timeInClip)
 
   const effectiveMuted = clipAudioControls?.muted ?? (selectedClip.muted || false)

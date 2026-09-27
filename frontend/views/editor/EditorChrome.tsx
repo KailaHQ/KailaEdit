@@ -322,6 +322,7 @@ const NAV_LABEL_KEYS: Record<string, string> = {
   'text-templates': 'library.nav.textTemplates',
   'text-effects': 'library.nav.textEffects',
   stickers: 'library.nav.stickers',
+  shapes: 'library.nav.shapes',
   'video-effects': 'library.nav.videoEffects',
   transitions: 'library.nav.transitions',
   'local-captions': 'library.nav.localCaptions',
@@ -348,6 +349,7 @@ const NAV_BY_TAB: Record<LibraryTab, NavEntry[]> = {
   ],
   stickers: [
     { id: 'stickers', label: 'Stickers' },
+    { id: 'shapes', label: 'Shapes' },
   ],
   effects: [
     { id: 'video-effects', label: 'Video effects' },

@@ -19,6 +19,7 @@ import {
   Loader2,
   RotateCcw,
 } from 'lucide-react'
+import { FontPicker } from '../FontPicker'
 import type {
   CoverElement,
   CoverDrawerTab,
@@ -40,21 +41,6 @@ export interface CoverContextualToolbarProps {
   onRestoreBg?: (id: string) => void
   isProcessingBgRemoval?: boolean
 }
-
-const AVAILABLE_FONTS = [
-  { name: 'Inter (Sans)', value: 'Inter, sans-serif' },
-  { name: 'Roboto', value: 'Roboto, sans-serif' },
-  { name: 'Montserrat', value: 'Montserrat, sans-serif' },
-  { name: 'Oswald', value: 'Oswald, sans-serif' },
-  { name: 'Playfair Display (Serif)', value: 'Playfair Display, serif' },
-  { name: 'Merriweather', value: 'Merriweather, serif' },
-  { name: 'Lora', value: 'Lora, serif' },
-  { name: 'Caveat (Script)', value: 'Caveat, cursive' },
-  { name: 'Dancing Script', value: 'Dancing Script, cursive' },
-  { name: 'Pacifico', value: 'Pacifico, cursive' },
-  { name: 'Courier Prime (Mono)', value: 'Courier Prime, monospace' },
-  { name: 'Fira Code', value: 'Fira Code, monospace' },
-]
 
 const QUICK_COLORS = [
   '#ffffff',
@@ -113,7 +99,6 @@ export const CoverContextualToolbar: React.FC<CoverContextualToolbarProps> = ({
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   const [showSpacingPopover, setShowSpacingPopover] = useState(false)
   const [showOpacityPopover, setShowOpacityPopover] = useState(false)
-  const [showFontDropdown, setShowFontDropdown] = useState(false)
   const [showShapeCornerPopover, setShowShapeCornerPopover] = useState(false)
   const [showShapeFillPicker, setShowShapeFillPicker] = useState(false)
   const [showShapeBorderPicker, setShowShapeBorderPicker] = useState(false)
@@ -124,7 +109,6 @@ export const CoverContextualToolbar: React.FC<CoverContextualToolbarProps> = ({
     setShowTextColorPicker(false)
     setShowSpacingPopover(false)
     setShowOpacityPopover(false)
-    setShowFontDropdown(false)
     setShowShapeCornerPopover(false)
     setShowShapeFillPicker(false)
     setShowShapeBorderPicker(false)
@@ -185,44 +169,11 @@ export const CoverContextualToolbar: React.FC<CoverContextualToolbarProps> = ({
         {isText && textElem && (
           <>
             {/* Font Family Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  const next = !showFontDropdown
-                  closeAllPopovers()
-                  setShowFontDropdown(next)
-                }}
-                className="h-8 px-2.5 rounded-full hover:bg-zinc-800 flex items-center gap-2 max-w-[130px] transition-colors text-zinc-200"
-              >
-                <span className="truncate font-medium text-xs">
-                  {AVAILABLE_FONTS.find(f => f.value === textElem.fontFamily)?.name || textElem.fontFamily || 'Font'}
-                </span>
-                <ChevronDown className="h-3 w-3 text-zinc-400 flex-shrink-0" />
-              </button>
-
-              {showFontDropdown && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={closeAllPopovers} />
-                  <div className="absolute top-11 left-0 w-52 max-h-64 overflow-y-auto bg-[#18181b] border border-zinc-700 rounded-2xl shadow-2xl shadow-black/80 py-1.5 z-50 text-zinc-200 backdrop-blur-md">
-                    {AVAILABLE_FONTS.map(f => (
-                      <button
-                        key={f.value}
-                        onClick={() => {
-                          onUpdateText({ fontFamily: f.value })
-                          setShowFontDropdown(false)
-                        }}
-                        className={`w-full px-3.5 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center justify-between transition-colors ${
-                          textElem.fontFamily === f.value ? 'text-sky-400 font-bold bg-zinc-800/80' : 'text-zinc-300'
-                        }`}
-                        style={{ fontFamily: f.value }}
-                      >
-                        <span>{f.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <FontPicker
+              value={textElem.fontFamily}
+              onChange={(newVal) => onUpdateText({ fontFamily: newVal })}
+              variant="pill"
+            />
 
             <div className="h-4 w-[1px] bg-zinc-700/80 mx-0.5" />
 
@@ -370,6 +321,22 @@ export const CoverContextualToolbar: React.FC<CoverContextualToolbarProps> = ({
               >
                 <Strikethrough className="h-3.5 w-3.5" />
               </button>
+
+              {/* ALL CAPS (Chữ in hoa) */}
+              {(() => {
+                const isAllCaps = textElem.textTransform === 'uppercase'
+                return (
+                  <button
+                    onClick={() => onUpdateText({ textTransform: isAllCaps ? 'none' : 'uppercase' })}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                      isAllCaps ? 'bg-zinc-800 text-sky-400 ring-1 ring-sky-500/40 font-bold' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                    }`}
+                    title="All Caps (Chữ in hoa)"
+                  >
+                    <span className="text-[11px] font-black tracking-tight leading-none select-none">aA</span>
+                  </button>
+                )
+              })()}
             </div>
 
             {/* Alignment */}

@@ -251,22 +251,31 @@ export function useFrameRenderer(
           activePoolClipIdRef.current = activeVideoContributor.clip.id
           preSeekDoneRef.current = null
         }
-        video.style.opacity = '1'
+
+        const isReusedMediaNewCut = isNewClip && clipPath === previousPoolPath
+        let needsSeekHide = false
+        if (isReusedMediaNewCut && video.duration && !Number.isNaN(video.duration)) {
+          const targetTime = getClipTargetTime(activeVideoContributor.clip, video.duration, atTime)
+          if (Math.abs(video.currentTime - targetTime) > 0.08) {
+            needsSeekHide = true
+          }
+        }
+
+        if (needsSeekHide) {
+          video.style.opacity = '0'
+          const onSeeked = () => {
+            video.removeEventListener('seeked', onSeeked)
+            video.style.opacity = '1'
+          }
+          video.addEventListener('seeked', onSeeked)
+        } else if (!video.seeking) {
+          video.style.opacity = '1'
+        }
         video.style.zIndex = '1'
         if (shouldForceSyncActive) {
           contributorSyncState.pendingHardSync = true
         }
-        if (video.readyState >= 2) {
-          syncPlaybackContributorVideo(video, activeVideoContributor, atTime, mode)
-        } else if (!(video as { __pendingCanplay?: boolean }).__pendingCanplay) {
-          ;(video as { __pendingCanplay?: boolean }).__pendingCanplay = true
-          const onReady = () => {
-            video.removeEventListener('canplay', onReady)
-            ;(video as { __pendingCanplay?: boolean }).__pendingCanplay = false
-            syncPlaybackContributorVideo(video, activeVideoContributor, atTime, mode)
-          }
-          video.addEventListener('canplay', onReady)
-        }
+        syncPlaybackContributorVideo(video, activeVideoContributor, atTime, mode)
 
         if (!crossDissolve && mode === 'playback') {
           const nextClip = getNextVideoClipRef(activeVideoContributor.clip)
@@ -274,7 +283,8 @@ export function useFrameRenderer(
             const remainingInCurrent = (activeVideoContributor.clip.startTime + activeVideoContributor.clip.duration) - atTime
             if (remainingInCurrent < VIDEO_POOL_PREROLL_SECONDS && remainingInCurrent > 0) {
               const nextSrc = resolveClipPathRef(nextClip)
-              const nextVideo = nextSrc ? ensurePoolVideo(nextSrc) : null
+              // Only preroll a DIFFERENT source; seeking the current video element while playing ruins current clip!
+              const nextVideo = (nextSrc && nextSrc !== clipPath) ? ensurePoolVideo(nextSrc) : null
               if (nextVideo && nextVideo.readyState >= 1) {
                 const nextTargetTime = nextClip.reversed
                   ? nextClip.trimStart + (nextVideo.duration || 0) - nextClip.trimStart - nextClip.trimEnd

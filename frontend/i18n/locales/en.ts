@@ -446,6 +446,7 @@ export const en = {
       textTemplates: 'Text templates',
       textEffects: 'Text effects',
       stickers: 'Stickers',
+      shapes: 'Shapes',
       videoEffects: 'Video effects',
       transitions: 'Transitions',
       localCaptions: 'Local captions',
@@ -548,6 +549,17 @@ export const en = {
       noBrollMedia: 'No spare media to use as B-roll. Import a video or image into the project first — footage already on the timeline cannot overlay itself.',
       insertBtn: 'Insert B-roll (Fade 0.25s, Muted)',
       insertedFeedback: 'Inserted B-roll at {time}s (duration {duration}s) on overlay track!',
+    },
+    shapes: {
+      searchPlaceholder: 'Search shapes...',
+      notFound: 'No shapes found',
+      emptySearchHint: 'Try searching with different keywords.',
+      clickToAdd: 'Click to add to timeline',
+      categories: {
+        all: 'All',
+        line: 'Lines & Arrows',
+        basic: 'Basic Shapes',
+      },
     },
     stickers: {
       searchPlaceholder: 'Search stickers...',

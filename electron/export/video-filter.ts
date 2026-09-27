@@ -375,10 +375,15 @@ export function buildVideoFilterGraph(
         const dynamicScaleExpr = `max(0.01,(${scalePercentExpr})/100)`
         chain += `,scale=w='max(2,round(${width}*${dynamicScaleExpr}))':h='max(2,round(${height}*${dynamicScaleExpr}))':force_original_aspect_ratio=decrease:eval=frame,setsar=1`
       } else {
-        const scale = Math.max(1, transform?.scale ?? 100) / 100
-        const boxW = Math.max(2, Math.round(width * scale))
-        const boxH = Math.max(2, Math.round(height * scale))
-        chain += `,scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1`
+        const scaleX = Math.max(1, (transform as any)?.scaleX ?? transform?.scale ?? 100) / 100
+        const scaleY = Math.max(1, (transform as any)?.scaleY ?? transform?.scale ?? 100) / 100
+        const boxW = Math.max(2, Math.round(width * scaleX))
+        const boxH = Math.max(2, Math.round(height * scaleY))
+        if ((transform as any)?.scaleX !== undefined || (transform as any)?.scaleY !== undefined) {
+          chain += `,scale=${boxW}:${boxH},setsar=1`
+        } else {
+          chain += `,scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1`
+        }
       }
 
       if (clip.flipH) chain += ',hflip'

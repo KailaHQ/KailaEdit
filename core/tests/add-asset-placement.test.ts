@@ -287,5 +287,21 @@ describe('adding audio assets to timeline with cascading layers', () => {
     // Both can share track A1 since there is no time conflict
     expect(audioClips[0].trackIndex).toBe(audioClips[1].trackIndex)
   })
+
+  it('automatically selects newly inserted clips in session.selection.clipIds', () => {
+    const initial = stateWithOneClipOnV1()
+    const next = insertAssetsToTimeline(initial, {
+      assets: [added],
+      trackIndex: 0,
+      startTime: 10,
+    })
+
+    const selectedIds = next.session.selection.clipIds
+    expect(selectedIds.size).toBeGreaterThan(0)
+    const t = selectActiveTimeline(next)!
+    const addedClip = t.clips.find(c => c.assetId === added.id)
+    expect(addedClip).toBeDefined()
+    expect(selectedIds.has(addedClip!.id)).toBe(true)
+  })
 })
 

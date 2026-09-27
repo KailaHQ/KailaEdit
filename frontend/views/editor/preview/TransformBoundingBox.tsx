@@ -100,6 +100,7 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
     onInteractionStart?.()
     e.preventDefault()
 
+    const isShape = Boolean(selectedClip?.stickerId?.startsWith('shape-'))
     const startX = e.clientX
     const startY = e.clientY
     const startTf = { ...(localTransform ?? clipTf) }
@@ -112,7 +113,52 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
     const centerY = containerRect.top + ((50 + startTf.positionY) / 100) * fh
 
     const initialDistance = Math.hypot(startX - centerX, startY - centerY) || 1
-    const initialAngle = Math.atan2(startY - centerY, startX - centerX) * (180 / Math.PI)
+
+    // For shape transforms (proportional corner scale, independent width/height side resize with pinned anchor)
+    const startScaleX = startTf.scaleX ?? startTf.scale ?? 100
+    const startScaleY = startTf.scaleY ?? startTf.scale ?? 100
+    const origWidthPx = Math.max(10, fitted.width * (startScaleX / 100))
+    const origHeightPx = Math.max(4, fitted.height * (startScaleY / 100))
+
+    const rotRad = ((startTf.rotation || 0) * Math.PI) / 180
+    const cosRot = Math.cos(rotRad)
+    const sinRot = Math.sin(rotRad)
+    const uXx = cosRot
+    const uXy = sinRot
+    const uYx = -sinRot
+    const uYy = cosRot
+
+    let anchorPxX = centerX
+    let anchorPxY = centerY
+
+    if (mode === 'scale-e') {
+      anchorPxX = centerX - (origWidthPx / 2) * uXx
+      anchorPxY = centerY - (origWidthPx / 2) * uXy
+    } else if (mode === 'scale-w') {
+      anchorPxX = centerX + (origWidthPx / 2) * uXx
+      anchorPxY = centerY + (origWidthPx / 2) * uXy
+    } else if (mode === 'scale-s') {
+      anchorPxX = centerX - (origHeightPx / 2) * uYx
+      anchorPxY = centerY - (origHeightPx / 2) * uYy
+    } else if (mode === 'scale-n') {
+      anchorPxX = centerX + (origHeightPx / 2) * uYx
+      anchorPxY = centerY + (origHeightPx / 2) * uYy
+    } else if (mode === 'scale-se') {
+      anchorPxX = centerX - (origWidthPx / 2) * uXx - (origHeightPx / 2) * uYx
+      anchorPxY = centerY - (origWidthPx / 2) * uXy - (origHeightPx / 2) * uYy
+    } else if (mode === 'scale-sw') {
+      anchorPxX = centerX + (origWidthPx / 2) * uXx - (origHeightPx / 2) * uYx
+      anchorPxY = centerY - (origWidthPx / 2) * uXy - (origHeightPx / 2) * uYy
+    } else if (mode === 'scale-ne') {
+      anchorPxX = centerX - (origWidthPx / 2) * uXx + (origHeightPx / 2) * uYx
+      anchorPxY = centerY - (origWidthPx / 2) * uXy + (origHeightPx / 2) * uYy
+    } else if (mode === 'scale-nw') {
+      anchorPxX = centerX + (origWidthPx / 2) * uXx + (origHeightPx / 2) * uYx
+      anchorPxY = centerY + (origWidthPx / 2) * uXy + (origHeightPx / 2) * uYy
+    }
+
+    let accumulatedDeg = startTf.rotation || 0
+    let lastAngleRad = Math.atan2(startY - centerY, startX - centerX)
 
     setActiveDrag(mode)
 
@@ -143,8 +189,10 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         }
 
         // Edge snapping (edges at -50% and +50% of frame center)
-        const halfWidthPercent = ((fitted.width * (startTf.scale / 100)) / (2 * fw)) * 100
-        const halfHeightPercent = ((fitted.height * (startTf.scale / 100)) / (2 * fh)) * 100
+        const curScaleX = startTf.scaleX ?? startTf.scale
+        const curScaleY = startTf.scaleY ?? startTf.scale
+        const halfWidthPercent = ((fitted.width * (curScaleX / 100)) / (2 * fw)) * 100
+        const halfHeightPercent = ((fitted.height * (curScaleY / 100)) / (2 * fh)) * 100
 
         // Left edge aligns with left frame boundary
         if (Math.abs(newX - halfWidthPercent + 50) < snapThresholdX) {
@@ -174,22 +222,155 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
           positionY: Math.round(newY * 10) / 10,
         }))
       } else if (mode === 'rotate') {
-        const curAngle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * (180 / Math.PI)
-        let deltaAngle = curAngle - initialAngle
-        let newRotation = startTf.rotation + deltaAngle
+        const curAngleRad = Math.atan2(ev.clientY - centerY, ev.clientX - centerX)
+        let stepRad = curAngleRad - lastAngleRad
+        while (stepRad > Math.PI) stepRad -= 2 * Math.PI
+        while (stepRad < -Math.PI) stepRad += 2 * Math.PI
 
-        // Snap to 15-degree increments if shift is held
+        accumulatedDeg += (stepRad * 180) / Math.PI
+        lastAngleRad = curAngleRad
+
+        let deg = Math.round(accumulatedDeg)
+        deg = ((deg % 360) + 360) % 360
+        if (deg > 180) deg -= 360
+
         if (ev.shiftKey) {
-          newRotation = Math.round(newRotation / 15) * 15
+          deg = Math.round(deg / 15) * 15
+        } else {
+          // Snap to cardinal angles (0, 90, 180, -90) with a 3-degree threshold
+          const snapThreshold = 3
+          if (Math.abs(deg) <= snapThreshold) deg = 0
+          else if (Math.abs(deg - 90) <= snapThreshold) deg = 90
+          else if (Math.abs(deg + 90) <= snapThreshold) deg = -90
+          else if (Math.abs(Math.abs(deg) - 180) <= snapThreshold) deg = 180
         }
-
-        // Normalize between -180 and 180
-        while (newRotation > 180) newRotation -= 360
-        while (newRotation < -180) newRotation += 360
 
         setLocalTransform(prev => ({
           ...(prev ?? startTf),
-          rotation: Math.round(newRotation),
+          rotation: deg,
+        }))
+      } else if (isShape && (mode === 'scale-e' || mode === 'scale-w')) {
+        const localDx = dx * uXx + dy * uXy
+        const isEast = mode === 'scale-e'
+        const newWidthPx = Math.max(10, isEast ? origWidthPx + localDx : origWidthPx - localDx)
+
+        let newCenterPxX = anchorPxX
+        let newCenterPxY = anchorPxY
+
+        if (isEast) {
+          newCenterPxX = anchorPxX + (newWidthPx / 2) * uXx
+          newCenterPxY = anchorPxY + (newWidthPx / 2) * uXy
+        } else {
+          newCenterPxX = anchorPxX - (newWidthPx / 2) * uXx
+          newCenterPxY = anchorPxY - (newWidthPx / 2) * uXy
+        }
+
+        const newX = ((newCenterPxX - containerRect.left) / fw) * 100 - 50
+        const newY = ((newCenterPxY - containerRect.top) / fh) * 100 - 50
+
+        const newScaleX = (newWidthPx / fitted.width) * 100
+        const newScaleY = startScaleY
+
+        setLocalTransform(prev => ({
+          ...(prev ?? startTf),
+          positionX: Math.round(newX * 10) / 10,
+          positionY: Math.round(newY * 10) / 10,
+          scaleX: Math.round(newScaleX * 10) / 10,
+          scaleY: Math.round(newScaleY * 10) / 10,
+          scale: Math.round(newScaleX),
+        }))
+      } else if (isShape && (mode === 'scale-n' || mode === 'scale-s')) {
+        const localDy = dx * uYx + dy * uYy
+        const isNorth = mode === 'scale-n'
+        const newHeightPx = Math.max(4, isNorth ? origHeightPx - localDy : origHeightPx + localDy)
+
+        let newCenterPxX = anchorPxX
+        let newCenterPxY = anchorPxY
+
+        if (isNorth) {
+          newCenterPxX = anchorPxX - (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY - (newHeightPx / 2) * uYy
+        } else {
+          newCenterPxX = anchorPxX + (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY + (newHeightPx / 2) * uYy
+        }
+
+        const newX = ((newCenterPxX - containerRect.left) / fw) * 100 - 50
+        const newY = ((newCenterPxY - containerRect.top) / fh) * 100 - 50
+
+        const newScaleX = startScaleX
+        const newScaleY = (newHeightPx / fitted.height) * 100
+
+        setLocalTransform(prev => ({
+          ...(prev ?? startTf),
+          positionX: Math.round(newX * 10) / 10,
+          positionY: Math.round(newY * 10) / 10,
+          scaleX: Math.round(newScaleX * 10) / 10,
+          scaleY: Math.round(newScaleY * 10) / 10,
+          scale: Math.round(newScaleY),
+        }))
+      } else if (isShape && (mode === 'scale-nw' || mode === 'scale-ne' || mode === 'scale-se' || mode === 'scale-sw')) {
+        const localDx = dx * uXx + dy * uXy
+        const localDy = dx * uYx + dy * uYy
+
+        let dirX = 1
+        let dirY = 1
+        if (mode === 'scale-nw') {
+          dirX = -1
+          dirY = -1
+        } else if (mode === 'scale-ne') {
+          dirX = 1
+          dirY = -1
+        } else if (mode === 'scale-sw') {
+          dirX = -1
+          dirY = 1
+        } else if (mode === 'scale-se') {
+          dirX = 1
+          dirY = 1
+        }
+
+        const diagLenSq = Math.max(1, origWidthPx * origWidthPx + origHeightPx * origHeightPx)
+        const diagProj = (localDx * dirX * origWidthPx + localDy * dirY * origHeightPx) / diagLenSq
+        const cornerScale = 1 + diagProj
+
+        const minScaleW = 10 / Math.max(1, origWidthPx)
+        const minScaleH = 4 / Math.max(1, origHeightPx)
+        const minScale = Math.max(minScaleW, minScaleH, 0.02)
+        const clampedScale = Math.max(minScale, cornerScale)
+
+        const newWidthPx = origWidthPx * clampedScale
+        const newHeightPx = origHeightPx * clampedScale
+
+        let newCenterPxX = anchorPxX
+        let newCenterPxY = anchorPxY
+
+        if (mode === 'scale-se') {
+          newCenterPxX = anchorPxX + (newWidthPx / 2) * uXx + (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY + (newWidthPx / 2) * uXy + (newHeightPx / 2) * uYy
+        } else if (mode === 'scale-sw') {
+          newCenterPxX = anchorPxX - (newWidthPx / 2) * uXx + (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY - (newWidthPx / 2) * uXy + (newHeightPx / 2) * uYy
+        } else if (mode === 'scale-ne') {
+          newCenterPxX = anchorPxX + (newWidthPx / 2) * uXx - (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY + (newWidthPx / 2) * uXy - (newHeightPx / 2) * uYy
+        } else if (mode === 'scale-nw') {
+          newCenterPxX = anchorPxX - (newWidthPx / 2) * uXx - (newHeightPx / 2) * uYx
+          newCenterPxY = anchorPxY - (newWidthPx / 2) * uXy - (newHeightPx / 2) * uYy
+        }
+
+        const newX = ((newCenterPxX - containerRect.left) / fw) * 100 - 50
+        const newY = ((newCenterPxY - containerRect.top) / fh) * 100 - 50
+
+        const newScaleX = startScaleX * clampedScale
+        const newScaleY = startScaleY * clampedScale
+
+        setLocalTransform(prev => ({
+          ...(prev ?? startTf),
+          positionX: Math.round(newX * 10) / 10,
+          positionY: Math.round(newY * 10) / 10,
+          scaleX: Math.round(newScaleX * 10) / 10,
+          scaleY: Math.round(newScaleY * 10) / 10,
+          scale: Math.round(newScaleX),
         }))
       } else if (mode.startsWith('scale-')) {
         const curDist = Math.hypot(ev.clientX - centerX, ev.clientY - centerY)
@@ -257,12 +438,17 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
     return null
   }
 
+  const isShape = Boolean(selectedClip?.stickerId?.startsWith('shape-'))
   const { positionX, positionY, scale, rotation, cropTop, cropRight, cropBottom, cropLeft } = currentTf
+  const curScaleX = currentTf.scaleX ?? scale
+  const curScaleY = currentTf.scaleY ?? scale
+  const boxWidth = fitted.width * (curScaleX / 100)
+  const boxHeight = fitted.height * (curScaleY / 100)
 
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 pointer-events-none z-[25] overflow-hidden"
+      className="absolute inset-0 pointer-events-none z-[25]"
     >
       {/* Visual Snap Guide Lines */}
       {snapLines.x !== undefined && (
@@ -289,8 +475,8 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
           // so a small sticker ended up with a hairline border and handles too
           // fine to hit. Baking the scale into the dimensions keeps the chrome
           // one pixel wide at every size.
-          width: `${fitted.width * (scale / 100)}px`,
-          height: `${fitted.height * (scale / 100)}px`,
+          width: `${boxWidth}px`,
+          height: `${boxHeight}px`,
           transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
           transformOrigin: 'center center',
         }}
@@ -298,22 +484,34 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         {/* Main Bounding Outline */}
         <div
           className={`absolute inset-0 transition-colors ${
-            cropMode
-              ? 'border-2 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]'
-              : 'border border-cyan-400/90 shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+            isShape
+              ? 'border-2 border-sky-400 rounded bg-sky-500/[0.01] hover:border-sky-300'
+              : cropMode
+                ? 'border-2 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]'
+                : 'border border-cyan-400/90 shadow-[0_0_8px_rgba(6,182,212,0.4)]'
           }`}
           style={{
             cursor: activeDrag === 'move' ? 'grabbing' : 'move',
+            ...(isShape ? { boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25)' } : {}),
           }}
           onPointerDown={e => handlePointerDown(e, 'move')}
         >
-          {/* Subtle center crosshair / drag indicator */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-30 hover:opacity-80 transition-opacity">
-            <div className="w-3 h-3 border-t-2 border-l-2 border-r-2 border-b-2 border-cyan-400 rounded-full" />
-          </div>
+          {/* Subtle center crosshair / drag indicator for non-shapes */}
+          {!isShape && (
+            <div className="absolute inset-0 flex items-center justify-center opacity-30 hover:opacity-80 transition-opacity">
+              <div className="w-3 h-3 border-t-2 border-l-2 border-r-2 border-b-2 border-cyan-400 rounded-full" />
+            </div>
+          )}
 
-          {/* Crop Mask Overlay if crop is active */}
-          {(cropTop > 0 || cropRight > 0 || cropBottom > 0 || cropLeft > 0) && (
+          {/* Real size dimensions badge for shapes (matching CoverTransformBox) */}
+          {isShape && (
+            <div className="absolute -bottom-6 right-0 px-1.5 py-0.5 bg-zinc-900/90 border border-zinc-700/80 rounded text-[10px] text-zinc-300 font-mono shadow pointer-events-none whitespace-nowrap z-40">
+              {Math.round(boxWidth)} × {Math.round(boxHeight)} px
+            </div>
+          )}
+
+          {/* Crop Mask Overlay if crop is active for non-shapes */}
+          {!isShape && (cropTop > 0 || cropRight > 0 || cropBottom > 0 || cropLeft > 0) && (
             <div
               className="absolute inset-0 border border-dashed border-amber-400/60 pointer-events-none"
               style={{
@@ -325,8 +523,42 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
             />
           )}
 
-          {/* Top Rotation Stem and Knob (in Normal Transform mode) */}
-          {!cropMode && (
+          {/* Mode Indicator Badge (Crop / Transform) - only for regular non-shape clips */}
+          {!isShape && (
+            <div className="absolute -top-7 left-0 flex items-center gap-1.5 pointer-events-auto">
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  onToggleCropMode()
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shadow-lg transition-colors ${
+                  cropMode
+                    ? 'bg-amber-500 text-zinc-950 hover:bg-amber-400'
+                    : 'bg-zinc-900/90 border border-zinc-700 text-cyan-300 hover:bg-zinc-800'
+                }`}
+                title="Press 'C' to toggle Crop Mode"
+              >
+                {cropMode ? (
+                  <>
+                    <Check className="w-2.5 h-2.5" />
+                    Crop (Done)
+                  </>
+                ) : (
+                  <>
+                    <Crop className="w-2.5 h-2.5" />
+                    Crop
+                  </>
+                )}
+              </button>
+              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-black/60 text-zinc-300 backdrop-blur-sm">
+                {Math.round(scale)}% · {Math.round(rotation)}°
+              </span>
+            </div>
+          )}
+
+          {/* Top Rotation Stem and Knob (in Normal Transform mode for non-shapes) */}
+          {!isShape && !cropMode && (
             <div
               className="absolute left-1/2 -top-6 -translate-x-1/2 flex flex-col items-center pointer-events-auto cursor-grab active:cursor-grabbing group"
               onPointerDown={e => handlePointerDown(e, 'rotate')}
@@ -339,40 +571,73 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
             </div>
           )}
 
-          {/* Mode Indicator Badge (Crop / Transform) */}
-          <div className="absolute -top-7 left-0 flex items-center gap-1.5 pointer-events-auto">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation()
-                onToggleCropMode()
+          {/* Bottom Rotation Handle for shapes (matching CoverTransformBox) */}
+          {isShape && (
+            <div
+              className="absolute left-1/2 -bottom-10 -translate-x-1/2 flex items-center justify-center z-30 pointer-events-auto"
+              style={{
+                transform: `translateX(-50%) rotate(${-(rotation || 0)}deg)`,
               }}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shadow-lg transition-colors ${
-                cropMode
-                  ? 'bg-amber-500 text-zinc-950 hover:bg-amber-400'
-                  : 'bg-zinc-900/90 border border-zinc-700 text-cyan-300 hover:bg-zinc-800'
-              }`}
-              title="Press 'C' to toggle Crop Mode"
             >
-              {cropMode ? (
-                <>
-                  <Check className="w-2.5 h-2.5" />
-                  Crop (Done)
-                </>
-              ) : (
-                <>
-                  <Crop className="w-2.5 h-2.5" />
-                  Crop
-                </>
-              )}
-            </button>
-            <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-black/60 text-zinc-300 backdrop-blur-sm">
-              {Math.round(scale)}% · {Math.round(rotation)}°
-            </span>
-          </div>
+              <div
+                onPointerDown={e => handlePointerDown(e, 'rotate')}
+                title={`Rotate (${Math.round(rotation || 0)}°)`}
+                className="w-6 h-6 rounded-full bg-zinc-900 border border-zinc-700 hover:border-sky-400 text-zinc-300 hover:text-white flex items-center justify-center cursor-grab active:cursor-grabbing shadow-lg transition-transform hover:scale-110"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+              </div>
+            </div>
+          )}
 
-          {/* Handles: Scale Handles in Transform Mode */}
-          {!cropMode && (
+          {/* Shape Handles: matching CoverTransformBox with 4 corner circles and 4 side pill handles */}
+          {isShape && (
+            <>
+              {/* 4 Corner circular handles (Proportional scale with opposite corner pinned) */}
+              <div
+                className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-md z-30 cursor-nwse-resize hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-nw')}
+              />
+              <div
+                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-md z-30 cursor-nesw-resize hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-ne')}
+              />
+              <div
+                className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-md z-30 cursor-nesw-resize hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-sw')}
+              />
+              <div
+                className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-md z-30 cursor-nwse-resize hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-se')}
+              />
+
+              {/* 2 Width pill handles (East & West) with opposite edge pinned */}
+              <div
+                className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-2 h-5 bg-white border-2 border-sky-500 rounded-full cursor-ew-resize z-30 shadow-md hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-w')}
+                title="Resize width"
+              />
+              <div
+                className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2 h-5 bg-white border-2 border-sky-500 rounded-full cursor-ew-resize z-30 shadow-md hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-e')}
+                title="Resize width"
+              />
+
+              {/* 2 Height pill handles (North & South) with opposite edge pinned */}
+              <div
+                className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-5 h-2 bg-white border-2 border-sky-500 rounded-full cursor-ns-resize z-30 shadow-md hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-n')}
+                title="Resize height"
+              />
+              <div
+                className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-5 h-2 bg-white border-2 border-sky-500 rounded-full cursor-ns-resize z-30 shadow-md hover:scale-125 transition-transform"
+                onPointerDown={e => handlePointerDown(e, 'scale-s')}
+                title="Resize height"
+              />
+            </>
+          )}
+
+          {/* Handles: Scale Handles in Transform Mode for non-shapes */}
+          {!isShape && !cropMode && (
             <>
               {/* 4 Corners */}
               <div
@@ -412,8 +677,8 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
             </>
           )}
 
-          {/* Handles: Crop Handles in Crop Mode */}
-          {cropMode && (
+          {/* Handles: Crop Handles in Crop Mode for non-shapes */}
+          {!isShape && cropMode && (
             <>
               {/* L-shaped corner brackets */}
               <div

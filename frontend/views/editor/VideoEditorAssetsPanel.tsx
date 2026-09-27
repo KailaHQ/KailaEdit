@@ -127,6 +127,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     }), [deleteAsset, revealAsset])
 
     const addClipToTimeline = useCallback((asset: Asset, trackIndex?: number, startTime?: number) => {
+      actions.setPreviewAssetId(null)
       actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime, position: 'start' })
     }, [actions])
 

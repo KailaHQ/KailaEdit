@@ -193,4 +193,20 @@ describe('addStickerClip action', () => {
     expect(clip?.type).toBe('image')
     expect(clip?.asset?.path).toBe('/path/to/custom-badge.png')
   })
+
+  it('supports adding shape clips via addStickerClip', () => {
+    const initial = createTestState()
+    const state = addStickerClip(initial, {
+      stickerId: 'shape-circle',
+      imagePath: 'stickers/shape-circle.png',
+      startTime: 1,
+      duration: 3,
+    })
+
+    const clips = selectClips(state)
+    const clip = clips.find(c => c.stickerId === 'shape-circle')
+    expect(clip).toBeDefined()
+    expect(clip?.type).toBe('image')
+    expect(clip?.asset?.path).toBe('stickers/shape-circle.png')
+  })
 })

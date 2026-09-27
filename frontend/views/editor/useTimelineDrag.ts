@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Asset, SubtitleClip, TimelineClip, Track } from '../../types/project-model'
 import { flushSync } from 'react-dom'
 import { rowIndexAtY, stableRowIndexAtY, type TimelineRowBox } from '@core/timeline-rows'
-import { resolveOverlaps, packMainVideoTrack, pruneEmptyOverlayTracks, type ToolType } from './video-editor-utils'
+import { resolveOverlaps, packMainVideoTrack, pruneEmptyOverlayTracks, mainVideoTrackIndex, type ToolType } from './video-editor-utils'
 import { createTrackDropHandler } from './timeline/createTrackDropHandler'
 import { createClipMouseDownHandler } from './timeline/createClipMouseDownHandler'
 import { useTimelineScrub } from './timeline/useTimelineScrub'
@@ -227,6 +227,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     setSelectedClipIds,
     expandWithLinkedClips,
     activeTimeline,
+    setCurrentTime,
   })
 
   const handleClipMouseDown = createClipMouseDownHandler({
@@ -589,7 +590,8 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         }
       })
       const currentTransitions = activeTimeline?.transitions ?? []
-      const resolved = resolveOverlaps(positioned, movedIds, currentTransitions)
+      const mainIndex = mainVideoTrackIndex(allTracks)
+      const resolved = resolveOverlaps(positioned, movedIds, currentTransitions, mainIndex >= 0 ? mainIndex : 0)
       const packed = packMainVideoTrack(allTracks, resolved, currentTransitions)
       const pruned = pruneEmptyOverlayTracks(allTracks, packed, subtitles)
       flushSync(() => {

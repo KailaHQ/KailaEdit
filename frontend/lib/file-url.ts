@@ -28,6 +28,10 @@ function encodePathSegments(path: string): string {
  *   stickers/fire.png       → ./stickers/fire.png
  */
 export function pathToFileUrl(filePath: string): string {
+  if (!filePath) return ''
+  if (filePath.startsWith('data:') || filePath.startsWith('blob:') || filePath.startsWith('http://') || filePath.startsWith('https://')) {
+    return filePath
+  }
   const normalized = filePath.replace(/\\/g, '/')
 
   if (isBundledAssetPath(filePath)) {

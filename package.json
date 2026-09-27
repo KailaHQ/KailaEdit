@@ -1,7 +1,7 @@
 {
   "name": "kailaedit",
   "productName": "KailaEdit",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "KailaEdit - Desktop Video Editor",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -36,6 +36,7 @@
     "start:unpacked:mac": "open release/mac-arm64/KailaEdit.app",
     "start:unpacked:win": "powershell -Command \"& '.\\release\\win-unpacked\\KailaEdit.exe'\"",
     "mcp": "node packages/kailaedit-mcp/bin/kailaedit-mcp.js",
+    "generate:shape-stickers": "tsx scripts/generate-shape-stickers.ts",
     "eval:skills": "tsx scripts/eval-skills.ts",
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:electron": "tsc -p tsconfig.electron.json",

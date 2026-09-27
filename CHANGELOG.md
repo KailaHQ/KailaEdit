@@ -12,6 +12,25 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-28
+
+### Added
+- **Shapes & Lines Library.** A dedicated Shapes library in the Stickers tab with customizable arrows, callouts, lines, and basic geometric shapes for video annotations and overlays.
+- **System Font Picker & Favorites.** Unified font selection across Text clips, Subtitle tracks, and Cover Studio that automatically detects local system fonts alongside standard typography, featuring live search, visual font preview, and starred favorite fonts.
+- **Dedicated Shape Transform Controls.** Bounding box with independent width and height scaling handles for shape clips, enabling flexible stretching, resizing, and rotation directly on the program monitor.
+- **Dynamic Clip In-Point Thumbnails.** Timeline video clips now extract and display a preview thumbnail matching the clip's actual in-point (trimStart) rather than always showing the beginning of the source media file.
+
+### Changed
+- **Multi-line Inline Editing in Cover Studio.** Double-clicking cover text opens a seamless in-place textarea with live styling, automatic expansion, and keyboard shortcuts (`Ctrl+Enter` to save, `Esc` to cancel).
+- **Aspect Ratio-Aware Render Cache.** Preview rendering cache now mirrors the exact aspect ratio of the active timeline (including 9:16 portrait and 1:1 square), eliminating layer misalignment and duplicate video ghosting during multi-track playback.
+
+### Fixed
+- **Keyframe end snap and final frame transform.** Dragging a keyframe towards the end of a clip now magnetically snaps cleanly to the final frame (`clip.duration`), accurately updates playhead selection, and guarantees that transforms applied at the end persist through the cut without popping back to original dimensions or flashing the untransformed frame.
+- **Magnetic Track 1 trimming and overlap safety.** Trimming clips on the main magnetic track ripples downstream media and linked audio in sync without scrambling clip order, and dragging longer clips down to Track 1 will no longer accidentally delete or overwrite underlying clips.
+- **Stale frame flash on cut points.** Prevented the video player pool from briefly flashing the last frame of the preceding cut with reset styling while seeking to the start of a subsequent cut from the same media.
+- **Windowed timeline audio envelope and keyframe alignment.** Audio volume envelopes and keyframe markers remain strictly aligned to their visual clip boundaries during timeline trimming and scrolling.
+- **Timeline cut point transition centering.** Transition indicators on the timeline now align symmetrically across the cut junction between adjacent clips.
+
 ## [1.0.7] - 2026-09-22
 
 ### Fixed

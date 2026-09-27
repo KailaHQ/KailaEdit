@@ -304,9 +304,14 @@ export function setKeyframe(
 
   let targetTrack = trackIdx >= 0 ? { ...currentTracks[trackIdx], points: [...currentTracks[trackIdx].points] } : { property, points: [] }
 
-  const pointIdx = targetTrack.points.findIndex(p => Math.abs(p.t - clampedT) <= 0.02)
+  const pointIdx = targetTrack.points.findIndex(p => Math.abs(p.t - clampedT) <= 0.04)
   if (pointIdx >= 0) {
-    targetTrack.points[pointIdx] = { t: clampedT, value, easing }
+    const isBoundary = Math.abs(targetTrack.points[pointIdx].t - clip.duration) < 0.001 || targetTrack.points[pointIdx].t === 0
+    targetTrack.points[pointIdx] = {
+      t: isBoundary ? targetTrack.points[pointIdx].t : clampedT,
+      value,
+      easing,
+    }
   } else {
     targetTrack.points.push({ t: clampedT, value, easing })
   }

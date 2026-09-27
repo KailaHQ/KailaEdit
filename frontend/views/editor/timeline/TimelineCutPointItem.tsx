@@ -153,8 +153,14 @@ export const TimelineCutPointItem: React.FC<TimelineCutPointItemProps> = ({
     return null
   }
 
-  const bandLeft = cp.overlapStart * pixelsPerSecond
-  const bandWidth = Math.max(16, (cp.overlapEnd - cp.overlapStart) * pixelsPerSecond)
+  // The transition band on the timeline should straddle the visual junction between the clips.
+  // The visual junction is the cut boundary: rightClip.startTime + rightExtend.
+  const cutJunction = transition
+    ? cp.rightClip.startTime + (transition.rightExtend ?? 0)
+    : cp.time
+  const duration = transition?.duration ?? Math.max(0.1, cp.overlapEnd - cp.overlapStart)
+  const bandWidth = Math.max(16, duration * pixelsPerSecond)
+  const bandLeft = Math.max(0, (cutJunction - duration / 2) * pixelsPerSecond)
 
   return (
     <div

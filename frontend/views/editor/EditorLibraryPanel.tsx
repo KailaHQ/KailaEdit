@@ -12,6 +12,7 @@ import { TextLibrary } from './TextLibrary'
 import { EffectLibrary } from './EffectLibrary'
 import { CaptionsLibrary } from './CaptionsLibrary'
 import { StickersLibrary } from './StickersLibrary'
+import { ShapesLibrary } from './ShapesLibrary'
 import {
   VideoEditorAssetsPanel,
   type VideoEditorAssetsPanelHandle,
@@ -100,7 +101,11 @@ export function EditorLibraryPanel(props: EditorLibraryPanelProps) {
         {tab === 'transitions' && <TransitionsLibrary />}
         {tab === 'templates' && <TemplatesLibrary section={section} />}
         {tab === 'stickers' && (
-          <StickersLibrary importFiles={props.importFiles} />
+          section === 'shapes' ? (
+            <ShapesLibrary />
+          ) : (
+            <StickersLibrary importFiles={props.importFiles} />
+          )
         )}
       </div>
     </div>

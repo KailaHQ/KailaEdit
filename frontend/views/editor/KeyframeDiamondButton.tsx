@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TimelineClip, KeyframeProperty } from '../../types/project-model'
 import { getKeyframeTrack } from '@core/keyframes'
-import { selectCurrentTime } from './editor-selectors'
+import { selectClipById, selectCurrentTime } from './editor-selectors'
 import { useEditorActions, useEditorGetState, useEditorSubscribeToSlice } from './editor-store'
 
 export interface KeyframeDiamondButtonProps {
@@ -34,10 +34,11 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
   }>(() => {
     const time = selectCurrentTime(getState())
     const timeInClip = time - clip.startTime
-    const isInsideClip = timeInClip >= -0.05 && timeInClip <= clip.duration + 0.05
-    const matchedPoint = track?.points.find(p => Math.abs(p.t - timeInClip) <= 0.08)
+    const isInsideClip = timeInClip >= -0.1 && timeInClip <= clip.duration + 0.1
+    const clampedT = Math.max(0, Math.min(clip.duration, timeInClip))
+    const matchedPoint = track?.points.find(p => Math.abs(p.t - clampedT) <= 0.08)
     return {
-      timeInClip: Math.max(0, Math.min(clip.duration, timeInClip)),
+      timeInClip: clampedT,
       isOnKeyframe: Boolean(matchedPoint),
       activePointT: matchedPoint ? matchedPoint.t : null,
       isInsideClip,
@@ -54,7 +55,7 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
     const currentClip = clipRef.current
     const currentTrack = trackRef.current
     const timeInClip = currentTime - currentClip.startTime
-    const isInsideClip = timeInClip >= -0.05 && timeInClip <= currentClip.duration + 0.05
+    const isInsideClip = timeInClip >= -0.1 && timeInClip <= currentClip.duration + 0.1
     const clampedT = Math.max(0, Math.min(currentClip.duration, timeInClip))
     const matchedPoint = currentTrack?.points.find(p => Math.abs(p.t - clampedT) <= 0.08)
     setPlayheadState({
@@ -73,12 +74,22 @@ export const KeyframeDiamondButton: React.FC<KeyframeDiamondButtonProps> = ({
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    if (!playheadState.isInsideClip) return
 
-    if (playheadState.isOnKeyframe && playheadState.activePointT !== null) {
-      removeKeyframeAt(clip.id, property, playheadState.activePointT)
+    const liveState = getState()
+    const liveTime = selectCurrentTime(liveState)
+    const liveClip = selectClipById(liveState, clip.id) ?? clip
+    const liveTrack = getKeyframeTrack(liveClip, property)
+
+    const rawT = liveTime - liveClip.startTime
+    if (rawT < -0.1 || rawT > liveClip.duration + 0.1) return
+
+    const clampedT = Math.max(0, Math.min(liveClip.duration, Math.round(rawT * 1000) / 1000))
+    const matchedPoint = liveTrack?.points.find(p => Math.abs(p.t - clampedT) <= 0.08)
+
+    if (matchedPoint) {
+      removeKeyframeAt(liveClip.id, property, matchedPoint.t)
     } else {
-      setKeyframe(clip.id, property, playheadState.timeInClip, currentValue, 'linear')
+      setKeyframe(liveClip.id, property, clampedT, currentValue, 'linear')
     }
   }
 

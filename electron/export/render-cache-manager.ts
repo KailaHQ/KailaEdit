@@ -47,6 +47,8 @@ export interface RenderCacheRequestParams {
   background?: any
   letterbox?: any
   resolution?: '360p' | '480p' | '720p'
+  /** Timeline width / height; the segment must be rendered in the timeline's own shape. */
+  aspectRatio?: number
   fps?: number
 }
 
@@ -362,7 +364,7 @@ export class RenderCacheManager {
 
   renderSegment(params: RenderCacheRequestParams): Promise<{ success: boolean; cachePath?: string; error?: string }> {
     this.init()
-    const { hash, startTime, duration, clips, transitions, background, letterbox, resolution, fps } = params
+    const { hash, startTime, duration, clips, transitions, background, letterbox, resolution, aspectRatio, fps } = params
 
     // A segment longer than one preview render can produce would come back truncated and
     // then be published as ready for its whole span. findComplexSegments splits segments
@@ -401,6 +403,7 @@ export class RenderCacheManager {
           startTime,
           duration,
           resolution: resolution || '480p',
+          aspectRatio,
           outputPath: partPath,
           fps: fps || 30,
           background,

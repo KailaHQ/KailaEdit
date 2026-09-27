@@ -13,6 +13,8 @@ import { DEFAULT_CLIP_TRANSFORM } from './project-model'
  */
 export interface SampledClipProperties {
   scale: number
+  scaleX?: number
+  scaleY?: number
   positionX: number
   positionY: number
   rotation: number
@@ -153,6 +155,16 @@ export function sampleClipAt(clip: TimelineClip, timeInClip: number): SampledCli
     timeInClip,
     tf.scale ?? 100,
   )
+  const scaleX = sampleKeyframeTrack(
+    getKeyframeTrack(clip, 'transform.scaleX'),
+    timeInClip,
+    tf.scaleX ?? scale,
+  )
+  const scaleY = sampleKeyframeTrack(
+    getKeyframeTrack(clip, 'transform.scaleY'),
+    timeInClip,
+    tf.scaleY ?? scale,
+  )
   const positionX = sampleKeyframeTrack(
     getKeyframeTrack(clip, 'transform.positionX'),
     timeInClip,
@@ -232,6 +244,8 @@ export function sampleClipAt(clip: TimelineClip, timeInClip: number): SampledCli
 
   return {
     scale,
+    scaleX,
+    scaleY,
     positionX,
     positionY,
     rotation,

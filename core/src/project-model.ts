@@ -182,6 +182,8 @@ export const DEFAULT_COLOR_CORRECTION = colorCorrectionSchema.parse({
  */
 export const clipTransformSchema = z.object({
   scale: z.number(),
+  scaleX: z.number().optional(),
+  scaleY: z.number().optional(),
   positionX: z.number(),
   positionY: z.number(),
   rotation: z.number(),
@@ -548,6 +550,8 @@ const LEGACY_LUT_MAPPING: Record<string, string> = {
 
 export const keyframePropertyValues = [
   'transform.scale',
+  'transform.scaleX',
+  'transform.scaleY',
   'transform.positionX',
   'transform.positionY',
   'transform.rotation',

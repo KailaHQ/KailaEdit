@@ -8,6 +8,7 @@ export interface TimelineAudioEnvelopeProps {
   pixelsPerSecond: number
   trackHeight: number
   drawnDuration: number
+  drawnStart?: number
   activeTool: ToolType
 }
 
@@ -35,6 +36,7 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
   pixelsPerSecond,
   trackHeight,
   drawnDuration,
+  drawnStart,
   activeTool,
 }) => {
   const { setKeyframe, moveKeyframe, removeKeyframeAt } = useEditorActions()
@@ -42,6 +44,7 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
   const [hoveredPointT, setHoveredPointT] = useState<number | null>(null)
   const containerRef = useRef<SVGSVGElement | null>(null)
 
+  const offsetFromClipStart = (drawnStart ?? clip.startTime) - clip.startTime
   const volumeTrack = clip.keyframes?.find(k => k.property === 'volume')
   const rawPoints = volumeTrack ? [...volumeTrack.points].sort((a, b) => a.t - b.t) : []
   const baseVolume = clip.volume ?? 1
@@ -70,7 +73,7 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
     segments.push(`M 0 ${firstY}`)
 
     for (const pt of displayPoints) {
-      const x = Math.max(0, Math.min(clipWidthPx, pt.t * pixelsPerSecond))
+      const x = Math.max(0, Math.min(clipWidthPx, (pt.t - offsetFromClipStart) * pixelsPerSecond))
       const y = volumeToY(pt.value, trackHeight)
       segments.push(`L ${x} ${y}`)
     }
@@ -80,7 +83,7 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
     segments.push(`L ${clipWidthPx} ${lastY}`)
 
     return segments.join(' ')
-  }, [displayPoints, baseVolume, trackHeight, clipWidthPx, pixelsPerSecond])
+  }, [displayPoints, baseVolume, trackHeight, clipWidthPx, pixelsPerSecond, offsetFromClipStart])
 
   // Area fill path underneath line
   const areaD = React.useMemo(() => {
@@ -99,11 +102,11 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
     const clickX = e.clientX - rect.left
     const clickY = e.clientY - rect.top
 
-    const newT = Math.max(0, Math.min(clip.duration, clickX / pixelsPerSecond))
+    const newT = Math.max(0, Math.min(clip.duration, clickX / pixelsPerSecond + offsetFromClipStart))
     const newV = yToVolume(clickY, trackHeight)
 
     setKeyframe(clip.id, 'volume', Number(newT.toFixed(2)), Number(newV.toFixed(2)))
-  }, [activeTool, clip.duration, clip.id, pixelsPerSecond, setKeyframe, trackHeight])
+  }, [activeTool, clip.duration, clip.id, pixelsPerSecond, setKeyframe, trackHeight, offsetFromClipStart])
 
   // Drag a keyframe node
   const handleNodePointerDown = useCallback((e: React.PointerEvent, pt: { t: number; value: number }) => {
@@ -225,7 +228,7 @@ export const TimelineAudioEnvelope: React.FC<TimelineAudioEnvelopeProps> = ({
 
       {/* Keyframe control nodes */}
       {displayPoints.map((pt, idx) => {
-        const cx = Math.max(0, Math.min(clipWidthPx, pt.t * pixelsPerSecond))
+        const cx = Math.max(0, Math.min(clipWidthPx, (pt.t - offsetFromClipStart) * pixelsPerSecond))
         const cy = volumeToY(pt.value, trackHeight)
         const isDragged = draggingPoint && Math.abs(pt.t - draggingPoint.currentT) <= 0.05
         const isHovered = hoveredPointT !== null && Math.abs(pt.t - hoveredPointT) <= 0.05

@@ -3,7 +3,9 @@ import {
   Layers, Menu, Pipette, Shield,
 } from 'lucide-react'
 import { pathToFileUrl } from '../../lib/file-url'
-import type { TimelineClip } from '../../types/project-model'
+import type { TimelineClip, Asset } from '../../types/project-model'
+import { isExternalFileDrag, hasMediaFiles } from './external-file-drop'
+import { formatTime } from './video-editor-utils'
 
 import { getEffectiveTimelineDimensions } from '@core/video-resolution'
 import { type LutCanvasRef } from './preview/LutCanvas'
@@ -56,6 +58,7 @@ import { useWebCodecsPreview } from './preview/webcodecs/useWebCodecsPreview'
 export interface ProgramMonitorProps {
   playbackTimeRef: React.MutableRefObject<number>
   kbLayout: KeyboardLayout
+  importFiles?: (files: FileList | File[]) => Promise<Asset[]>
 }
 
 export interface ProgramMonitorHandle {
@@ -65,6 +68,7 @@ export interface ProgramMonitorHandle {
 export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMonitorProps>(function ProgramMonitor({
   playbackTimeRef,
   kbLayout,
+  importFiles,
 }: ProgramMonitorProps, ref) {
   const {
     clearClipSelection,
@@ -85,6 +89,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     setEyedropperMode,
     setClipChromaKey,
     setPreviewAssetId,
+    insertAssetsToTimeline,
   } = useEditorActions()
 
   const currentTime = useEditorStore(selectCurrentTime)
@@ -252,6 +257,67 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const [videoFrameSize, setVideoFrameSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 })
   const [sourceVideoFrameSize, setSourceVideoFrameSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 })
   const [showSafeZoneGuide, setShowSafeZoneGuide] = React.useState(false)
+  const [isDragOver, setIsDragOver] = React.useState(false)
+
+  const handleDragOver = React.useCallback((e: React.DragEvent) => {
+    const types = Array.from(e.dataTransfer.types).map(t => t.toLowerCase())
+    if (isExternalFileDrag(e) || types.includes('assetid') || types.includes('assetids') || types.includes('asset')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = React.useCallback((e: React.DragEvent) => {
+    setIsDragOver(false)
+    const types = Array.from(e.dataTransfer.types).map(t => t.toLowerCase())
+    if (!isExternalFileDrag(e) && !types.includes('assetid') && !types.includes('assetids') && !types.includes('asset')) {
+      return
+    }
+    e.preventDefault()
+
+    if (isExternalFileDrag(e)) {
+      const files = e.dataTransfer.files
+      if (!hasMediaFiles(files) || !importFiles) return
+      void importFiles(files).then(imported => {
+        if (imported.length > 0) {
+          setPreviewAssetId(null)
+          insertAssetsToTimeline({
+            assets: imported,
+            startTime: currentTime,
+          })
+        }
+      })
+      return
+    }
+
+    const assetJson = e.dataTransfer.getData('asset')
+    let droppedAsset: Asset | null = null
+    if (assetJson) {
+      try {
+        droppedAsset = JSON.parse(assetJson) as Asset
+      } catch {}
+    }
+    if (!droppedAsset) {
+      const assetId = e.dataTransfer.getData('assetId')
+      if (assetId) {
+        droppedAsset = assets.find(a => a.id === assetId) ?? null
+      }
+    }
+
+    if (droppedAsset) {
+      setPreviewAssetId(null)
+      insertAssetsToTimeline({
+        assets: [droppedAsset],
+        startTime: currentTime,
+      })
+    }
+  }, [assets, currentTime, importFiles, insertAssetsToTimeline, setPreviewAssetId])
 
   React.useEffect(() => {
     const container = previewContainerRef.current
@@ -742,6 +808,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           ref={previewContainerRef}
           className={`flex-1 relative overflow-hidden min-h-0 min-w-0 ${isFullscreen ? 'bg-black' : ''}`}
           style={{ backgroundColor: '#000', ...(previewZoom !== 'fit' ? { cursor: 'grab' } : {}) }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           onClick={(e) => {
             if (isPreviewingVideo && !((e.target as HTMLElement).closest('[data-source-video-preview]'))) {
               setPreviewAssetId(null)
@@ -762,6 +831,16 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
           onMouseUp={() => { previewPanRef.current.dragging = false }}
           onMouseLeave={() => { previewPanRef.current.dragging = false }}
         >
+          {/* Drop indicator overlay when dragging media over preview */}
+          {isDragOver && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-400 backdrop-blur-[2px] pointer-events-none">
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-900/95 text-white font-medium text-xs shadow-2xl border border-blue-500/40">
+                <Layers className="w-4 h-4 text-blue-400 animate-bounce" />
+                <span>Thả video để thêm vào Timeline tại {formatTime(currentTime, fps, timecodeFormat)}</span>
+              </div>
+            </div>
+          )}
+
           {clips.length === 0 && !isPreviewingVideo ? (
             <div className="w-full h-full flex items-center justify-center">
               <div className="text-center">
@@ -832,7 +911,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               {/* Video frame wrapper — background with exact timeline dimensions & aspect ratio */}
               <div
                 ref={videoFrameWrapperRef}
-                className={`relative bg-black overflow-hidden shadow-2xl ${isPreviewingVideo ? 'hidden' : ''}`}
+                className={`relative bg-black shadow-2xl ${isPreviewingVideo ? 'hidden' : ''}`}
                 style={{
                   display: isPreviewingVideo ? 'none' : undefined,
                   cursor: eyedropperMode ? 'crosshair' : undefined,
@@ -866,6 +945,8 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                   selectVisualClipAtPoint(e)
                 }}
               >
+              {/* Media rendering layers — strictly clipped to frame aspect ratio */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <MonitorCompositingStack
                 activeTimeline={activeTimeline}
                 effectiveDimensions={effectiveDimensions}
@@ -981,6 +1062,13 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                 />
               ))}
 
+              {/* Subtitle overlay */}
+              <MonitorSubtitlesOverlay activeSubtitles={activeSubtitles} tracks={tracks} />
+
+              {/* Letterbox overlay from adjustment layers */}
+              <MonitorLetterbox activeLetterbox={activeLetterbox} />
+              </div>{/* end media rendering layers */}
+
               {/* Text overlay clips with bounding box & resize/scale/width/rotate handles */}
               {activeTextClips.map(tc => {
                 const isSelected = selectedClipIds.has(tc.id)
@@ -1025,12 +1113,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                   />
                 )
               })}
-
-              {/* Subtitle overlay */}
-              <MonitorSubtitlesOverlay activeSubtitles={activeSubtitles} tracks={tracks} />
-
-              {/* Letterbox overlay from adjustment layers */}
-              <MonitorLetterbox activeLetterbox={activeLetterbox} />
               {/* Note: Clip-level masks will be implemented in KE-501 (resolved in KE-106). */}
 
               {/* Transform Bounding Box for active selected visual clip */}

@@ -441,12 +441,32 @@ describe('S1-2: Pure editing logic safety net and trap prevention', () => {
       expect(updatedExisting?.duration).toBe(4) // Trimmed from 6 to 4
     })
 
-    it('removes existing clip completely if completely covered by placed clip', () => {
+    it('removes existing clip completely if completely covered by placed clip on overlay track', () => {
       const existing = createMockClip({ id: 'small', trackIndex: 1, startTime: 2, duration: 2 })
       const placed = createMockClip({ id: 'huge', trackIndex: 1, startTime: 0, duration: 8 })
 
       const result = resolveOverlaps([existing, placed], new Set(['huge']))
       expect(result.find(c => c.id === 'small')).toBeUndefined()
+    })
+
+    it('never removes existing clip on Track 1 (magnetic) when moved clip is longer and covers it completely', () => {
+      // Bug regression: clip on Track 2 (12.1s) dragged down to Track 1 at 0s where an 11.3s clip existed.
+      // The 11.3s clip must NOT be deleted, it must be pushed forward.
+      const clip1 = createMockClip({ id: 'clip1', trackIndex: 0, startTime: 0, duration: 11.3 })
+      const clip2 = createMockClip({ id: 'clip2', trackIndex: 0, startTime: 11.3, duration: 3.0 })
+      const draggedDown = createMockClip({ id: 'dragged', trackIndex: 0, startTime: 0, duration: 12.1 })
+
+      const resolved = resolveOverlaps([clip1, clip2, draggedDown], new Set(['dragged']), [], 0)
+      expect(resolved.find(c => c.id === 'clip1')).toBeDefined()
+      expect(resolved.find(c => c.id === 'clip2')).toBeDefined()
+      expect(resolved.find(c => c.id === 'dragged')).toBeDefined()
+
+      const packed = packTrack1(resolved, 0)
+      const byTime = [...packed].sort((a, b) => a.startTime - b.startTime)
+      expect(byTime.map(c => c.id)).toEqual(['dragged', 'clip1', 'clip2'])
+      expect(byTime[0].startTime).toBe(0)
+      expect(byTime[1].startTime).toBe(12.1)
+      expect(byTime[2].startTime).toBe(12.1 + 11.3)
     })
 
     it('splits or pushes existing clip forward when placed clip is dropped in its center', () => {

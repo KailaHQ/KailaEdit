@@ -267,6 +267,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   }, [actions])
   const addClipToTimeline = useCallback((asset: Asset, trackIndex?: number, startTime?: number) => {
     // Add puts the asset in front of the existing edit on V1.
+    actions.setPreviewAssetId(null)
     actions.insertAssetsToTimeline({ assets: [asset], trackIndex, startTime, position: 'start' })
   }, [actions])
   const resolveClipPath = useCallback((clip: TimelineClip | null) => clip ? selectClipPathFromAssets(assets, clip) : '', [assets])
@@ -766,6 +767,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       if (!hasMediaFiles(files)) return
       void importFiles(files).then(imported => {
         if (imported.length > 0) {
+          actions.setPreviewAssetId(null)
           actions.insertAssetsToTimeline({
             assets: imported,
             trackIndex: droppedTrackIndex,

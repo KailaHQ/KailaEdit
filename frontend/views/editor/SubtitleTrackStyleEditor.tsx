@@ -6,6 +6,7 @@ import { SUBTITLE_PRESETS } from '@core/text-presets'
 import { useTranslation } from '../../i18n/I18nContext'
 import { selectSubtitleTrackStyleIdx, selectTracks } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
+import { FontPicker } from './FontPicker'
 
 export function SubtitleTrackStyleEditor() {
   const { t } = useTranslation()
@@ -120,20 +121,11 @@ export function SubtitleTrackStyleEditor() {
           {/* Font family */}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-400">Font</span>
-            <select
+            <FontPicker
               value={style.fontFamily}
-              onChange={e => updateTrackStyle({ fontFamily: e.target.value })}
-              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-amber-500/50"
-            >
-              <option value="sans-serif">Sans-Serif</option>
-              <option value="serif">Serif</option>
-              <option value="monospace">Monospace</option>
-              <option value="'Arial', sans-serif">Arial</option>
-              <option value="'Helvetica Neue', sans-serif">Helvetica</option>
-              <option value="'Georgia', serif">Georgia</option>
-              <option value="'Courier New', monospace">Courier New</option>
-              <option value="'Times New Roman', serif">Times New Roman</option>
-            </select>
+              onChange={(newVal) => updateTrackStyle({ fontFamily: newVal })}
+              dropdownAlign="right"
+            />
           </div>
 
           {/* Bold / Italic */}

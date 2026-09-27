@@ -14,6 +14,8 @@ import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
 import { removeEntry } from '../storage/remove-entry'
 
+import { getSystemFonts } from '../fonts/system-fonts'
+
 export function registerAppHandlers(): void {
   handle('getAppInfo', () => {
     return {
@@ -21,6 +23,11 @@ export function registerAppHandlers(): void {
       isPackaged: app.isPackaged,
       userDataPath: app.getPath('userData'),
     }
+  })
+
+  handle('getSystemFonts', async () => {
+    const fonts = await getSystemFonts()
+    return { fonts }
   })
 
   handle('getDownloadsPath', () => {

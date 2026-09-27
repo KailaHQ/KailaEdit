@@ -87,6 +87,7 @@ export function resolveOverlaps(
   allClips: TimelineClip[],
   movedIds: Set<string>,
   transitions: ReadonlyArray<{ leftClipId: string; rightClipId: string; duration: number }> = [],
+  mainTrackIndex: number = 0,
 ): TimelineClip[] {
   let result = [...allClips]
 
@@ -118,10 +119,9 @@ export function resolveOverlaps(
       const cEnd = c.startTime + c.duration
 
       if (cEnd <= movedStart || cStart >= movedEnd) { next.push(c); continue }
-      if (cStart >= movedStart && cEnd <= movedEnd) continue
 
-      // For Track 1 (magnetic): never trim or split existing clips
-      if (moved.trackIndex === 0) {
+      // For Track 1 (magnetic): never trim, split, or delete existing clips
+      if (moved.trackIndex === mainTrackIndex) {
         const cMid = cStart + c.duration / 2
         if (movedStart < cMid) {
           next.push({ ...c, startTime: Math.max(cStart, movedEnd) })
@@ -133,6 +133,8 @@ export function resolveOverlaps(
         }
         continue
       }
+
+      if (cStart >= movedStart && cEnd <= movedEnd) continue
 
       if (cStart < movedStart && cEnd > movedStart && cEnd <= movedEnd) {
         const newDuration = movedStart - cStart
@@ -556,6 +558,8 @@ export function getClipEffectStyles(
   // so the list reads outermost-first.
   const tf = clip.transform ?? DEFAULT_CLIP_TRANSFORM
   const scale = sampled ? sampled.scale : (tf.scale ?? 100)
+  const scaleX = sampled?.scaleX ?? tf.scaleX ?? scale
+  const scaleY = sampled?.scaleY ?? tf.scaleY ?? scale
   const positionX = sampled ? sampled.positionX : (tf.positionX ?? 0)
   const positionY = sampled ? sampled.positionY : (tf.positionY ?? 0)
   const rotation = sampled ? sampled.rotation : (tf.rotation ?? 0)
@@ -566,7 +570,13 @@ export function getClipEffectStyles(
     transforms.push(`translate(${positionX}%, ${positionY}%)`)
   }
   if (rotation !== 0) transforms.push(`rotate(${rotation}deg)`)
-  if (scale !== 100) transforms.push(`scale(${scale / 100})`)
+  if (scaleX !== 100 || scaleY !== 100) {
+    if (scaleX === scaleY) {
+      transforms.push(`scale(${scaleX / 100})`)
+    } else {
+      transforms.push(`scale(${scaleX / 100}, ${scaleY / 100})`)
+    }
+  }
   if (clip.flipH) transforms.push('scaleX(-1)')
   if (clip.flipV) transforms.push('scaleY(-1)')
 
@@ -944,7 +954,7 @@ export function fitMediaInFrame(
 export function clipScreenBox(
   frame: { width: number; height: number },
   asset: { width?: number; height?: number } | null | undefined,
-  transform: { scale?: number; positionX?: number; positionY?: number } | null | undefined,
+  transform: { scale?: number; scaleX?: number; scaleY?: number; positionX?: number; positionY?: number } | null | undefined,
 ): { left: number; top: number; width: number; height: number } {
   const frameWidth = frame.width || 1
   const frameHeight = frame.height || 1
@@ -953,9 +963,10 @@ export function clipScreenBox(
   const fittedWidth = fitted.width
   const fittedHeight = fitted.height
 
-  const scale = Math.max(0, transform?.scale ?? 100) / 100
-  const width = fittedWidth * scale
-  const height = fittedHeight * scale
+  const scaleX = Math.max(0, transform?.scaleX ?? transform?.scale ?? 100) / 100
+  const scaleY = Math.max(0, transform?.scaleY ?? transform?.scale ?? 100) / 100
+  const width = fittedWidth * scaleX
+  const height = fittedHeight * scaleY
 
   // positionX / positionY are percentages of the frame, measured from centre.
   const centreX = frameWidth / 2 + (frameWidth * (transform?.positionX ?? 0)) / 100

@@ -448,6 +448,7 @@ export const vi: TranslationDictionary = {
       textTemplates: 'Mẫu chữ',
       textEffects: 'Hiệu ứng chữ',
       stickers: 'Sticker',
+      shapes: 'Hình khối',
       videoEffects: 'Hiệu ứng video',
       transitions: 'Chuyển cảnh',
       localCaptions: 'Phụ đề tệp (.srt)',
@@ -550,6 +551,17 @@ export const vi: TranslationDictionary = {
       noBrollMedia: 'Chưa có media nào để làm B-roll. Hãy nhập thêm video hoặc ảnh vào dự án — footage đã nằm trên timeline không thể tự đè lên chính nó.',
       insertBtn: 'Chèn B-roll (Fade 0.25s, Tắt tiếng)',
       insertedFeedback: 'Đã chèn clip B-roll tại {time}s (độ dài {duration}s) trên track overlay!',
+    },
+    shapes: {
+      searchPlaceholder: 'Tìm hình khối...',
+      notFound: 'Không tìm thấy hình khối',
+      emptySearchHint: 'Thử tìm kiếm với từ khóa khác.',
+      clickToAdd: 'Bấm để thêm vào timeline',
+      categories: {
+        all: 'Tất cả',
+        line: 'Đường kẻ & Mũi tên',
+        basic: 'Hình cơ bản',
+      },
     },
     stickers: {
       searchPlaceholder: 'Tìm sticker...',

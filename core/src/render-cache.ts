@@ -16,6 +16,29 @@ export interface ComplexSegment {
  */
 export const MAX_CACHE_SEGMENT_SECONDS = 30
 
+const PREVIEW_SHORT_SIDE: Record<string, number> = { '360p': 360, '480p': 480, '720p': 720 }
+
+/**
+ * Pixel size of a cached preview segment for a timeline of the given aspect ratio.
+ *
+ * The resolution names the short side, so a 9:16 timeline at 480p renders 480x854 and a
+ * 16:9 one 854x480. This used to be a fixed landscape table: every portrait project was
+ * rendered into a 16:9 frame, its clip positions and crops were laid out against the
+ * wrong width and height, and the monitor played that picture back whenever it hit a
+ * multi-layer segment — the upper video showed up again lower down, only during playback.
+ */
+export function previewFrameSize(
+  resolution: string = '480p',
+  aspectRatio: number = 16 / 9,
+): { width: number; height: number } {
+  const shortSide = PREVIEW_SHORT_SIDE[resolution] ?? PREVIEW_SHORT_SIDE['480p']
+  const ratio = Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 16 / 9
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2)
+  return ratio >= 1
+    ? { width: even(shortSide * ratio), height: even(shortSide) }
+    : { width: even(shortSide), height: even(shortSide / ratio) }
+}
+
 export interface RawInterval {
   start: number
   end: number
@@ -188,6 +211,7 @@ export function computeSegmentContentHash(
   segment: { startTime: number; endTime: number },
   timeline: Timeline,
   resolution = '540p',
+  aspectRatio?: number,
 ): string {
   const { startTime, endTime } = segment
 
@@ -264,6 +288,9 @@ export function computeSegmentContentHash(
     startTime,
     endTime,
     resolution,
+    // The frame shape decides where every clip lands, so a segment rendered for 16:9
+    // must never be served to a 9:16 timeline.
+    aspectRatio: aspectRatio !== undefined ? Number(aspectRatio.toFixed(4)) : null,
     background: timeline.background,
     clips: intersectingClips,
     transitions: intersectingTransitions,

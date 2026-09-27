@@ -584,6 +584,7 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
                     ref={programMonitorActionsRef}
                     playbackTimeRef={playbackTimeRef}
                     kbLayout={kbLayout}
+                    importFiles={importFiles}
                   />
                 </div>
               </Panel>

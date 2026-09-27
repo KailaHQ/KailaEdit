@@ -225,7 +225,7 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
           const tracks = selectTracks(state)
           const time = commandContext.currentTime
           const spans = (c: (typeof allClips)[number]) =>
-            time >= c.startTime && time <= c.startTime + c.duration
+            time >= c.startTime - 0.1 && time <= c.startTime + c.duration + 0.1
 
           const candidate = (sel.size > 0
             ? allClips.find(c => sel.has(c.id) && spans(c))
@@ -270,7 +270,7 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
           const tracks = selectTracks(state)
           const time = commandContext.currentTime
           const spans = (c: (typeof allClips)[number]) =>
-            time >= c.startTime && time <= c.startTime + c.duration
+            time >= c.startTime - 0.1 && time <= c.startTime + c.duration + 0.1
 
           const candidate = (sel.size > 0
             ? allClips.find(c => sel.has(c.id) && spans(c))

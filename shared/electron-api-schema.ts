@@ -259,6 +259,12 @@ export const electronAPISchemas = {
     input: z.object({}),
     output: z.object({ version: z.string(), isPackaged: z.boolean(), userDataPath: z.string() }),
   },
+  getSystemFonts: {
+    input: z.object({}),
+    output: z.object({
+      fonts: z.array(z.string()),
+    }),
+  },
 
   getNoticesText: {
     input: z.object({}),
@@ -589,6 +595,7 @@ export const electronAPISchemas = {
       background: z.any().optional(),
       letterbox: z.any().optional(),
       resolution: z.enum(['360p', '480p', '720p']).optional(),
+      aspectRatio: z.number().positive().optional(),
       fps: z.number().optional(),
     }),
     output: ipcResult({
