@@ -445,7 +445,7 @@ export const EDIT_TOOLS: Tool[] = [
         },
         patch: {
           type: 'object',
-          description: 'The EditPatch object to propose (containing version, description, operations: split_clip, cut_range, delete_clip, move_clip, import_srt, add_subtitle, chunk_subtitles, punch_in_cut, punch_in_sequence, set_mask, set_chroma_key, set_blend_mode, set_canvas, set_timeline_dimensions, set_timeline_background, normalize_audio, duck_audio, etc.).',
+          description: 'The EditPatch object to propose (containing version, description, operations: split_clip, cut_range, delete_clip, move_clip, import_srt, add_subtitle, chunk_subtitles, punch_in_cut, punch_in_sequence, set_mask, set_chroma_key, set_stabilization, replace_clip, set_blend_mode, set_canvas, set_timeline_dimensions, set_timeline_background, normalize_audio, duck_audio, etc.).',
         },
       },
       required: ['patch'],

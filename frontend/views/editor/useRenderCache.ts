@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { findComplexSegments, computeSegmentContentHash } from '@core/render-cache'
 import { getEffectiveTimelineDimensions } from '@core/video-resolution'
+import { resolveStabilizedClips } from '@core/stabilization'
+import { resolveAdjustmentFilters } from '@core/video-editor-utils'
 import { useEditorStore } from './editor-store'
 import { selectActiveTimeline, selectAssets } from './editor-selectors'
 import { useRenderCacheStore, type CachedSegmentInfo } from './render-cache-store'
@@ -9,10 +11,23 @@ import { useRenderCacheStore, type CachedSegmentInfo } from './render-cache-stor
 const RENDER_CACHE_IDLE_MS = 2500
 
 export function useRenderCache() {
-  const activeTimeline = useEditorStore(selectActiveTimeline)
+  const storeTimeline = useEditorStore(selectActiveTimeline)
+  const assets = useEditorStore(selectAssets)
+  // Segments are rendered from what the monitor plays: stabilized clips from their bakes,
+  // and every clip carrying the filter an adjustment layer grades it with. The main process
+  // renders by `clip.filter` alone — without this a segment under a filter layer was cached
+  // ungraded, and playback (which shows the cached segment) lost the filter the paused
+  // preview had. Hashing these clips also re-renders a segment when either changes.
+  const activeTimeline = useMemo(() => {
+    if (!storeTimeline) return storeTimeline
+    const clips = resolveAdjustmentFilters(
+      resolveStabilizedClips(storeTimeline.clips, assets),
+      storeTimeline.tracks,
+    )
+    return clips === storeTimeline.clips ? storeTimeline : { ...storeTimeline, clips }
+  }, [storeTimeline, assets])
   const activeTimelineRef = useRef(activeTimeline)
   activeTimelineRef.current = activeTimeline
-  const assets = useEditorStore(selectAssets)
   // The same frame the monitor draws into. Without it the segment was rendered 16:9
   // whatever the project was, and a 9:16 timeline played back scrambled.
   const aspectRatio = useMemo(

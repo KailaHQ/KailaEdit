@@ -24,12 +24,16 @@ import {
   selectSelectedClipIds,
   selectCanUseClipboard,
   selectAssetById,
+  selectAssets,
 } from '../editor-selectors'
+import { buildOverlayPaste, type OverlayClipboardItem } from '../overlay-clipboard'
+import { getEffectiveTimelineDimensions } from '../video-resolution'
 import { getEditorModel, updatedProject } from '../editor-project-bridging'
 import { makeId } from '../id-generator'
 import type { SelectClipMode } from './types'
 import {
   updateSession,
+  updateEditorModel,
   cloneClipIds,
   applyStateAction,
 } from './action-helpers'
@@ -528,6 +532,9 @@ export function resetLayout(state: EditorState): EditorState {
 export function copySelection(state: EditorState): EditorState {
   const selectedIds = selectSelectedClipIds(state)
   const clips = selectClips(state).filter(clip => selectedIds.has(clip.id))
+  // Nothing selected copies nothing, and leaves the clipboard as it was — a stray Ctrl+C
+  // must not throw away what was copied before (clips, or objects from the cover).
+  if (clips.length === 0) return state
   return updateSession(state, session => ({
     ...session,
     clipboard: {
@@ -543,9 +550,53 @@ export function cutSelection(state: EditorState): EditorState {
   return deleteClips(copied, [...selectSelectedClipIds(copied)])
 }
 
+/**
+ * Puts objects copied in the cover designer on the clipboard, replacing whatever was
+ * there — the next paste lays them onto the timeline (see `pasteSelection`).
+ */
+export function copyOverlays(state: EditorState, items: OverlayClipboardItem[]): EditorState {
+  if (items.length === 0) return state
+  return updateSession(state, session => ({
+    ...session,
+    clipboard: {
+      kind: 'overlays',
+      clips: [],
+      overlays: items,
+      copiedFromTimelineId: selectActiveTimelineId(state),
+    },
+  }))
+}
+
+/** Cover objects at the playhead: one new top track each, OVERLAY_PASTE_DURATION long. */
+function pasteOverlays(state: EditorState, items: OverlayClipboardItem[], atTime?: number): EditorState {
+  const timeline = selectActiveTimeline(state)
+  if (!timeline || items.length === 0) return state
+  const frame = getEffectiveTimelineDimensions(timeline, selectAssets(state))
+  const pasted = buildOverlayPaste({
+    tracks: timeline.tracks,
+    items,
+    atTime: atTime ?? selectCurrentTime(state),
+    frame,
+    makeId,
+  })
+  const knownAssetIds = new Set(selectAssets(state).map(asset => asset.id))
+  const newAssets = pasted.assets.filter(asset => !knownAssetIds.has(asset.id))
+
+  let next = newAssets.length > 0
+    ? updateEditorModel(state, model => ({ ...model, assets: [...newAssets, ...model.assets] }))
+    : state
+  next = replaceActiveTimeline(next, current => ({
+    ...current,
+    tracks: pasted.tracks,
+    clips: [...current.clips, ...pasted.clips],
+  }))
+  return setSelectedClipIds(next, new Set(pasted.clips.map(clip => clip.id)))
+}
+
 export function pasteSelection(state: EditorState, atTime?: number): EditorState {
   if (!selectCanUseClipboard(state)) return state
   const clipboard = state.session.clipboard
+  if (clipboard.kind === 'overlays') return pasteOverlays(state, clipboard.overlays ?? [], atTime)
   const earliestStart = clipboard.clips.reduce((min, clip) => Math.min(min, clip.startTime), Infinity)
   const pasteAt = atTime ?? selectCurrentTime(state)
   const duplicates = clipboard.clips

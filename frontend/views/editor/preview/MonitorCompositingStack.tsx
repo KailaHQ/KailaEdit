@@ -8,6 +8,8 @@ import { isImageClip, MAX_COMPOSITING_CANVASES } from './preview-frame-engine'
 import type { FrameOverlayState, MonitorRenderMode, FrameRenderState } from './preview-frame-engine'
 import { getTransitionBgColor } from '../video-editor-utils'
 import { isAutoMatteBakeValid } from '@core/auto-matte'
+import { stabilizedClipPath } from '@core/stabilization'
+import { isTimelineShapeClip, timelineShapeToDataUrl } from '../timeline-shape-utils'
 
 /**
  * The baked matte to hand a clip, or undefined to fall back to live inference.
@@ -23,6 +25,9 @@ import { isAutoMatteBakeValid } from '@core/auto-matte'
  */
 function bakedMattePath(clip: TimelineClip | null | undefined): string | undefined {
   if (!clip?.autoMatte?.bake?.path) return undefined
+  // A clip here is already resolved onto its stabilized file, if it has one; a matte of
+  // the original can cover the same seconds and still not line up with those pixels.
+  const stabilizedPath = stabilizedClipPath(clip)
   const valid = isAutoMatteBakeValid(clip.autoMatte.bake, {
     trimStart: clip.trimStart,
     duration: clip.duration,
@@ -30,6 +35,7 @@ function bakedMattePath(clip: TimelineClip | null | undefined): string | undefin
     reversed: clip.reversed,
     model: clip.autoMatte.model || 'rvm-mobilenetv3',
     quality: clip.autoMatte.quality || 'standard',
+    ...(stabilizedPath ? { assetKey: stabilizedPath } : {}),
   })
   return valid ? clip.autoMatte.bake.path : undefined
 }
@@ -130,7 +136,9 @@ export const MonitorCompositingStack = React.memo(function MonitorCompositingSta
       {/* Compositing: render clips from lower tracks underneath the active clip */}
       {compositingStack.map(lowerClip => {
         const lowerPath = getClipPath(lowerClip) || lowerClip.asset?.path || ''
-        const lowerFileUrl = lowerPath ? pathToFileUrl(lowerPath) : ''
+        const lowerFileUrl = isTimelineShapeClip(lowerClip)
+          ? timelineShapeToDataUrl(lowerClip)
+          : (lowerPath ? pathToFileUrl(lowerPath) : '')
         if (isImageClip(lowerClip)) {
           return (
             <img
@@ -218,7 +226,11 @@ export const MonitorCompositingStack = React.memo(function MonitorCompositingSta
       {activeClip && isImageClip(activeClip) && (
         <img
           ref={attachActiveImage}
-          src={pathToFileUrl(getClipPath(activeClip) || activeClip.asset?.path || '')}
+          src={
+            isTimelineShapeClip(activeClip)
+              ? timelineShapeToDataUrl(activeClip)
+              : pathToFileUrl(getClipPath(activeClip) || activeClip.asset?.path || '')
+          }
           alt=""
           onLoad={() => {
             lutCanvasRef.current?.renderNow()

@@ -21,6 +21,7 @@ import {
 } from '../views/editor/editor-selectors'
 import { resolveEffectiveClipFilter } from '@core/video-editor-utils'
 import { getEffectiveTimelineDimensions } from '@core/video-resolution'
+import { resolveStabilizedClips } from '@core/stabilization'
 import {
   EXPORT_FORMATS,
   estimateExportFileSize,
@@ -36,6 +37,8 @@ import { generateFCPXML } from './export/fcpxml'
 import { ExportStatusView } from './export/ExportStatusView'
 import { ExportCategoryTabs, type ExportActiveTab } from './export/ExportCategoryTabs'
 import { ExportVideoSettings, type ExportSettingsState } from './export/ExportVideoSettings'
+import { isTimelineShapeClip, rasterizeShapeClipToPngBase64 } from '../views/editor/timeline-shape-utils'
+import { canRasterizeTextClip, rasterizeTextStyle, textClipAsImage } from '../views/editor/preview/text-raster'
 
 interface ExportModalProps {
   projectName: string
@@ -79,7 +82,8 @@ export function ExportModal({ projectName }: ExportModalProps) {
       clip => clip.type === 'adjustment' && tracks[clip.trackIndex]?.enabled !== false,
     )
 
-    return clips
+    // A stabilized clip exports from its baked file, with its trims shifted into that file.
+    return resolveStabilizedClips(clips, assets)
       .filter(clip => tracks[clip.trackIndex]?.enabled !== false)
       .map(clip => {
         const effectiveFilter = resolveEffectiveClipFilter(clip, activeAdjustmentClips, tracks)
@@ -102,6 +106,9 @@ export function ExportModal({ projectName }: ExportModalProps) {
           linkedClipIds: clip.linkedClipIds,
           transform: clip.transform ? {
             scale: clip.transform.scale ?? 100,
+            // A shape stretched by its side handles; without these it exported square.
+            ...(clip.transform.scaleX !== undefined ? { scaleX: clip.transform.scaleX } : {}),
+            ...(clip.transform.scaleY !== undefined ? { scaleY: clip.transform.scaleY } : {}),
             positionX: clip.transform.positionX ?? 0,
             positionY: clip.transform.positionY ?? 0,
             rotation: clip.transform.rotation ?? 0,
@@ -152,6 +159,8 @@ export function ExportModal({ projectName }: ExportModalProps) {
           blendMode: clip.blendMode,
           autoMatte: clip.autoMatte,
           stroke: clip.stroke,
+          stickerId: clip.stickerId,
+          shapeProperties: clip.shapeProperties,
           assetId: clip.assetId,
         }
       })
@@ -449,6 +458,51 @@ export function ExportModal({ projectName }: ExportModalProps) {
         return
       }
 
+      setExportFrameInfo('Preparing assets...')
+      const frame = { width: settings.width, height: settings.height }
+      const finalExportClips = await Promise.all(
+        exportClips.map(async (c) => {
+          // Text goes out as a picture of itself, drawn the way the monitor draws it —
+          // drawtext alone loses the font, weight, italics, underline, shadow and wrapping.
+          const source = c.type === 'text' ? clips.find(clip => clip.id === c.id) : undefined
+          if (source?.textStyle && canRasterizeTextClip(source)) {
+            try {
+              const raster = await rasterizeTextStyle(source.textStyle, frame)
+              const dataUrl = raster.canvas.toDataURL('image/png')
+              const saved = await window.electronAPI?.saveTempShapeImage({
+                clipId: `text-${c.id || 'clip'}`,
+                data: dataUrl.slice(dataUrl.indexOf(',') + 1),
+              })
+              if (saved?.success && saved.path) {
+                return textClipAsImage(c, source.textStyle, {
+                  width: raster.canvas.width,
+                  height: raster.canvas.height,
+                  centerX: raster.centerX,
+                  centerY: raster.centerY,
+                }, frame, saved.path)
+              }
+            } catch (err) {
+              console.warn('[ExportModal] Failed to draw text for export, falling back to drawtext:', err)
+            }
+          }
+          if (isTimelineShapeClip(c as any)) {
+            try {
+              const base64 = await rasterizeShapeClipToPngBase64(c as any, 1024, 1024)
+              const saved = await window.electronAPI?.saveTempShapeImage({
+                clipId: c.id || 'shape',
+                data: base64,
+              })
+              if (saved?.success && saved.path) {
+                return { ...c, path: saved.path }
+              }
+            } catch (err) {
+              console.warn('[ExportModal] Failed to rasterize custom shape for export, falling back to default:', err)
+            }
+          }
+          return c
+        })
+      )
+
       setExportFrameInfo('Starting render job...')
 
       const videoBitrateKbps = settings.useCustomBitrate && settings.customBitrateMbps
@@ -456,7 +510,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
         : undefined
 
       const startResult = await window.electronAPI?.['render.start']({
-        clips: exportClips,
+        clips: finalExportClips,
         outputPath: filePath,
         codec: settings.codec,
         width: settings.width,
@@ -494,6 +548,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
     }
   }, [
     burnSubtitles,
+    clips,
     exportClips,
     letterbox,
     projectName,

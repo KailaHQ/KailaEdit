@@ -19,6 +19,8 @@ import {
   PropertyAlignmentBar,
   PropertyRotateDial,
 } from '../PropertyControls'
+import { isTimelineShapeClip } from '../timeline-shape-utils'
+import { ShapePropertiesSection } from './ShapePropertiesSection'
 
 import type { SampledClipProperties } from '@core/keyframes'
 
@@ -67,8 +69,15 @@ export function BasicVideoSection({
   const hasOpacityKf = hasKeyframesForProperty(selectedClip, 'opacity')
   const currentOpacity = hasOpacityKf && sampledClip ? (sampledClip.opacity ?? (selectedClip.opacity ?? 100)) : (selectedClip.opacity ?? 100)
 
+  const isShape = isTimelineShapeClip(selectedClip)
+
   return (
     <div className="space-y-4">
+      {/* Shape Properties */}
+      {isShape && (
+        <ShapePropertiesSection selectedClip={selectedClip} />
+      )}
+
       {/* Transform */}
       {hasVisualTransformControls && (
         <div className="space-y-2">

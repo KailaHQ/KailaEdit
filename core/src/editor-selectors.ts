@@ -28,6 +28,7 @@ import {
   namedResolutionDisplayName,
   namedResolutionTier,
 } from './video-resolution'
+import { stabilizedClipPath } from './stabilization'
 import type {
   ClipCapabilities,
   ClipDimensions,
@@ -539,6 +540,9 @@ export function selectLiveAssetForClip(state: EditorState, clip: TimelineClip | 
 
 export function selectClipPathFromAssets(assets: Asset[], clip: TimelineClip | null | undefined): string {
   if (!clip) return ''
+  // A clip already resolved onto its stabilized file plays that file, not the asset's.
+  const stabilized = stabilizedClipPath(clip)
+  if (stabilized) return stabilized
   const liveAsset = selectLiveAssetForClipFromAssets(assets, clip)
   const src = liveAsset ? liveAsset.path : (clip.asset?.path || '')
   return src || ''
@@ -728,7 +732,9 @@ export function selectMenuState(state: EditorState): MenuState {
 }
 
 export function selectCanUseClipboard(state: EditorState): boolean {
-  return state.session.clipboard.kind === 'clips' && state.session.clipboard.clips.length > 0
+  const clipboard = state.session.clipboard
+  if (clipboard.kind === 'overlays') return (clipboard.overlays?.length ?? 0) > 0
+  return clipboard.kind === 'clips' && clipboard.clips.length > 0
 }
 
 export function selectCanInsertEdit(state: EditorState): boolean {

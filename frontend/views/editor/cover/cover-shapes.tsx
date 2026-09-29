@@ -50,35 +50,78 @@ export function getPolygonName(sides: number): string {
 
 /**
  * Generates an SVG path for a regular polygon with N sides and smooth corner rounding.
- * Canvas is 100x100 with center at (50, 50).
+ * Vertices are normalized to fill [1, 99] on the 100x100 canvas, flush with the bounding box border.
+ *
+ * `width` × `height` draws it for a box of that size instead — stretched to fill it, but
+ * with the corners rounded in the box's own units, so every corner comes out symmetric.
+ * Rounding in the 100×100 square and stretching afterwards turned them lopsided.
  */
-export function generatePolygonPath(sides: number = 5, cornerRounding: number = 0): string {
+export function generatePolygonPath(
+  sides: number = 5,
+  cornerRounding: number = 0,
+  inset: number = 1,
+  width: number = 100,
+  height: number = 100,
+  /** Stand a four-sided polygon on a vertex — a diamond — instead of an upright square. */
+  pointUp: boolean = false,
+): string {
   const n = Math.max(3, Math.min(20, Math.round(sides)))
   const rRound = Math.max(0, Math.min(100, cornerRounding)) / 100
-  const cx = 50
-  const cy = 50
-  const rPoly = 43
 
   // Vertices starting angle: for n=4 offset by -pi/4 so it forms an upright square with horizontal top/bottom
-  const angleOffset = n === 4 ? -Math.PI / 4 : -Math.PI / 2
-  const vertices: { x: number; y: number }[] = []
+  const angleOffset = n === 4 && !pointUp ? -Math.PI / 4 : -Math.PI / 2
+  const rawVertices: { x: number; y: number }[] = []
   for (let i = 0; i < n; i++) {
     const angle = angleOffset + (2 * Math.PI * i) / n
-    vertices.push({
-      x: cx + rPoly * Math.cos(angle),
-      y: cy + rPoly * Math.sin(angle),
+    rawVertices.push({
+      x: Math.cos(angle),
+      y: Math.sin(angle),
     })
   }
+
+  // Bounding box of raw unit vertices
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const v of rawVertices) {
+    if (v.x < minX) minX = v.x
+    if (v.x > maxX) maxX = v.x
+    if (v.y < minY) minY = v.y
+    if (v.y > maxY) maxY = v.y
+  }
+
+  const rawWidth = Math.max(0.001, maxX - minX)
+  const rawHeight = Math.max(0.001, maxY - minY)
+
+  // Target coordinates: fill [inset, size - inset] on each axis
+  const spanX = Math.max(0, width - 2 * Math.max(0, inset))
+  const spanY = Math.max(0, height - 2 * Math.max(0, inset))
+  const targetMinX = (width - spanX) / 2
+  const targetMinY = (height - spanY) / 2
+
+  // Fit vertices so the shape bounds extend right up to the handles/border
+  const vertices = rawVertices.map(v => ({
+    x: targetMinX + ((v.x - minX) / rawWidth) * spanX,
+    y: targetMinY + ((v.y - minY) / rawHeight) * spanY,
+  }))
 
   // Sharp corners if rounding is close to 0
   if (rRound <= 0.005) {
     return `M ${vertices.map(v => `${v.x.toFixed(2)},${v.y.toFixed(2)}`).join(' L ')} Z`
   }
 
-  // Edge length L
-  const edgeLen = 2 * rPoly * Math.sin(Math.PI / n)
+  // Find minimum edge length to constrain rounding
+  let minEdgeLen = Infinity
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i]
+    const next = vertices[(i + 1) % n]
+    const len = Math.hypot(next.x - curr.x, next.y - curr.y)
+    if (len < minEdgeLen) minEdgeLen = len
+  }
+
   // Max rounding distance along edge from each vertex
-  const maxD = (edgeLen / 2) * 0.96
+  const maxD = (minEdgeLen / 2) * 0.96
   const d = rRound * maxD
 
   const parts: string[] = []
@@ -418,10 +461,10 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultHeight: 17,
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
-      <rect x="8" y="8" width="84" height="84" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+      <rect x="1" y="1" width="98" height="98" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<rect x="8" y="8" width="84" height="84" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
+      `<rect x="1" y="1" width="98" height="98" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
   },
   {
     id: 'rounded-rect',
@@ -432,10 +475,10 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultHeight: 17,
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
-      <rect x="8" y="8" width="84" height="84" rx="20" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+      <rect x="1" y="1" width="98" height="98" rx="20" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<rect x="8" y="8" width="84" height="84" rx="20" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
+      `<rect x="1" y="1" width="98" height="98" rx="20" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
   },
   {
     id: 'circle',
@@ -446,10 +489,10 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultHeight: 17,
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
-      <circle cx="50" cy="50" r="42" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+      <circle cx="50" cy="50" r="49" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<circle cx="50" cy="50" r="42" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
+      `<circle cx="50" cy="50" r="49" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} />`,
   },
   {
     id: 'polygon',
@@ -504,10 +547,10 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultHeight: 25,
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
-      <polygon points="50,90 90,12 10,12" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <polygon points="50,99 99,1 1,1" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<polygon points="50,90 90,12 10,12" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
+      `<polygon points="50,99 99,1 1,1" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
   },
   {
     id: 'pentagon',
@@ -540,10 +583,10 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultHeight: 25,
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
-      <polygon points="50,8 92,50 50,92 8,50" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <polygon points="50,1 99,50 50,99 1,50" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<polygon points="50,8 92,50 50,92 8,50" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
+      `<polygon points="50,1 99,50 50,99 1,50" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
   },
   {
     id: 'star',
@@ -555,7 +598,7 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
       <polygon
-        points="50,10 62,36 90,38 68,57 75,85 50,71 25,85 32,57 10,38 38,36"
+        points="50,1 64.7,35 99,37.6 72.1,62.3 80.6,99 50,80.7 19.4,99 27.9,62.3 1,37.6 35.3,35"
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -563,7 +606,7 @@ export const COVER_SHAPES: CoverShapeDef[] = [
       />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<polygon points="50,10 62,36 90,38 68,57 75,85 50,71 25,85 32,57 10,38 38,36" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
+      `<polygon points="50,1 64.7,35 99,37.6 72.1,62.3 80.6,99 50,80.7 19.4,99 27.9,62.3 1,37.6 35.3,35" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
   },
   {
     id: 'heart',
@@ -575,7 +618,7 @@ export const COVER_SHAPES: CoverShapeDef[] = [
     defaultFill: '#a1a1aa',
     renderSvg: (fill = '#a1a1aa', stroke, strokeWidth) => (
       <path
-        d="M50,86 C50,86 16,62 16,36 C16,22 26,14 38,14 C44,14 48,18 50,22 C52,18 56,14 62,14 C74,14 84,22 84,36 C84,62 50,86 50,86 Z"
+        d="M50,99 C50,99 1,66.5 1,31.5 C1,12.5 15.5,1 32.8,1 C41.3,1 47.1,6.4 50,11.9 C52.9,6.4 58.7,1 67.2,1 C84.5,1 99,12.5 99,31.5 C99,66.5 50,99 50,99 Z"
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -583,7 +626,7 @@ export const COVER_SHAPES: CoverShapeDef[] = [
       />
     ),
     toSvgMarkup: (fill = '#a1a1aa', stroke, strokeWidth) =>
-      `<path d="M50,86 C50,86 16,62 16,36 C16,22 26,14 38,14 C44,14 48,18 50,22 C52,18 56,14 62,14 C74,14 84,22 84,36 C84,62 50,86 50,86 Z" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
+      `<path d="M50,99 C50,99 1,66.5 1,31.5 C1,12.5 15.5,1 32.8,1 C41.3,1 47.1,6.4 50,11.9 C52.9,6.4 58.7,1 67.2,1 C84.5,1 99,12.5 99,31.5 C99,66.5 50,99 50,99 Z" fill="${fill}" ${stroke ? `stroke="${stroke}" stroke-width="${strokeWidth || 2}"` : ''} stroke-linejoin="round" />`,
   },
   {
     id: 'hexagon',
@@ -647,8 +690,8 @@ export const ShapeSvgRenderer: React.FC<{
   const def = SHAPE_MAP.get(shape.shapeType) || COVER_SHAPES[0]
   const isLine = def.category === 'line'
 
-  // If square or rounded-rect: render with real widthPx and heightPx so it stretches into a rectangle
-  if (shape.shapeType === 'square' || shape.shapeType === 'rounded-rect') {
+  // If square or rounded-rect (or 4-sided polygon): render with real widthPx and heightPx so it stretches into a rectangle
+  if (shape.shapeType === 'square' || shape.shapeType === 'rounded-rect' || (shape.shapeType === 'polygon' && shape.sides === 4)) {
     const w = widthPx && widthPx > 0 ? widthPx : 100
     const h = heightPx && heightPx > 0 ? heightPx : 100
     const maxR = Math.min(w, h) / 2
@@ -741,7 +784,7 @@ export function shapeToFullSvgString(shape: ShapeCoverElement, widthPx: number, 
   const strokeAttr = shape.strokeColor ? `stroke="${shape.strokeColor}" stroke-width="${shape.strokeWidth || 2}"` : ''
   const dashAttr = shape.strokeDasharray ? `stroke-dasharray="${shape.strokeDasharray}"` : ''
 
-  if (shape.shapeType === 'square' || shape.shapeType === 'rounded-rect') {
+  if (shape.shapeType === 'square' || shape.shapeType === 'rounded-rect' || (shape.shapeType === 'polygon' && shape.sides === 4)) {
     const w = widthPx
     const h = heightPx
     const maxR = Math.min(w, h) / 2

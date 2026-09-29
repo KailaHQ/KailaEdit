@@ -79,8 +79,8 @@ describe('i18n Dictionaries Parity', () => {
     expect(en.editpilot.settingsTitle).toBe('CoEdit Configuration')
     expect(vi.editpilot.settingsTitle).toBe('Cấu hình CoEdit')
 
-    expect(en.timeline.closeGap).toBe('Close Gap')
-    expect(vi.timeline.closeGap).toBe('Dồn khoảng trống')
+    expect(en.timeline.trackTypes.audio).toBe('Audio')
+    expect(vi.timeline.trackTypes.audio).toBe('Âm thanh')
 
     expect(en.library.tabs.media).toBe('Media')
     expect(vi.library.tabs.media).toBe('Media')

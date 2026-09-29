@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { Asset, TimelineClip, Track } from '../../../types/project-model'
-import { packMainVideoTrack, mainVideoTrackIndex, resolveOverlaps, type ToolType } from '../video-editor-utils'
+import { packMainVideoTrack, mainVideoTrackIndex, resolveOverlaps, neighbourTrimBounds, type ToolType } from '../video-editor-utils'
+import {
+  collectTimelineSnapTargets,
+  snapClipResize,
+  computeSnapThresholdSeconds,
+  type SnapTarget,
+} from '@core/timeline-snap'
 
 export interface ResizingClipState {
   clipId: string
@@ -34,6 +40,7 @@ interface UseTimelineResizeParams {
   expandWithLinkedClips: (ids: Set<string>) => Set<string>
   activeTimeline: any
   setCurrentTime?: (time: number) => void
+  onSnapGuideChange?: (time: number | null) => void
 }
 
 export function useTimelineResize({
@@ -50,6 +57,7 @@ export function useTimelineResize({
   expandWithLinkedClips,
   activeTimeline,
   setCurrentTime,
+  onSnapGuideChange,
 }: UseTimelineResizeParams) {
   const [resizingClip, setResizingClip] = useState<ResizingClipState | null>(null)
 
@@ -201,19 +209,29 @@ export function useTimelineResize({
           : Infinity
 
         let proposedDuration = resizingClip.originalDuration + deltaTime
+        let activeSnappedTarget: SnapTarget | null = null
+
         if (snapEnabled) {
-          const snapThreshold = 0.2
-          const newEndTime = resizingClip.originalStartTime + proposedDuration
-          if (Math.abs(newEndTime - getCurrentTime()) < snapThreshold) {
-            proposedDuration = getCurrentTime() - resizingClip.originalStartTime
-          }
-          for (const otherClip of clips) {
-            if (otherClip.id === clip.id) continue
-            if (Math.abs(newEndTime - otherClip.startTime) < snapThreshold) {
-              proposedDuration = otherClip.startTime - resizingClip.originalStartTime
-            }
+          const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+          const targets = collectTimelineSnapTargets({
+            clips,
+            transitions: currentTransitions,
+            currentTime: getCurrentTime(),
+            markers: activeTimeline?.markers,
+            ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+          })
+          const snapResult = snapClipResize({
+            edge: 'right',
+            proposedTime: resizingClip.originalStartTime + proposedDuration,
+            targets,
+            snapThreshold,
+          })
+          if (snapResult.snappedTarget) {
+            proposedDuration = snapResult.snappedTime - resizingClip.originalStartTime
+            activeSnappedTarget = snapResult.snappedTarget
           }
         }
+        onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
 
         const newDuration = Math.max(0.5, Math.min(proposedDuration, maxDuration))
         const trimEnd = sourceDuration !== null && sourceDuration > 0
@@ -239,14 +257,29 @@ export function useTimelineResize({
         const minDelta = -resizingClip.originalTrimStart / clip.speed
         const maxDelta = resizingClip.originalDuration - 0.5
         let proposedDelta = deltaTime
+        let activeSnappedTarget: SnapTarget | null = null
 
         if (snapEnabled) {
-          const snapThreshold = 0.2
-          const proposedStartTime = resizingClip.originalStartTime + proposedDelta
-          if (Math.abs(proposedStartTime - getCurrentTime()) < snapThreshold) {
-            proposedDelta = getCurrentTime() - resizingClip.originalStartTime
+          const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+          const targets = collectTimelineSnapTargets({
+            clips,
+            transitions: currentTransitions,
+            currentTime: getCurrentTime(),
+            markers: activeTimeline?.markers,
+            ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+          })
+          const snapResult = snapClipResize({
+            edge: 'left',
+            proposedTime: resizingClip.originalStartTime + proposedDelta,
+            targets,
+            snapThreshold,
+          })
+          if (snapResult.snappedTarget) {
+            proposedDelta = snapResult.snappedTime - resizingClip.originalStartTime
+            activeSnappedTarget = snapResult.snappedTarget
           }
         }
+        onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
 
         const clampedDelta = Math.max(minDelta, Math.min(maxDelta, proposedDelta))
         const newTrimStart = Math.max(0, resizingClip.originalTrimStart + clampedDelta * clip.speed)
@@ -273,12 +306,48 @@ export function useTimelineResize({
       }
     }
 
+    // Overlay trims stop at the neighbouring clips' edges instead of running over them
+    // (see neighbourTrimBounds). The main track is left out: its magnet repacks it.
+    const trimmedIds = new Set<string>([clip.id, ...(clip.linkedClipIds || [])])
+    const trimBounds = neighbourTrimBounds(
+      clips,
+      trimmedIds,
+      clips.filter(c => trimmedIds.has(c.id) && c.trackIndex !== effectiveMainIndex).map(c => c.trackIndex),
+      resizingClip.originalStartTime,
+      resizingClip.originalStartTime + resizingClip.originalDuration,
+      activeTimeline?.transitions ?? [],
+    )
+
     // === RIPPLE TRIM (Overlay tracks) ===
     if (resizingClip.tool === 'ripple') {
       if (resizingClip.edge === 'left') {
-        let newStartTime = resizingClip.originalStartTime + deltaTime
+        let proposedStartTime = resizingClip.originalStartTime + deltaTime
+        let activeSnappedTarget: SnapTarget | null = null
+
+        if (snapEnabled) {
+          const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+          const targets = collectTimelineSnapTargets({
+            clips,
+            transitions: activeTimeline?.transitions,
+            currentTime: getCurrentTime(),
+            markers: activeTimeline?.markers,
+            ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+          })
+          const snapResult = snapClipResize({
+            edge: 'left',
+            proposedTime: proposedStartTime,
+            targets,
+            snapThreshold,
+          })
+          if (snapResult.snappedTarget) {
+            proposedStartTime = snapResult.snappedTime
+            activeSnappedTarget = snapResult.snappedTarget
+          }
+        }
+        onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
+
         const earliestStart = earliestTrimStartTime(clip, resizingClip.originalStartTime, resizingClip.originalTrimStart)
-        newStartTime = Math.max(earliestStart, newStartTime)
+        let newStartTime = Math.max(earliestStart, trimBounds.minStart, proposedStartTime)
         const maxStart = resizingClip.originalStartTime + resizingClip.originalDuration - 0.5
         newStartTime = Math.min(maxStart, newStartTime)
 
@@ -301,7 +370,32 @@ export function useTimelineResize({
         }))
       } else {
         // Ripple trim right edge
-        let newDuration = resizingClip.originalDuration + deltaTime
+        let proposedEndTime = resizingClip.originalStartTime + resizingClip.originalDuration + deltaTime
+        let activeSnappedTarget: SnapTarget | null = null
+
+        if (snapEnabled) {
+          const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+          const targets = collectTimelineSnapTargets({
+            clips,
+            transitions: activeTimeline?.transitions,
+            currentTime: getCurrentTime(),
+            markers: activeTimeline?.markers,
+            ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+          })
+          const snapResult = snapClipResize({
+            edge: 'right',
+            proposedTime: proposedEndTime,
+            targets,
+            snapThreshold,
+          })
+          if (snapResult.snappedTarget) {
+            proposedEndTime = snapResult.snappedTime
+            activeSnappedTarget = snapResult.snappedTarget
+          }
+        }
+        onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
+
+        let newDuration = proposedEndTime - resizingClip.originalStartTime
         newDuration = Math.max(0.5, Math.min(newDuration, maxDurationFromInPoint(clip)))
         const durationDelta = newDuration - resizingClip.originalDuration
 
@@ -322,32 +416,39 @@ export function useTimelineResize({
 
     // === STANDARD TRIM (Overlay tracks) ===
     if (resizingClip.edge === 'left') {
-      let newStartTime = resizingClip.originalStartTime + deltaTime
+      let proposedStartTime = resizingClip.originalStartTime + deltaTime
+      let activeSnappedTarget: SnapTarget | null = null
+
+      if (snapEnabled) {
+        const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+        const targets = collectTimelineSnapTargets({
+          clips,
+          transitions: activeTimeline?.transitions,
+          currentTime: getCurrentTime(),
+          markers: activeTimeline?.markers,
+          ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+        })
+        const snapResult = snapClipResize({
+          edge: 'left',
+          proposedTime: proposedStartTime,
+          targets,
+          snapThreshold,
+        })
+        if (snapResult.snappedTarget) {
+          proposedStartTime = snapResult.snappedTime
+          activeSnappedTarget = snapResult.snappedTarget
+        }
+      }
+      onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
+
       const earliestStart = earliestTrimStartTime(
         clip,
         resizingClip.originalStartTime,
         resizingClip.originalTrimStart,
       )
-      newStartTime = Math.max(earliestStart, newStartTime)
+      let newStartTime = Math.max(earliestStart, trimBounds.minStart, proposedStartTime)
       const maxStart = resizingClip.originalStartTime + resizingClip.originalDuration - 0.5
       newStartTime = Math.min(maxStart, newStartTime)
-
-      if (snapEnabled) {
-        const snapThreshold = 0.2
-        if (Math.abs(newStartTime - getCurrentTime()) < snapThreshold) {
-          newStartTime = Math.max(earliestStart, Math.min(maxStart, getCurrentTime()))
-        }
-        for (const otherClip of clips) {
-          if (otherClip.id === clip.id) continue
-          if (Math.abs(newStartTime - otherClip.startTime) < snapThreshold) {
-            newStartTime = Math.max(earliestStart, Math.min(maxStart, otherClip.startTime))
-          }
-          const otherEnd = otherClip.startTime + otherClip.duration
-          if (Math.abs(newStartTime - otherEnd) < snapThreshold) {
-            newStartTime = Math.max(earliestStart, Math.min(maxStart, otherEnd))
-          }
-        }
-      }
 
       const actualDelta = newStartTime - resizingClip.originalStartTime
       const newDuration = resizingClip.originalDuration - actualDelta
@@ -367,28 +468,33 @@ export function useTimelineResize({
         return c
       }))
     } else {
-      let newDuration = resizingClip.originalDuration + deltaTime
+      let proposedEndTime = resizingClip.originalStartTime + resizingClip.originalDuration + deltaTime
+      let activeSnappedTarget: SnapTarget | null = null
 
       if (snapEnabled) {
-        const snapThreshold = 0.2
-        const newEndTime = clip.startTime + newDuration
-
-        if (Math.abs(newEndTime - getCurrentTime()) < snapThreshold) {
-          newDuration = getCurrentTime() - clip.startTime
-        }
-        for (const otherClip of clips) {
-          if (otherClip.id === clip.id) continue
-          if (Math.abs(newEndTime - otherClip.startTime) < snapThreshold) {
-            newDuration = otherClip.startTime - clip.startTime
-          }
-          const otherEnd = otherClip.startTime + otherClip.duration
-          if (Math.abs(newEndTime - otherEnd) < snapThreshold) {
-            newDuration = otherEnd - clip.startTime
-          }
+        const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+        const targets = collectTimelineSnapTargets({
+          clips,
+          transitions: activeTimeline?.transitions,
+          currentTime: getCurrentTime(),
+          markers: activeTimeline?.markers,
+          ignoreClipIds: new Set([clip.id, ...(clip.linkedClipIds || [])]),
+        })
+        const snapResult = snapClipResize({
+          edge: 'right',
+          proposedTime: proposedEndTime,
+          targets,
+          snapThreshold,
+        })
+        if (snapResult.snappedTarget) {
+          proposedEndTime = snapResult.snappedTime
+          activeSnappedTarget = snapResult.snappedTarget
         }
       }
+      onSnapGuideChange?.(activeSnappedTarget ? activeSnappedTarget.time : null)
 
-      newDuration = Math.min(newDuration, maxDurationFromInPoint(clip))
+      let newDuration = proposedEndTime - resizingClip.originalStartTime
+      newDuration = Math.min(newDuration, maxDurationFromInPoint(clip), trimBounds.maxEnd - resizingClip.originalStartTime)
 
       const linkedIds = new Set<string>(clip.linkedClipIds || [])
       const finalDuration = Math.max(0.5, newDuration)
@@ -406,7 +512,8 @@ export function useTimelineResize({
         return c
       }))
     }
-  }, [resizingClip, clips, pixelsPerSecond, snapEnabled, getCurrentTime, earliestTrimStartTime, maxDurationFromInPoint, sourceDurationOf, setClips, tracks, setCurrentTime])
+  }, [resizingClip, clips, pixelsPerSecond, snapEnabled, getCurrentTime, earliestTrimStartTime, maxDurationFromInPoint, sourceDurationOf, setClips, tracks, setCurrentTime, activeTimeline, onSnapGuideChange])
+
 
   const handleResizeStart = useCallback((e: React.MouseEvent, clip: TimelineClip, edge: 'left' | 'right') => {
     e.stopPropagation()
@@ -456,6 +563,7 @@ export function useTimelineResize({
   }, [tracks, setSelectedClipIds, expandWithLinkedClips, activeTool, clips])
 
   const finalizeResize = useCallback(() => {
+    onSnapGuideChange?.(null)
     if (resizingClip) {
       const currentTransitions = activeTimeline?.transitions ?? []
       const mainIndex = mainVideoTrackIndex(tracks)

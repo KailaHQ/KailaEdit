@@ -379,8 +379,11 @@ export function buildVideoFilterGraph(
         const scaleY = Math.max(1, (transform as any)?.scaleY ?? transform?.scale ?? 100) / 100
         const boxW = Math.max(2, Math.round(width * scaleX))
         const boxH = Math.max(2, Math.round(height * scaleY))
-        if ((transform as any)?.scaleX !== undefined || (transform as any)?.scaleY !== undefined) {
-          chain += `,scale=${boxW}:${boxH},setsar=1`
+        if (transform?.scaleX !== undefined || transform?.scaleY !== undefined) {
+          // Fit first, exactly as the uniform path does, then stretch each axis. Scaling
+          // straight to frame × scale stretched a square source to the frame's shape
+          // before any scale was applied — the preview fits the media, then scales it.
+          chain += `,scale=${width}:${height}:force_original_aspect_ratio=decrease,scale=w='max(2,round(iw*${scaleX.toFixed(6)}))':h='max(2,round(ih*${scaleY.toFixed(6)}))',setsar=1`
         } else {
           chain += `,scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1`
         }

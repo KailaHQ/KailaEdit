@@ -3,9 +3,11 @@ import { Loader2, RotateCcw, AlertTriangle, Sparkles, CheckCircle2 } from 'lucid
 import type { TimelineClip, AutoMatte, AutoMatteQuality } from '@core/project-model'
 import { DEFAULT_AUTO_MATTE } from '@core/project-model'
 import { isAutoMatteBakeValid } from '@core/auto-matte'
+import { clipAsPlayed, stabilizedClipPath } from '@core/stabilization'
+import { selectAssets } from '@core/editor-selectors'
 import { PropertyToggle } from '../PropertyControls'
 import { useTranslation } from '../../../i18n/I18nContext'
-import { useEditorActions } from '../editor-store'
+import { useEditorActions, useEditorStore } from '../editor-store'
 import { useMatteBake } from '../../../hooks/useMatteBake'
 
 export interface AutoRemovalCardProps {
@@ -16,18 +18,23 @@ export const AutoRemovalCard: React.FC<AutoRemovalCardProps> = ({ clip }) => {
   const { t } = useTranslation()
   const { setClipAutoMatte } = useEditorActions()
   const { isBaking, error, startBake, cancelBake } = useMatteBake(clip)
+  const assets = useEditorStore(selectAssets)
+  // Judged against the clip as it plays: a stabilized clip's matte is of its stabilized file.
+  const playedClip = clipAsPlayed(clip, assets)
+  const stabilizedPath = stabilizedClipPath(playedClip)
 
   const autoMatte: AutoMatte = clip.autoMatte ?? DEFAULT_AUTO_MATTE
   const isEnabled = Boolean(clip.autoMatte?.enabled)
 
   const hasValidBake = clip
     ? isAutoMatteBakeValid(clip.autoMatte?.bake, {
-        trimStart: clip.trimStart,
-        duration: clip.duration,
-        speed: clip.speed ?? 1,
-        reversed: Boolean(clip.reversed),
+        trimStart: playedClip.trimStart,
+        duration: playedClip.duration,
+        speed: playedClip.speed ?? 1,
+        reversed: Boolean(playedClip.reversed),
         model: autoMatte.model || 'rvm-mobilenetv3',
         quality: autoMatte.quality || 'standard',
+        ...(stabilizedPath ? { assetKey: stabilizedPath } : {}),
       })
     : false
 

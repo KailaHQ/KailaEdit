@@ -33,6 +33,14 @@ export function ShapesLibrary() {
     actions.addStickerClip({
       stickerId: `shape-${shape.id}`,
       imagePath: `stickers/shape-${shape.id}.png`,
+      shapeProperties: {
+        fillColor: shape.defaultFill,
+        strokeColor: shape.defaultStroke,
+        strokeWidth: shape.defaultStrokeWidth,
+        strokeDasharray: shape.defaultStrokeDasharray,
+        sides: shape.defaultSides,
+        cornerRounding: shape.defaultCornerRounding,
+      },
     })
   }
 

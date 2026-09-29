@@ -30,6 +30,8 @@ import {
   setClipChromaKey,
   setClipAutoMatte,
   setClipCustomMatte,
+  setClipStabilization,
+  replaceClipMedia,
   setClipStroke,
   setClipBlendMode,
   applyTextPresetToClip,
@@ -460,6 +462,14 @@ export function executePatchOperations(state: EditorState, operations: EditPatch
       }
       case 'set_custom_matte': {
         current = setClipCustomMatte(current, op.clipId, op.customMatte ?? null)
+        break
+      }
+      case 'replace_clip': {
+        current = replaceClipMedia(current, op.clipId, op.assetId, op.sourceStart ?? 0)
+        break
+      }
+      case 'set_stabilization': {
+        current = setClipStabilization(current, op.clipId, op.stabilization ?? null)
         break
       }
       case 'set_stroke': {

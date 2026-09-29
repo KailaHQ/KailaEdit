@@ -14,6 +14,9 @@ import {
   detectBrollOpportunities,
   formatTranscriptForHighlights,
   isAutoMatteBakeValid,
+  clipAsPlayed,
+  describeClipStabilization,
+  stabilizedClipPath,
 } from '@komfyedit/core'
 import { listProjects, readProject } from '../project-reader.ts'
 import {
@@ -88,6 +91,10 @@ export async function handleReadTool(
           .sort((a, b) => a.startTime - b.startTime)
           .map(c => {
             const asset = c.assetId ? assetMap.get(c.assetId) : c.asset
+            // A stabilized clip plays its baked file; its matte is judged against that.
+            const played = clipAsPlayed(c, project.assets || [])
+            const stabilizedPath = stabilizedClipPath(played)
+            const stabilization = describeClipStabilization(c, project.assets || [], p => fs.existsSync(p))
             const assetPath = asset?.path || ''
             const isTextClip = c.type === 'text'
             const defaultName = isTextClip
@@ -109,6 +116,7 @@ export async function handleReadTool(
               ...(isTextClip && c.textStyle ? { text: c.textStyle.text, textStyle: c.textStyle } : {}),
               ...(c.filter ? { filter: c.filter } : {}),
               ...(c.stickerId ? { stickerId: c.stickerId, isSticker: true } : {}),
+              ...(c.shapeProperties ? { shapeProperties: c.shapeProperties } : {}),
               ...(c.keyframes?.length ? { keyframes: c.keyframes } : {}),
               ...(c.transform ? { transform: c.transform } : {}),
               ...(c.mask ? { mask: c.mask } : {}),
@@ -124,12 +132,13 @@ export async function handleReadTool(
                     const exists = fs.existsSync(bake.path)
                     const isComplete = bake.status !== 'partial' && bake.status !== 'error'
                     const valid = exists && isComplete && isAutoMatteBakeValid(bake, {
-                      trimStart: c.trimStart,
-                      duration: c.duration,
-                      speed: c.speed,
-                      reversed: c.reversed,
+                      trimStart: played.trimStart,
+                      duration: played.duration,
+                      speed: played.speed,
+                      reversed: played.reversed,
                       model: c.autoMatte.model || 'rvm-mobilenetv3',
                       quality: c.autoMatte.quality || 'standard',
+                      ...(stabilizedPath ? { assetKey: stabilizedPath } : {}),
                     })
                     return {
                       bakeReady: valid,
@@ -144,6 +153,7 @@ export async function handleReadTool(
                   })(),
                 },
               } : {}),
+              ...(stabilization ? { stabilization } : {}),
               ...(c.customMatte ? { customMatte: c.customMatte } : {}),
               ...(c.stroke ? { stroke: c.stroke } : {}),
               ...(c.blendMode && c.blendMode !== 'normal' ? { blendMode: c.blendMode } : {}),

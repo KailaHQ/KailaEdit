@@ -1,6 +1,7 @@
 import { dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import { getAllowedRoots } from '../config'
 import { logger } from '../logger'
 import { getMainWindow } from '../window'
@@ -283,6 +284,23 @@ export function registerFileHandlers(): void {
       return { success: true, path: filePath }
     } catch (error) {
       logger.error( `Error saving binary file: ${error}`)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  handle('saveTempShapeImage', async ({ clipId, data }) => {
+    try {
+      const tempDir = path.join(os.tmpdir(), 'kailaedit-shapes')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+      const safeClipId = clipId.replace(/[^a-zA-Z0-9_-]/g, '_')
+      const filePath = path.join(tempDir, `shape-${safeClipId}-${Date.now()}.png`)
+      fs.writeFileSync(filePath, Buffer.from(data, 'base64'))
+      approvePath(filePath)
+      return { success: true, path: filePath }
+    } catch (error) {
+      logger.error(`Error saving temp shape image: ${error}`)
       return { success: false, error: String(error) }
     }
   })

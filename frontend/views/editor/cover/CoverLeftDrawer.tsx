@@ -28,6 +28,7 @@ import {
   Loader2,
   Bookmark,
   BookmarkPlus,
+  Ban,
 } from 'lucide-react'
 import type {
   CoverElement,
@@ -45,6 +46,13 @@ import {
 } from './cover-templates'
 import { COVER_TEXT_PRESETS } from './cover-text-presets'
 import { COVER_SHAPES, type CoverShapeDef } from './cover-shapes'
+import {
+  COVER_TEXT_STYLE_PRESETS,
+  PLAIN_COVER_TEXT_LOOK_ID,
+  isCoverTextLook,
+  coverTextLookCss,
+  applyCoverTextLook,
+} from './cover-text-style-presets'
 
 export interface CoverLeftDrawerProps {
   isOpen: boolean
@@ -559,6 +567,35 @@ export const CoverLeftDrawer: React.FC<CoverLeftDrawerProps> = ({
             const el = selectedElement as TextCoverElement
             return (
               <>
+                {/* Preset style grid — same grid as the video editor text panel */}
+                <div className="space-y-2 pb-2">
+                  <div className="text-[11px] font-semibold text-zinc-200">Preset style</div>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {COVER_TEXT_STYLE_PRESETS.map(preset => {
+                      const active = isCoverTextLook(el, preset.look)
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          title={preset.id === PLAIN_COVER_TEXT_LOOK_ID ? 'None' : preset.id}
+                          onClick={() => onUpdateElement(el.id, applyCoverTextLook(preset.look))}
+                          className={`flex aspect-square items-center justify-center rounded-md bg-[#2a2a2e] transition-colors hover:bg-zinc-700 ${
+                            active ? 'ring-2 ring-sky-400' : ''
+                          }`}
+                        >
+                          {preset.id === PLAIN_COVER_TEXT_LOOK_ID ? (
+                            <Ban className="h-5 w-5 text-zinc-400" />
+                          ) : (
+                            <span className="text-[15px] font-black leading-none" style={coverTextLookCss(preset.look)}>
+                              Aa
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
                 {/* Shadow */}
                 <div className="p-3 rounded-lg bg-zinc-800/60 border border-zinc-700/60 space-y-3">
                   <div className="flex items-center justify-between">

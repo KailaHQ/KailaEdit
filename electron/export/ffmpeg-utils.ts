@@ -102,10 +102,12 @@ export function runFfmpegWithProgress(
   ffmpegPath: string,
   args: string[],
   onProgress?: (info: FfmpegProgressInfo) => void,
+  /** Working directory; some filters (vidstab's debug output) write next to it. */
+  options: { cwd?: string } = {},
 ): FfmpegProcessHandle {
   const progressArgs = ['-progress', 'pipe:1', ...args]
   logger.info(`[ffmpeg] spawn with progress: ${progressArgs.join(' ').slice(0, 400)}`)
-  const proc = spawn(ffmpegPath, progressArgs, { stdio: ['pipe', 'pipe', 'pipe'] })
+  const proc = spawn(ffmpegPath, progressArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: options.cwd })
   // `kill()` below can close these pipes under a write or a pending read; without a
   // listener that surfaces as an uncaught exception. See quietChildStdio.
   quietChildStdio(proc, 'ffmpeg')

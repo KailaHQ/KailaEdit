@@ -1,7 +1,47 @@
-import React, { useState } from 'react'
+import React, { useLayoutEffect, useRef, useState } from 'react'
 import { X, RotateCw } from 'lucide-react'
 import type { TimelineClip } from '../../../types/project-model'
 import { hasKeyframes, hasKeyframesForProperty, sampleClipAt } from '@core/keyframes'
+
+/** Frame height a text style's sizes are written against — the export scales by height / 1080. */
+export const TEXT_REFERENCE_FRAME_HEIGHT = 1080
+/** Breathing room around text without padding of its own, so it stays easy to grab. */
+export const TEXT_HIT_PADDING = 8
+/** The width a text box may grow to when none is set (percent of the frame's width). */
+export const DEFAULT_TEXT_MAX_WIDTH = 80
+
+/**
+ * Screen pixels per text-style pixel: the frame's height over 1080.
+ *
+ * Text used to be sized in `vh`, against the window. The picture is sized against the
+ * monitor, so enlarging the monitor (or shrinking the window) grew the picture but not the
+ * text, and the two came apart. Measured against the frame, text keeps its share of the
+ * picture at any monitor size — and it is the share the export burns in.
+ */
+export function useFrameTextUnit(
+  frameElement: HTMLElement | null,
+  boxRef?: React.RefObject<HTMLElement>,
+): number {
+  // Layout height, not the on-screen box: the monitor's zoom is a CSS scale on an ancestor,
+  // which already enlarges the text along with the picture.
+  const [height, setHeight] = useState(() => frameElement?.offsetHeight ?? 0)
+  useLayoutEffect(() => {
+    // The monitor hands over its frame through a ref read during render, which is still
+    // null on the first one — and a paused monitor may not render again. The text box sits
+    // directly in the frame, so its parent is the frame whenever the ref is not there yet.
+    const target = frameElement ?? boxRef?.current?.parentElement ?? null
+    if (!target) return
+    const measure = () => setHeight(target.offsetHeight)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [frameElement, boxRef])
+  // Before the frame is measured, the old window-relative size (0.05vh) is the nearest guess.
+  if (!(height > 0)) return typeof window !== 'undefined' ? window.innerHeight * 0.0005 : 0.5
+  return height / TEXT_REFERENCE_FRAME_HEIGHT
+}
 
 export interface TextBoundingBoxProps {
   clip: TimelineClip
@@ -35,6 +75,8 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
   onInteractionEnd,
 }) => {
   const ts = clip.textStyle!
+  const boxRef = useRef<HTMLDivElement>(null)
+  const unit = useFrameTextUnit(frameElement, boxRef)
 
   // High-frequency local state for smooth 60fps interaction during dragging
   const [localPos, setLocalPos] = useState<{ x: number; y: number } | null>(null)
@@ -61,7 +103,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
   const effectivePosX = localPos ? localPos.x : basePosX
   const effectivePosY = localPos ? localPos.y : basePosY
   const effectiveFontSize = localFontSize ?? ts.fontSize
-  const effectiveMaxWidth = localMaxWidth ?? (ts.maxWidth > 0 ? ts.maxWidth : 80)
+  const effectiveMaxWidth = localMaxWidth ?? (ts.maxWidth > 0 ? ts.maxWidth : DEFAULT_TEXT_MAX_WIDTH)
   const effectiveRotation = localRotation ?? baseRotation
 
   // Typewriter effect via textProgress (0..100)
@@ -253,6 +295,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
 
   return (
     <div
+      ref={boxRef}
       className="absolute z-[24] select-none"
       style={{
         left: `${effectivePosX}%`,
@@ -274,27 +317,28 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
     >
       {/* Text rendering */}
       <div
-        className="p-1"
         style={{
           fontFamily: ts.fontFamily,
-          fontSize: `${effectiveFontSize * 0.05}vh`,
+          fontSize: `${effectiveFontSize * unit}px`,
           fontWeight: ts.fontWeight,
           fontStyle: ts.fontStyle,
+          textDecoration: ts.underline ? 'underline' : undefined,
           color: ts.color,
           backgroundColor: ts.backgroundColor,
           textAlign: ts.textAlign,
-          padding: ts.padding > 0 ? `${ts.padding * 0.04}vh` : undefined,
-          borderRadius: ts.borderRadius > 0 ? `${ts.borderRadius}px` : undefined,
-          letterSpacing: ts.letterSpacing !== 0 ? `${ts.letterSpacing}px` : undefined,
+          padding: `${(ts.padding > 0 ? ts.padding : TEXT_HIT_PADDING) * unit}px`,
+          borderRadius: ts.borderRadius > 0 ? `${ts.borderRadius * unit}px` : undefined,
+          letterSpacing: ts.letterSpacing !== 0 ? `${ts.letterSpacing * unit}px` : undefined,
           lineHeight: ts.lineHeight,
           textShadow:
             ts.shadowBlur > 0 || ts.shadowOffsetX !== 0 || ts.shadowOffsetY !== 0
-              ? `${ts.shadowOffsetX}px ${ts.shadowOffsetY}px ${ts.shadowBlur}px ${ts.shadowColor}`
+              ? `${ts.shadowOffsetX * unit}px ${ts.shadowOffsetY * unit}px ${ts.shadowBlur * unit}px ${ts.shadowColor}`
               : undefined,
           WebkitTextStroke:
             ts.strokeWidth > 0 && ts.strokeColor !== 'transparent'
-              ? `${ts.strokeWidth}px ${ts.strokeColor}`
+              ? `${ts.strokeWidth * unit}px ${ts.strokeColor}`
               : undefined,
+          paintOrder: 'stroke fill',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
           userSelect: 'none',

@@ -5,9 +5,11 @@ import { expect, it, vi } from 'vitest'
 import { useMatteBakeAudit } from '../useMatteBake'
 
 const fixture = vi.hoisted(() => ({ clips: [] as any[], setClipAutoMatte: vi.fn() }))
+const getFixture = vi.hoisted(() => () => fixture)
 vi.mock('../../views/editor/editor-store', () => ({
   useEditorActions: () => ({ setClipAutoMatte: fixture.setClipAutoMatte }),
   useEditorStore: (selector: (state: any) => any) => selector(fixture),
+  useEditorGetState: () => getFixture,
 }))
 vi.mock('@core/editor-selectors', () => ({
   selectClips: (state: any) => state.clips,

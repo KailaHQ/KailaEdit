@@ -11,6 +11,9 @@ import type {
   EffectType,
   TimelineClip,
   Asset,
+  ShapeProperties,
+  ClipStabilization,
+  StabilizationBake,
 } from '../project-model'
 import {
   DEFAULT_CLIP_MASK,
@@ -20,7 +23,9 @@ import {
   DEFAULT_CLIP_STROKE,
   DEFAULT_COLOR_CORRECTION,
   DEFAULT_CLIP_TRANSFORM,
+  DEFAULT_CLIP_STABILIZATION,
 } from '../project-model'
+import { clampStabilizationSmoothing } from '../stabilization'
 import type { EditorState } from '../editor-state'
 import {
   selectActiveTimeline,
@@ -164,6 +169,48 @@ export function setClipCustomMatte(state: EditorState, clipId: string, customMat
       ...customMatte,
     },
   })
+}
+
+/**
+ * Turns stabilization on, changes its settings, or (with null) removes it.
+ *
+ * Only video clips can be stabilized. Changing a setting keeps the old bake on the clip:
+ * it no longer validates, so the clip plays the original until the new bake lands, and
+ * turning the setting back finds the old bake still good.
+ */
+export function setClipStabilization(
+  state: EditorState,
+  clipId: string,
+  stabilization: Partial<Omit<ClipStabilization, 'bake'>> | null,
+): EditorState {
+  if (!stabilization) return updateClip(state, clipId, { stabilization: undefined })
+  const clip = selectClipById(state, clipId)
+  if (!clip || clip.type !== 'video') return state
+  const current = clip.stabilization || DEFAULT_CLIP_STABILIZATION
+  return updateClip(state, clipId, {
+    stabilization: {
+      ...current,
+      ...stabilization,
+      ...(stabilization.smoothing !== undefined
+        ? { smoothing: clampStabilizationSmoothing(stabilization.smoothing) }
+        : {}),
+    },
+  })
+}
+
+/**
+ * Records (or with undefined, forgets) the bake a clip plays. Bookkeeping for the bake
+ * keeper, not an edit: callers apply it without an undo step.
+ */
+export function setClipStabilizationBake(
+  state: EditorState,
+  clipId: string,
+  bake: StabilizationBake | undefined,
+): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip?.stabilization) return state
+  if (clip.stabilization.bake === bake) return state
+  return updateClip(state, clipId, { stabilization: { ...clip.stabilization, bake } })
 }
 
 export function addCustomMatteStroke(state: EditorState, clipId: string, stroke: BrushStroke): EditorState {
@@ -399,6 +446,7 @@ export interface AddStickerClipParams {
   positionY?: number
   rotation?: number
   opacity?: number
+  shapeProperties?: ShapeProperties
 }
 
 /**
@@ -526,6 +574,7 @@ export function addStickerClip(state: EditorState, params: AddStickerClipParams)
       ...(params.rotation !== undefined ? { rotation: params.rotation } : {}),
     },
     opacity: params.opacity ?? 100,
+    ...(params.shapeProperties ? { shapeProperties: params.shapeProperties } : {}),
   }
 
   return replaceActiveTimeline(next, timeline => ({

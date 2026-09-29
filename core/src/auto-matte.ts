@@ -144,6 +144,18 @@ export function parseAutoMatteFingerprint(
   }
 }
 
+/**
+ * Whether two media keys name the same file.
+ *
+ * The main process records a matte's key as the resolved path, lowercased on Windows,
+ * while the renderer only has the path as the project stores it. Comparing without case
+ * or slash direction lets the renderer check a key it cannot reproduce exactly.
+ */
+export function sameMediaKey(a: string, b: string): boolean {
+  const norm = (key: string) => key.replace(/\\/g, '/').toLowerCase()
+  return norm(a) === norm(b)
+}
+
 /** Whether `have` spans the whole of `need`. */
 export function autoMatteRangeCovers(have: AutoMatteSourceRange, need: AutoMatteSourceRange): boolean {
   return (
@@ -177,7 +189,7 @@ export function isAutoMatteBakeValid(
   // thereafter any clip speed reuses the same bake without another inference job.
   if (Number(bake.speed ?? 1) !== 1) return false
   if (Boolean(bake.reversed) !== Boolean(params.reversed)) return false
-  if (params.assetKey && bake.assetKey && bake.assetKey !== params.assetKey) return false
+  if (params.assetKey && bake.assetKey && !sameMediaKey(bake.assetKey, params.assetKey)) return false
 
   const have = { sourceStart: bake.sourceStart, sourceSpan: bake.sourceSpan }
   const need = autoMatteSourceRange(params)

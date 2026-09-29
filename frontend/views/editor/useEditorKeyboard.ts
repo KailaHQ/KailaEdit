@@ -8,7 +8,6 @@ import {
   selectCropMode,
   selectEyedropperMode,
   selectKeyboardCommandContext,
-  selectSelectedGap,
   selectSelectedSubtitleId,
   selectTracks,
 } from './editor-selectors'
@@ -24,9 +23,6 @@ interface KeyboardRefs {
   playbackTimeRef: React.MutableRefObject<number>
   centerOnPlayheadRef: React.MutableRefObject<boolean>
   getMinZoomRef: React.MutableRefObject<() => number>
-  selectedGapRef: React.MutableRefObject<{ trackIndex: number; startTime: number; endTime: number } | null>
-  clearSelectedGapRef: React.MutableRefObject<() => void>
-  closeSelectedGapRef: React.MutableRefObject<() => void>
   fitToViewRef: React.MutableRefObject<() => void>
   toggleFullscreenRef: React.MutableRefObject<() => void>
   openSettingsRef?: React.MutableRefObject<() => void>
@@ -75,6 +71,8 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
       // Only suppress shortcuts when user is actively typing in text fields
       if (isTypingInTextInput(e.target)) return
       if (refs.isKbEditorOpenRef.current) return
+      // A full-screen tool with keys of its own (the cover studio) is open over the editor.
+      if (document.querySelector('[data-editor-shortcuts="off"]')) return
 
       const context = contextRef.current
       const state = refs.getState()
@@ -186,11 +184,7 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
             editorActions.clearSelectedKeyframe()
             break
           }
-          if (refs.selectedGapRef.current) {
-            refs.clearSelectedGapRef.current()
-          } else {
-            editorActions.clearClipSelection()
-          }
+          editorActions.clearClipSelection()
           break
         case 'edit.split': {
           // Always cut at the playhead — the red line is what the user is
@@ -337,8 +331,6 @@ export function useEditorKeyboard(params: UseEditorKeyboardParams) {
               }
             }
             editorActions.deleteClips([...deleteIds])
-          } else if (selectSelectedGap(state)) {
-            refs.closeSelectedGapRef.current()
           } else if (selectSelectedSubtitleId(state)) {
             editorActions.deleteSubtitle(selectSelectedSubtitleId(state)!)
           } else {

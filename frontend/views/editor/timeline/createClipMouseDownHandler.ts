@@ -16,7 +16,6 @@ export interface ClipMouseDownParams {
   setSlipSlideClip: (state: any) => void
   setDraggingClip: React.Dispatch<React.SetStateAction<DraggingClipState | null>>
   setSelectedSubtitleId: (id: string | null) => void
-  setSelectedGap: (gap: any) => void
   trackContainerRef: React.RefObject<HTMLDivElement>
   trackContentRef?: React.RefObject<HTMLDivElement>
   dragContainerRectRef: React.MutableRefObject<DOMRect | null>
@@ -42,7 +41,6 @@ export function createClipMouseDownHandler(params: ClipMouseDownParams) {
     setSlipSlideClip,
     setDraggingClip,
     setSelectedSubtitleId,
-    setSelectedGap,
     trackContainerRef,
     trackContentRef,
     dragContainerRectRef,
@@ -144,7 +142,6 @@ export function createClipMouseDownHandler(params: ClipMouseDownParams) {
       const forwardIds = expandWithLinkedClips(new Set(forwardClips.map(c => c.id)))
       setSelectedClipIds(forwardIds)
       setSelectedSubtitleId(null)
-      setSelectedGap(null)
       
       dragContainerRectRef.current = trackContainerRef.current?.getBoundingClientRect() ?? null
       dragRowRef.current = null

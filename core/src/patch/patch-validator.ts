@@ -5,6 +5,7 @@ import { resolveCut } from '../timeline-transitions'
 import { getFilterDefinition } from '../filters'
 import { getTextPreset, getTextAnimation, getSubtitlePreset } from '../text-presets'
 import { parseSrt } from '../srt'
+import { replaceClipRefusal, replacementSourceSpan } from '../clip-replace'
 import { editPatchSchema, type PatchValidationResult } from './patch-schema'
 
 /**
@@ -665,6 +666,63 @@ export function validateEditPatch(state: EditorState, rawPatch: unknown): PatchV
         return {
           valid: false,
           error: `Operation #${i + 1} (set_auto_matte): Cannot modify clip "${op.clipId}" on locked track #${clip.trackIndex}`,
+        }
+      }
+    }
+    if (op.op === 'replace_clip') {
+      const clip = clipMap.get(op.clipId)
+      if (!clip) {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (replace_clip): Clip ID "${op.clipId}" does not exist in active timeline`,
+        }
+      }
+      const asset = state.editorModel.assets.find(a => a.id === op.assetId)
+      if (!asset) {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (replace_clip): Asset ID "${op.assetId}" is not in the project (see media_list)`,
+        }
+      }
+      const refusal = replaceClipRefusal(clip, asset, activeTimeline.tracks)
+      if (refusal) {
+        const why: Record<string, string> = {
+          'not-replaceable': `clip "${op.clipId}" (type: ${clip.type}) is not a video or image clip — text, stickers, shapes, audio and adjustment layers cannot be replaced`,
+          'unsupported-media': `asset "${op.assetId}" is ${asset.type}; only video or image media can replace a clip`,
+          'same-media': `clip "${op.clipId}" already shows asset "${op.assetId}"`,
+          'too-short': `asset "${op.assetId}" is ${(asset.duration ?? 0).toFixed(2)}s long but the clip plays ${replacementSourceSpan(clip).toFixed(2)}s of media; the clip's length never changes, so the media must be at least that long`,
+          locked: `clip "${op.clipId}" is on locked track #${clip.trackIndex}`,
+        }
+        return { valid: false, error: `Operation #${i + 1} (replace_clip): ${why[refusal]}` }
+      }
+      if (op.sourceStart !== undefined && asset.type === 'video' && typeof asset.duration === 'number'
+        && op.sourceStart + replacementSourceSpan(clip) > asset.duration + 0.02) {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (replace_clip): starting at ${op.sourceStart}s, the clip would run past the end of the ${asset.duration.toFixed(2)}s media`,
+        }
+      }
+    }
+    if (op.op === 'set_stabilization') {
+      const clip = clipMap.get(op.clipId)
+      if (!clip) {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (set_stabilization): Clip ID "${op.clipId}" does not exist in active timeline`,
+        }
+      }
+      // Only moving footage has camera motion to take out; a still has none.
+      if (clip.type !== 'video') {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (set_stabilization): Cannot stabilize non-video clip "${op.clipId}" (type: ${clip.type})`,
+        }
+      }
+      const track = trackMap.get(clip.trackIndex)
+      if (track?.locked) {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (set_stabilization): Cannot modify clip "${op.clipId}" on locked track #${clip.trackIndex}`,
         }
       }
     }

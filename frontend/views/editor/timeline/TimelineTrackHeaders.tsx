@@ -137,7 +137,6 @@ export interface TimelineTrackHeadersProps {
   setVideoTrackHeight: (height: number) => void
   setAudioTrackHeight: (height: number) => void
   setSubtitleTrackHeight: (height: number) => void
-  suppressGapClickRef: React.MutableRefObject<boolean>
 }
 
 export const TimelineTrackHeaders: React.FC<TimelineTrackHeadersProps> = ({
@@ -161,7 +160,6 @@ export const TimelineTrackHeaders: React.FC<TimelineTrackHeadersProps> = ({
   setVideoTrackHeight,
   setAudioTrackHeight,
   setSubtitleTrackHeight,
-  suppressGapClickRef,
 }) => {
   const { t } = useTranslation()
   const storeClips = useEditorStore(selectClips)
@@ -377,11 +375,6 @@ export const TimelineTrackHeaders: React.FC<TimelineTrackHeadersProps> = ({
                     const onUp = () => {
                       window.removeEventListener('mousemove', onMove)
                       window.removeEventListener('mouseup', onUp)
-                      if (suppressGapClickRef.current) {
-                        window.setTimeout(() => {
-                          suppressGapClickRef.current = false
-                        }, 0)
-                      }
                     }
                     window.addEventListener('mousemove', onMove)
                     window.addEventListener('mouseup', onUp)

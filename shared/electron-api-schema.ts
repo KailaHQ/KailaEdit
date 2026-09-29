@@ -9,7 +9,7 @@ import {
   editPilotCommandOverridesSchema,
   editPilotConfigSchema,
 } from '../core/src/editpilot-agents'
-import { keyframeTrackSchema, clipMaskSchema, chromaKeySchema, autoMatteSchema, clipStrokeSchema, autoMatteModelValues, autoMatteQualityValues, autoMatteDeviceSchema } from '../core/src/project-model'
+import { keyframeTrackSchema, clipMaskSchema, chromaKeySchema, autoMatteSchema, clipStrokeSchema, autoMatteModelValues, autoMatteQualityValues, autoMatteDeviceSchema, stabilizationBakeSchema, stabilizationModeValues, STABILIZATION_SMOOTHING_MIN, STABILIZATION_SMOOTHING_MAX } from '../core/src/project-model'
 import { WHISPER_PROGRESS_STEPS } from '../core/src/whisper-types'
 import { komfyTemplateSchema } from '../core/src/template-model'
 
@@ -51,6 +51,9 @@ export type UpdateStateSchema = z.infer<typeof updateStateSchema>
 
 const exportClipTransform = z.object({
   scale: z.number(),
+  /** Per-axis scale, set by the side handles of a shape; absent means uniform `scale`. */
+  scaleX: z.number().optional(),
+  scaleY: z.number().optional(),
   positionX: z.number(),
   positionY: z.number(),
   rotation: z.number(),
@@ -137,6 +140,15 @@ const exportClip = z.object({
   autoMatte: autoMatteSchema.optional(),
   stroke: clipStrokeSchema.optional(),
   strokeBakePath: z.string().optional(),
+  stickerId: z.string().optional(),
+  shapeProperties: z.object({
+    fillColor: z.string().optional(),
+    strokeColor: z.string().optional(),
+    strokeWidth: z.number().optional(),
+    strokeDasharray: z.string().optional(),
+    cornerRounding: z.number().optional(),
+    sides: z.number().optional(),
+  }).optional(),
   assetId: z.string().nullable().optional(),
 })
 
@@ -414,6 +426,10 @@ export const electronAPISchemas = {
   },
   saveBinaryFile: {
     input: z.object({ filePath: z.string(), data: z.instanceof(ArrayBuffer) }),
+    output: ipcResult({ path: z.string() }),
+  },
+  saveTempShapeImage: {
+    input: z.object({ clipId: z.string(), data: z.string() }),
     output: ipcResult({ path: z.string() }),
   },
   showOpenDirectoryDialog: {
@@ -1002,6 +1018,52 @@ export const electronAPISchemas = {
       bake: matteBakeDescriptorSchema.optional(),
     }),
   },
+  stabilizeStart: {
+    input: z.object({
+      /** Chosen by the renderer so it can match progress events to the clip that asked. */
+      jobId: z.string(),
+      /** Recorded on the bake, so a bake is never served to another asset. */
+      assetId: z.string(),
+      filePath: z.string(),
+      sourceStart: z.number().min(0),
+      sourceSpan: z.number().positive(),
+      smoothing: z.number().min(STABILIZATION_SMOOTHING_MIN).max(STABILIZATION_SMOOTHING_MAX),
+      mode: z.enum(stabilizationModeValues),
+      /**
+       * What to make of an HDR source. 'hevc' keeps it HDR as 10-bit HEVC, which needs a
+       * machine that can decode HEVC; 'sdr' tone-maps it to 8-bit H.264. An SDR source is
+       * H.264 either way. The renderer decides, because it is the one that has to play it.
+       */
+      hdrOutput: z.enum(['hevc', 'sdr']).default('sdr'),
+    }),
+    output: z.object({
+      started: z.boolean(),
+      /** The bake was already on disk; `bake` is set and no job runs. */
+      cached: z.boolean().optional(),
+      bake: stabilizationBakeSchema.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  stabilizeCancel: {
+    input: z.object({ jobId: z.string() }),
+    output: z.object({ success: z.boolean() }),
+  },
+  stabilizeStatus: {
+    input: z.object({ jobId: z.string() }),
+    output: z.object({
+      status: z.enum(['idle', 'queued', 'running', 'done', 'error', 'cancelled']),
+      percent: z.number().min(0).max(100),
+      bake: stabilizationBakeSchema.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  stabilizeMissing: {
+    input: z.object({ paths: z.array(z.string()).max(500) }),
+    output: z.object({
+      /** The subset of `paths` that is no longer on disk. */
+      missing: z.array(z.string()),
+    }),
+  },
   imageRemoveBackground: {
     input: z.object({
       imageSrc: z.string(),
@@ -1098,6 +1160,14 @@ export const electronEventSchemas = {
     phase: z.enum(['extracting', 'inferring', 'encoding', 'done', 'error', 'cancelled']),
     frame: z.number().optional(),
     totalFrames: z.number().optional(),
+    error: z.string().optional(),
+  }),
+  'stabilize:progress': z.object({
+    jobId: z.string(),
+    percent: z.number().min(0).max(100),
+    phase: z.enum(['queued', 'analyzing', 'stabilizing', 'done', 'error', 'cancelled']),
+    /** Set on 'done'. */
+    bake: stabilizationBakeSchema.optional(),
     error: z.string().optional(),
   }),
 } as const

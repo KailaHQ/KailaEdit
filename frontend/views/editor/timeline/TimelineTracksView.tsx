@@ -10,7 +10,6 @@ import {
   TRACK_FWD_ONE_CURSOR,
 } from './TimelineClipItem'
 import { TimelineSubtitleItem } from './TimelineSubtitleItem'
-import { TimelineGapItem } from './TimelineGapItem'
 import { TimelineCutPointItem, type CutPointData } from './TimelineCutPointItem'
 import { clipEdgeExtents, visibleClipBounds } from '@core/timeline-cuts'
 
@@ -27,20 +26,18 @@ export interface TimelineTracksViewProps {
   tracks: Track[]
   clips: TimelineClip[]
   subtitles: SubtitleClip[]
-  timelineGaps: Array<{ trackIndex: number; startTime: number; endTime: number }>
   cutPoints: CutPointData[]
   selectedClipIds: Set<string>
   selectedSubtitleId: string | null
   editingSubtitleId: string | null
-  selectedGap: { trackIndex: number; startTime: number; endTime: number } | null
   draggingClip: { clipId: string } | null
   slipSlideClip: { clipId: string } | null
   resizingClip: { clipId: string; edge: 'left' | 'right' } | null
+  snapGuideTime?: number | null
   bladeHoverInfo: { clipId: string; offsetX: number; time: number } | null
   hoveredCutPoint: { leftClipId: string; rightClipId: string; time: number; trackIndex: number } | null
   lassoRect: { startX: number; startY: number; currentX: number; currentY: number } | null
   lassoOriginRef: React.MutableRefObject<{ scrollLeft: number; containerLeft: number; containerTop: number } | null>
-  suppressGapClickRef: React.MutableRefObject<boolean>
   timelineHoverRef: React.MutableRefObject<{ time: number; trackIndex: number } | null>
   assets: Asset[]
   videoTrackHeight: number
@@ -59,8 +56,6 @@ export interface TimelineTracksViewProps {
   setSelectedClipIds: (ids: Set<string>) => void
   setSelectedSubtitleId: (id: string | null) => void
   setEditingSubtitleId: (id: string | null) => void
-  clearSelectedGap: () => void
-  selectGap: (gap: { trackIndex: number; startTime: number; endTime: number }, target: HTMLElement) => void
   handleTrackDrop: (e: React.DragEvent, trackIndex: number) => void
   addSubtitleClip: (trackIndex: number) => void
   importFiles: (files: FileList | File[]) => Promise<Asset[]>
@@ -79,6 +74,8 @@ export interface TimelineTracksViewProps {
   setTransition: (leftClipId: string, rightClipId: string, type: string, duration: number) => void
   /** Shared entry point for transitions dropped anywhere on a track. */
   applyTransitionAtPoint: (trackIndex: number, time: number, type: string, snapSeconds: number) => boolean
+  /** Alt-drop of media onto a clip: replace its media (see TimelineClipItem). */
+  onDropReplace: (clipId: string, payload: { assetId?: string; files?: FileList }) => void
   removeTransition: (transitionId: string) => void
   /** Seeks the playhead to a cut, which is how the library knows where to apply. */
   onFocusCut: (time: number) => void
@@ -98,20 +95,18 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
   tracks,
   clips,
   subtitles,
-  timelineGaps,
   cutPoints,
   selectedClipIds,
   selectedSubtitleId,
   editingSubtitleId,
-  selectedGap,
   draggingClip,
   slipSlideClip,
   resizingClip,
+  snapGuideTime,
   bladeHoverInfo,
   hoveredCutPoint,
   lassoRect,
   lassoOriginRef,
-  suppressGapClickRef,
   timelineHoverRef,
   assets,
   videoTrackHeight,
@@ -130,8 +125,6 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
   setSelectedClipIds,
   setSelectedSubtitleId,
   setEditingSubtitleId,
-  clearSelectedGap,
-  selectGap,
   handleTrackDrop,
   addSubtitleClip,
   importFiles,
@@ -149,6 +142,7 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
   updateSubtitle,
   setTransition,
   applyTransitionAtPoint,
+  onDropReplace,
   removeTransition,
   onFocusCut,
 }) => {
@@ -290,7 +284,6 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
               if (activeTool === 'trackForward') {
                 setSelectedSubtitleId(null)
                 setEditingSubtitleId(null)
-                clearSelectedGap()
                 const container = trackContainerRef.current
                 if (container) {
                   const rect = container.getBoundingClientRect()
@@ -394,6 +387,18 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
             )
           })()}
 
+          {/* Vertical magnetic snap guide line */}
+          {snapGuideTime !== null && snapGuideTime !== undefined && (
+            <div
+              className="absolute top-0 bottom-0 w-[2px] bg-cyan-400 z-30 pointer-events-none shadow-[0_0_10px_rgba(56,189,248,0.9)]"
+              style={{ left: `${snapGuideTime * pixelsPerSecond}px` }}
+            >
+              <div className="sticky top-0 -left-6 transform -translate-x-1/2 px-1.5 py-0.5 bg-cyan-500 text-zinc-950 text-[9px] font-mono font-bold rounded-b shadow whitespace-nowrap">
+                {snapGuideTime.toFixed(2)}s
+              </div>
+            </div>
+          )}
+
           {/* Clips */}
           {clips.map(clip => {
             const bounds = visibleClipBounds(clip, clipExtents.get(clip.id))
@@ -424,28 +429,10 @@ export const TimelineTracksView: React.FC<TimelineTracksViewProps> = ({
               getLiveAsset={getLiveAsset}
               getClipResolution={getClipResolution}
               applyTransitionAtPoint={applyTransitionAtPoint}
+              onDropReplace={onDropReplace}
             />
             )
           })}
-
-          {/* Gap indicators between clips */}
-          {timelineGaps.map((gap, i) => (
-            <TimelineGapItem
-              key={`gap-${i}`}
-              gap={gap}
-              index={i}
-              selectedGap={selectedGap}
-              pixelsPerSecond={pixelsPerSecond}
-              trackTopPx={trackTopPx}
-              getTrackHeight={getTrackHeight}
-              activeTool={activeTool}
-              setIsPlaying={setIsPlaying}
-              scrubFromEvent={scrubFromEvent}
-              startSelectionLasso={startSelectionLasso}
-              selectGap={selectGap}
-              suppressGapClickRef={suppressGapClickRef}
-            />
-          ))}
 
           {/* Subtitle clips on subtitle tracks */}
           {subtitles.map(sub => (

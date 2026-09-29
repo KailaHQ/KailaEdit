@@ -13,12 +13,15 @@ import {
   selectTracks,
   selectCurrentTime,
   selectClipById,
+  selectAssets,
 } from '../editor-selectors'
+import { buildReplacedClip, replaceClipRefusal } from '../clip-replace'
 import {
   resolveOverlaps,
   packMainVideoTrack,
   mainVideoTrackIndex,
   pruneEmptyTracks,
+  liftCollidingClipsToNewTracks,
 } from '../video-editor-utils'
 import { clampClipSpeed, mediaSecondsForTimelineSeconds } from '../clip-speed'
 import { makeId } from '../id-generator'
@@ -115,15 +118,28 @@ export function insertAssetsToTimeline(state: EditorState, params: InsertAssetsT
       : clip)
   }
 
-  const updatedTimelineState = replaceActiveTimeline(state, timeline => ({
-    ...timeline,
-    tracks: nextTracks,
-    clips: packMainVideoTrack(
+  const updatedTimelineState = replaceActiveTimeline(state, timeline => {
+    // Dropped onto clips on an overlay track: the new clips go up to a track of their own
+    // instead of overwriting what is there (see liftCollidingClipsToNewTracks). The main
+    // track keeps its magnet; the explicit overwrite edits below keep overwriting.
+    const lifted = liftCollidingClipsToNewTracks(
       nextTracks,
-      resolveOverlaps([...shiftForPrepend(timeline.clips), ...insertedClips], insertedIds),
+      [...shiftForPrepend(timeline.clips), ...insertedClips],
+      insertedIds,
       timeline.transitions,
-    ),
-  }))
+      mainTrackIndex,
+      () => makeId('track'),
+    )
+    return {
+      ...timeline,
+      tracks: lifted.tracks,
+      clips: packMainVideoTrack(
+        lifted.tracks,
+        resolveOverlaps(lifted.clips, insertedIds),
+        timeline.transitions,
+      ),
+    }
+  })
 
   const currentTime = selectCurrentTime(state)
   const isPlayheadInInsertedSpan = currentTime >= startCursor && currentTime <= cursor
@@ -737,3 +753,38 @@ export function insertGeneratedGapAsset(state: EditorState, params: InsertGenera
   return setTimelineClips(next, prev => [...prev, ...newClips])
 }
 
+/**
+ * Puts different media into a clip, keeping its place and length (see clip-replace.ts).
+ * Returns the state unchanged when the replacement is refused — the caller asks
+ * `replaceClipRefusal` first when it needs to say why.
+ *
+ * A legacy detached audio clip linked to the clip follows: it plays the new video's sound
+ * over the same stretch, or is muted when the new media is a still, which has none.
+ */
+export function replaceClipMedia(
+  state: EditorState,
+  clipId: string,
+  assetId: string,
+  sourceStart = 0,
+): EditorState {
+  const clip = selectClipById(state, clipId)
+  const asset = selectAssets(state).find(candidate => candidate.id === assetId)
+  if (!clip || !asset) return state
+  if (replaceClipRefusal(clip, asset, selectTracks(state))) return state
+
+  const replaced = buildReplacedClip(clip, asset, sourceStart)
+  const linked = new Set(clip.linkedClipIds ?? [])
+  return mapClips(state, candidate => {
+    if (candidate.id === clipId) return replaced
+    if (!linked.has(candidate.id) || candidate.type !== 'audio') return candidate
+    if (asset.type !== 'video') return { ...candidate, muted: true }
+    return {
+      ...candidate,
+      assetId: asset.id,
+      asset,
+      trimStart: replaced.trimStart,
+      trimEnd: replaced.trimEnd,
+      importedName: undefined,
+    }
+  })
+}

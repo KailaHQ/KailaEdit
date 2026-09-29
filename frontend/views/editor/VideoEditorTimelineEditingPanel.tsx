@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { GapActionsPopover } from './GapActionsPopover'
 import { hasMediaFiles, isExternalFileDrag } from './external-file-drop'
 import { ClipContextMenu } from './ClipContextMenu'
+import { ReplaceClipModal } from './ReplaceClipModal'
+import { replaceClipRefusal, replacementSlack, replacementSourceSpan } from '@core/clip-replace'
 import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
 import {
   packMainVideoTrack,
@@ -71,13 +72,13 @@ import { TimelineCoverGutter } from './timeline/TimelineCoverGutter'
 import { TimelineTracksView } from './timeline/TimelineTracksView'
 import { CoverPickerModal } from './cover/CoverPickerModal'
 import { CoverDesignModal } from './cover/CoverDesignModal'
+import { coverElementsToOverlays } from './cover/cover-to-overlay'
+import type { CoverElement } from './cover/types'
+import { addVisualAssetToProject } from '../../lib/asset-copy'
 import type { TimelineCover } from '@core/project-model'
 import { useTimelinePlayheadSync } from './timeline/useTimelinePlayheadSync'
 import { useTimelineContextMenu } from './timeline/useTimelineContextMenu'
 import { useSettings } from '../../contexts/SettingsContext'
-
-type GapSelection = { trackIndex: number; startTime: number; endTime: number } | null
-type GapAnchor = { x: number; gapTop: number; gapBottom: number } | null
 
 export interface VideoEditorTimelineEditingPanelProps {
   /** Import media files dragged in from the OS file manager. */
@@ -89,9 +90,6 @@ export interface VideoEditorTimelineEditingPanelProps {
   kbLayout: any
   subtitleFileInputRef: React.RefObject<HTMLInputElement>
   handleImportSrt: (e: React.ChangeEvent<HTMLInputElement>) => void
-  selectedGapRefBridge: React.MutableRefObject<GapSelection>
-  clearSelectedGapRefBridge: React.MutableRefObject<() => void>
-  closeSelectedGapRefBridge: React.MutableRefObject<() => void>
   timelineRefBridge: React.MutableRefObject<HTMLDivElement | null>
   trackContainerRefBridge: React.MutableRefObject<HTMLDivElement | null>
   trackHeadersRefBridge: React.MutableRefObject<HTMLDivElement | null>
@@ -113,9 +111,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     kbLayout,
     subtitleFileInputRef,
     handleImportSrt,
-    selectedGapRefBridge,
-    clearSelectedGapRefBridge,
-    closeSelectedGapRefBridge,
     timelineRefBridge,
     trackContainerRefBridge,
     trackHeadersRefBridge,
@@ -182,6 +177,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     actions.setCurrentTime(time)
   }, [actions])
 
+  // The scrub draws the playhead through this before the store hears of the time. The
+  // drawing functions come from the playhead sync, set up after the drag hooks.
+  const previewPlayheadRef = useRef<((time: number) => void) | null>(null)
+  const previewPlayhead = useCallback((time: number) => previewPlayheadRef.current?.(time), [])
+
   const setIsPlaying = useCallback((playing: boolean) => {
     if (playing) actions.play()
     else actions.pause()
@@ -213,6 +213,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
   // Cover modal states
   const [isCoverPickerOpen, setIsCoverPickerOpen] = useState(false)
+  /** The clip whose media the Replace clip picker is swapping, while it is open. */
+  const [replaceClipId, setReplaceClipId] = useState<string | null>(null)
+  /** Media dropped onto a clip that needs its start chosen: the picker opens on that step. */
+  const [replaceSegmentAsset, setReplaceSegmentAsset] = useState<Asset | null>(null)
   const [isCoverDesignOpen, setIsCoverDesignOpen] = useState(false)
   const [coverFrameUrl, setCoverFrameUrl] = useState('')
   const [coverSelectedTime, setCoverSelectedTime] = useState(0)
@@ -242,6 +246,45 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const handleRemoveCover = useCallback(() => {
     actions.setTimelineCover(undefined)
   }, [actions])
+
+  /**
+   * Ctrl+C in the cover studio: the picked elements go on the editor's clipboard, where
+   * the next Ctrl+V lays them onto the timeline. An image is written to a file first —
+   * the cover holds it as a data URL, which the export cannot read.
+   */
+  const handleCopyCoverElements = useCallback(async (elements: CoverElement[]): Promise<number> => {
+    const items = await coverElementsToOverlays(elements, async ({ dataUrl, width, height, name }) => {
+      const asset: Asset = {
+        id: `asset-cover-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'image',
+        path: dataUrl,
+        prompt: name,
+        resolution: `${width}x${height}`,
+        width,
+        height,
+        createdAt: Date.now(),
+      }
+      const api = window.electronAPI
+      // The renderer on its own (no Electron) can still show a data URL.
+      if (!api?.saveTempShapeImage) return asset
+      const saved = await api.saveTempShapeImage({ clipId: 'cover', data: dataUrl.slice(dataUrl.indexOf(',') + 1) })
+      if (!saved.success) throw new Error(saved.error)
+      if (!currentProjectId) return { ...asset, path: saved.path }
+      const copied = await addVisualAssetToProject(saved.path, currentProjectId, 'image')
+      return copied
+        ? {
+          ...asset,
+          path: copied.path,
+          bigThumbnailPath: copied.bigThumbnailPath,
+          smallThumbnailPath: copied.smallThumbnailPath,
+          width: copied.width || width,
+          height: copied.height || height,
+        }
+        : { ...asset, path: saved.path }
+    })
+    if (items.length > 0) actions.copyOverlays(items)
+    return items.length
+  }, [actions, currentProjectId])
 
   const handleCopy = useCallback(() => { actions.copySelection() }, [actions])
   const handleCut = useCallback(() => { actions.cutSelection() }, [actions])
@@ -301,33 +344,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   // a project often stacks several of them. Fixed rather than resizable — there
   // is nothing inside a sticker clip that rewards extra height.
   const stickerTrackHeight = 34
-  const suppressGapClickRef = useRef(false)
-  const [selectedGapAnchor, setSelectedGapAnchor] = useState<GapAnchor>(null)
-  const [selectedGap, setSelectedGap] = useState<GapSelection>(null)
-  const selectedGapRef = useRef<GapSelection>(selectedGap)
-  selectedGapRef.current = selectedGap
-  selectedGapRefBridge.current = selectedGap
-
-  const closeGap = useCallback((gap: NonNullable<GapSelection>) => {
-    const gapDuration = gap.endTime - gap.startTime
-    setClips(prev => prev.map(clip => {
-      if (clip.startTime >= gap.endTime) {
-        return { ...clip, startTime: Math.max(0, clip.startTime - gapDuration) }
-      }
-      return clip
-    }))
-    setSubtitles(prev => prev.map(subtitle => {
-      if (subtitle.startTime >= gap.endTime) {
-        return {
-          ...subtitle,
-          startTime: Math.max(0, subtitle.startTime - gapDuration),
-          endTime: Math.max(0.1, subtitle.endTime - gapDuration),
-        }
-      }
-      return subtitle
-    }))
-  }, [setClips, setSubtitles])
-
   const addTrack = useCallback((kind: 'video' | 'audio') => { actions.addTrack(kind) }, [actions])
   const deleteTrack = useCallback((idx: number) => {
     if (tracks.length <= 1) return
@@ -411,56 +427,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       return next
     })
   }, [clips, setClips, setSelectedClipIds, setSubtitles, setTracks, subtitles, tracks, activeTimeline])
-
-  const clearSelectedGap = useCallback(() => {
-    setSelectedGap(null)
-    setSelectedGapAnchor(null)
-  }, [])
-  clearSelectedGapRefBridge.current = clearSelectedGap
-
-  const selectGap = useCallback((gap: NonNullable<GapSelection>, target: HTMLElement) => {
-    setSelectedGap(gap)
-    setSelectedClipIds(new Set())
-    setSelectedSubtitleId(null)
-    const rect = target.getBoundingClientRect()
-    setSelectedGapAnchor({ x: rect.left + rect.width / 2, gapTop: rect.top, gapBottom: rect.bottom })
-  }, [setSelectedClipIds, setSelectedSubtitleId])
-
-  const closeSelectedGap = useCallback(() => {
-    const gap = selectedGapRef.current
-    if (!gap) return
-    clearSelectedGap()
-    closeGap(gap)
-  }, [clearSelectedGap, closeGap])
-  closeSelectedGapRefBridge.current = closeSelectedGap
-
-  useEffect(() => {
-    if (!selectedGap) setSelectedGapAnchor(null)
-  }, [selectedGap])
-
-  const timelineGaps = useMemo(() => {
-    const gaps: Array<{ trackIndex: number; startTime: number; endTime: number }> = []
-    tracks.forEach((track, trackIdx) => {
-      if (track.type === 'subtitle') return
-      const trackClips = clips
-        .filter(c => c.trackIndex === trackIdx)
-        .sort((a, b) => a.startTime - b.startTime)
-      if (trackClips.length === 0) return
-      if (trackClips[0].startTime > 0.05) {
-        gaps.push({ trackIndex: trackIdx, startTime: 0, endTime: trackClips[0].startTime })
-      }
-      for (let i = 0; i < trackClips.length - 1; i++) {
-        const endOfCurrent = trackClips[i].startTime + trackClips[i].duration
-        const startOfNext = trackClips[i + 1].startTime
-        if (startOfNext - endOfCurrent > 0.05) {
-          gaps.push({ trackIndex: trackIdx, startTime: endOfCurrent, endTime: startOfNext })
-        }
-      }
-    })
-    return gaps
-  }, [clips, tracks])
-
-  const handleCloseGap = useCallback(() => { closeSelectedGap() }, [closeSelectedGap])
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const trackContainerRef = useRef<HTMLDivElement>(null)
@@ -578,6 +544,78 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current)
   }, [])
 
+  const replaceTarget = replaceClipId ? clips.find(clip => clip.id === replaceClipId) ?? null : null
+  /**
+   * Swap the picked media into the clip being replaced. A refusal — media too short, a
+   * locked track — is said out loud rather than leaving the click looking dead.
+   */
+  /**
+   * Says why `asset` cannot go into `clip`, and returns false — or returns true when it
+   * can. A refusal is spoken rather than leaving a click or a drop looking dead.
+   */
+  const acceptReplacement = useCallback((clip: TimelineClip, asset: Asset): boolean => {
+    const refusal = replaceClipRefusal(clip, asset, tracks)
+    if (refusal === 'too-short') {
+      showTimelineNotice(t('replaceClip.tooShort', {
+        media: `${(asset.duration ?? 0).toFixed(1)}s`,
+        clip: `${replacementSourceSpan(clip).toFixed(1)}s`,
+      }))
+      return false
+    }
+    if (refusal === 'locked') { showTimelineNotice(t('replaceClip.locked')); return false }
+    if (refusal === 'not-replaceable' || refusal === 'unsupported-media') {
+      showTimelineNotice(t('replaceClip.notReplaceable'))
+      return false
+    }
+    return refusal !== 'same-media'
+  }, [showTimelineNotice, t, tracks])
+
+  const closeReplace = useCallback(() => {
+    setReplaceClipId(null)
+    setReplaceSegmentAsset(null)
+  }, [])
+
+  const replaceWith = useCallback((asset: Asset, sourceStart = 0) => {
+    const clip = replaceClipId ? clips.find(c => c.id === replaceClipId) : undefined
+    if (!clip) { closeReplace(); return }
+    const refusal = replaceClipRefusal(clip, asset, tracks)
+    if (refusal === 'same-media') { closeReplace(); return }
+    if (!acceptReplacement(clip, asset)) return
+    actions.replaceClipMedia(clip.id, asset.id, sourceStart)
+    showTimelineNotice(t('replaceClip.replaced'))
+    closeReplace()
+  }, [acceptReplacement, actions, clips, closeReplace, replaceClipId, showTimelineNotice, t, tracks])
+
+  /**
+   * Media Alt-dropped onto a clip. A still, or a video that fits exactly, goes straight
+   * in; a longer video opens the picker on its "choose the part" step; files from the
+   * system are imported into the library first.
+   */
+  const handleDropReplace = useCallback(async (clipId: string, payload: { assetId?: string; files?: FileList }) => {
+    const clip = clips.find(c => c.id === clipId)
+    if (!clip) return
+    let asset: Asset | undefined
+    if (payload.assetId) {
+      asset = assets.find(a => a.id === payload.assetId)
+    } else if (payload.files && payload.files.length > 0) {
+      try {
+        const imported = await importFiles(payload.files)
+        asset = imported.find(a => a.type === 'video' || a.type === 'image')
+      } catch {
+        asset = undefined
+      }
+      if (!asset) { showTimelineNotice(t('replaceClip.importFailed')); return }
+    }
+    if (!asset || !acceptReplacement(clip, asset)) return
+    if (replacementSlack(clip, asset) > 0.05) {
+      setReplaceSegmentAsset(asset)
+      setReplaceClipId(clipId)
+      return
+    }
+    actions.replaceClipMedia(clipId, asset.id, 0)
+    showTimelineNotice(t('replaceClip.replaced'))
+  }, [acceptReplacement, actions, assets, clips, importFiles, showTimelineNotice, t])
+
   /**
    * The overlap is normally paid for out of media both clips are already
    * trimming away, which is why they hold still while it is re-timed. Footage
@@ -678,6 +716,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     handleResizeStart,
     handleTrackDrop,
     lassoOriginRef,
+    snapGuideTime,
   } = useTimelineDrag({
     activeTool, setActiveTool, lastTrimTool, setLastTrimTool,
     pixelsPerSecond, totalDuration,
@@ -688,13 +727,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     assets, timelines, activeTimeline, currentProjectId,
     timelineRef, rulerScrollRef, trackContainerRef, trackContentRef,
     orderedTracks, getTrackHeight, trackTopPx,
-    splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
+    splitClipAtPlayhead, setSelectedSubtitleId,
     audioTrackHeight, videoTrackHeight, subtitleTrackHeight, stickerTrackHeight,
     applyTransitionAtPoint,
     addFilterClip: actions.addFilterClip,
+    previewPlayhead,
   })
 
-  const { handleTimelineScroll, handleFitToView } = useTimelinePlayheadSync({
+  const { handleTimelineScroll, handleFitToView, syncPlayheadPosition, syncTimelineTimecode } = useTimelinePlayheadSync({
     pixelsPerSecond,
     totalDuration,
     isPlaying,
@@ -716,6 +756,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     fps: activeTimeline?.fps ?? settings.defaultFps ?? 30,
     timecodeFormat: settings.timecodeFormat,
   })
+  previewPlayheadRef.current = (time: number) => {
+    syncPlayheadPosition(time)
+    syncTimelineTimecode(time)
+  }
 
   const {
     clipContextMenu,
@@ -783,7 +827,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const startSelectionLasso = useCallback((clientX: number, clientY: number, shiftKey: boolean) => {
     setSelectedSubtitleId(null)
     setEditingSubtitleId(null)
-    clearSelectedGap()
     if (!shiftKey) setSelectedClipIds(new Set())
     const container = trackContainerRef.current
     if (!container) return
@@ -796,7 +839,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       containerTop: (contentRect?.top ?? rect.top) + container.scrollTop,
     }
     setLassoRect({ startX: clientX, startY: clientY, currentX: clientX, currentY: clientY })
-  }, [clearSelectedGap, lassoOriginRef, setEditingSubtitleId, setLassoRect, setSelectedClipIds, setSelectedSubtitleId])
+  }, [lassoOriginRef, setEditingSubtitleId, setLassoRect, setSelectedClipIds, setSelectedSubtitleId])
 
   return (
     <>
@@ -883,7 +926,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   setVideoTrackHeight={setVideoTrackHeight}
                   setAudioTrackHeight={setAudioTrackHeight}
                   setSubtitleTrackHeight={setSubtitleTrackHeight}
-                  suppressGapClickRef={suppressGapClickRef}
                 />
 
                 {/* Timeline Cover gutter on timeline side */}
@@ -911,20 +953,18 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   tracks={tracks}
                   clips={clips}
                   subtitles={subtitles}
-                  timelineGaps={timelineGaps}
                   cutPoints={transitionDropTargets}
                   selectedClipIds={selectedClipIds}
                   selectedSubtitleId={selectedSubtitleId}
                   editingSubtitleId={editingSubtitleId}
-                  selectedGap={selectedGap}
                   draggingClip={draggingClip}
                   slipSlideClip={slipSlideClip}
                   resizingClip={resizingClip}
+                  snapGuideTime={snapGuideTime}
                   bladeHoverInfo={bladeHoverInfo}
                   hoveredCutPoint={hoveredCutPoint}
                   lassoRect={lassoRect}
                   lassoOriginRef={lassoOriginRef}
-                  suppressGapClickRef={suppressGapClickRef}
                   timelineHoverRef={timelineHoverRef}
                   assets={assets}
                   videoTrackHeight={videoTrackHeight}
@@ -943,8 +983,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   setSelectedClipIds={setSelectedClipIds}
                   setSelectedSubtitleId={setSelectedSubtitleId}
                   setEditingSubtitleId={setEditingSubtitleId}
-                  clearSelectedGap={clearSelectedGap}
-                  selectGap={selectGap}
                   handleTrackDrop={handleTrackDrop}
                   addSubtitleClip={addSubtitleClip}
                   importFiles={importFiles}
@@ -965,6 +1003,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   updateSubtitle={updateSubtitle}
                   setTransition={setTransition}
                   applyTransitionAtPoint={applyTransitionAtPoint}
+                  onDropReplace={handleDropReplace}
                   removeTransition={removeTransition}
                   onFocusCut={focusCut}
                   setClips={setClips}
@@ -1011,15 +1050,20 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           getLiveAsset={getLiveAsset}
           getMaxClipDuration={getMaxClipDuration}
           onRevealAsset={onRevealAsset}
+          onReplaceClip={setReplaceClipId}
         />
       )}
 
-      {selectedGap && (
-        <GapActionsPopover
-          selectedGap={selectedGap}
-          anchorPosition={selectedGapAnchor}
-          onCloseGap={handleCloseGap}
-          onDismiss={clearSelectedGap}
+      {replaceTarget && (
+        <ReplaceClipModal
+          clip={replaceTarget}
+          assets={assets}
+          tracks={tracks}
+          onReplace={replaceWith}
+          onImportFiles={files => importFiles(files)}
+          onNotice={showTimelineNotice}
+          initialSegmentAsset={replaceSegmentAsset}
+          onClose={closeReplace}
         />
       )}
 
@@ -1046,6 +1090,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           isLocalImage={coverIsLocal}
           currentCover={activeTimeline?.cover}
           projectName={activeTimeline?.name || 'Project'}
+          onCopyElements={handleCopyCoverElements}
         />
       )}
     </>

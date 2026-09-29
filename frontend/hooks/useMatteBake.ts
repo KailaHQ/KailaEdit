@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TimelineClip, AutoMatte, AutoMatteBake, AutoMatteModel, AutoMatteQuality, AutoMatteDevice } from '@core/project-model'
 import { isAutoMatteBakeValid } from '@core/auto-matte'
+import { clipAsPlayed, isStabilizationPending, stabilizedClipPath } from '@core/stabilization'
 import { selectAssets, selectClipPathFromAssets, selectClips, selectCurrentTime } from '@core/editor-selectors'
-import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
+import { useEditorActions, useEditorGetState, useEditorStore } from '../views/editor/editor-store'
 import { useSettings } from '../contexts/SettingsContext'
 
 export interface MatteBakeState {
@@ -268,7 +269,10 @@ export function useMatteBakeAudit(projectId?: string): void {
   const { setClipAutoMatte } = useEditorActions()
   const clips = useEditorStore(selectClips)
   const assets = useEditorStore(selectAssets)
-  const currentTime = useEditorStore(selectCurrentTime)
+  // Read when the audit runs, not subscribed to: this hook lives in the editor's root,
+  // and a subscription re-rendered the whole editor on every playhead move — every
+  // frame of a scrub. Where the playhead is only orders the queue; it adds no work.
+  const getEditorState = useEditorGetState()
   const { settings } = useSettings()
 
   const deviceRef = useRef<AutoMatteDevice>(settings.autoMatteDevice)
@@ -295,6 +299,7 @@ export function useMatteBakeAudit(projectId?: string): void {
     if (!window.electronAPI?.matteBakeStart) return
 
     // Sort candidate clips so the playhead clip is queued first
+    const currentTime = selectCurrentTime(getEditorState())
     const sortedClips = [...clips].sort((a, b) => {
       const aUnderPlayhead = currentTime >= a.startTime && currentTime <= a.startTime + a.duration
       const bUnderPlayhead = currentTime >= b.startTime && currentTime <= b.startTime + b.duration
@@ -306,26 +311,37 @@ export function useMatteBakeAudit(projectId?: string): void {
       return distA - distB
     })
 
-    for (const clip of sortedClips) {
-      if (!clip.autoMatte?.enabled) continue
-      if (clip.type !== 'video' && clip.type !== 'image') continue
-      if (autoBakedThisSession.has(clip.id)) continue
-      if (activeClipBakes.get(clip.id)?.isBaking) continue
+    for (const storeClip of sortedClips) {
+      if (!storeClip.autoMatte?.enabled) continue
+      if (storeClip.type !== 'video' && storeClip.type !== 'image') continue
+      if (activeClipBakes.get(storeClip.id)?.isBaking) continue
+      // A matte is of the frames the clip plays. A clip still waiting on its stabilized
+      // file is matted once that lands, not now on frames about to be replaced.
+      if (isStabilizationPending(storeClip, assets)) continue
+      const clip = clipAsPlayed(storeClip, assets)
+      const autoMatte = storeClip.autoMatte
 
-      const valid = isAutoMatteBakeValid(clip.autoMatte.bake, {
+      // A stabilized clip's matte must be OF the stabilized file: one made from the
+      // original can cover the same seconds and still sit on different pixels.
+      const stabilizedPath = stabilizedClipPath(clip)
+      const valid = isAutoMatteBakeValid(autoMatte.bake, {
         trimStart: clip.trimStart,
         duration: clip.duration,
         speed: clip.speed,
         reversed: clip.reversed,
-        model: clip.autoMatte.model || 'rvm-mobilenetv3',
-        quality: clip.autoMatte.quality || 'standard',
+        model: autoMatte.model || 'rvm-mobilenetv3',
+        quality: autoMatte.quality || 'standard',
+        ...(stabilizedPath ? { assetKey: stabilizedPath } : {}),
       })
       if (valid) continue
 
       const filePath = selectClipPathFromAssets(assets, clip) || clip.asset?.path || (clip as { path?: string }).path || ''
       if (!filePath) continue
+      // Keyed on the source too: turning stabilization on is a new source, worth one more try.
+      const sessionKey = `${clip.id}|${filePath}`
+      if (autoBakedThisSession.has(sessionKey)) continue
 
-      autoBakedThisSession.add(clip.id)
+      autoBakedThisSession.add(sessionKey)
       console.info(`[useMatteBake] Remove BG is on for ${clip.id} with no usable matte — baking it (playhead-prioritized).`)
       void beginClipBake({
         clip,
@@ -335,7 +351,7 @@ export function useMatteBakeAudit(projectId?: string): void {
         projectId,
       })
     }
-  }, [clips, assets, currentTime, projectId, setClipAutoMatte])
+  }, [clips, assets, getEditorState, projectId, setClipAutoMatte])
 
   useEffect(() => {
     if (!window.electronAPI?.matteBakeMissing) return
@@ -382,9 +398,13 @@ export function useMatteBake(clip: TimelineClip | null | undefined) {
   deviceRef.current = settings.autoMatteDevice
   const clipId = clip?.id
 
+  // The clip as it plays: a stabilized clip is matted from its stabilized file.
+  const playedClip = clip ? clipAsPlayed(clip, assets) : clip
+  const stabilizationPending = clip ? isStabilizationPending(clip, assets) : false
+
   // Resolve actual media path whether embedded on clip or tracked in project assets
-  const filePath = clip
-    ? (selectClipPathFromAssets(assets, clip) || clip.asset?.path || (clip as any).path || '')
+  const filePath = playedClip
+    ? (selectClipPathFromAssets(assets, playedClip) || playedClip.asset?.path || (playedClip as any).path || '')
     : ''
 
   // Keep a ref to the setter so ensureGlobalListener can use it
@@ -417,12 +437,14 @@ export function useMatteBake(clip: TimelineClip | null | undefined) {
 
   const startBake = useCallback(
     async (options?: { model?: AutoMatteModel; quality?: AutoMatteQuality }) => {
-      if (!clip || !filePath) {
+      if (!playedClip || !filePath) {
         console.warn('[useMatteBake] Cannot start bake: missing clip or filePath', { clipId: clip?.id, filePath })
         return
       }
+      // Remove BG stays on; the keeper mattes the clip once its stabilized file lands.
+      if (stabilizationPending) return
       await beginClipBake({
-        clip,
+        clip: playedClip,
         filePath,
         device: deviceRef.current,
         setClipAutoMatte,
@@ -430,7 +452,7 @@ export function useMatteBake(clip: TimelineClip | null | undefined) {
         quality: options?.quality,
       })
     },
-    [clip, filePath, setClipAutoMatte],
+    [playedClip, filePath, stabilizationPending, setClipAutoMatte],
   )
 
   const cancelBake = useCallback(async () => {

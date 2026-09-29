@@ -50,6 +50,7 @@ import { CoverTransformBox } from './CoverTransformBox'
 import { CoverContextualToolbar } from './CoverContextualToolbar'
 import { CoverLeftDrawer } from './CoverLeftDrawer'
 import { removeImageBackground } from './cover-image-utils'
+import { isCoverBackground } from './cover-to-overlay'
 
 export interface CoverDesignModalProps {
   isOpen: boolean
@@ -61,6 +62,11 @@ export interface CoverDesignModalProps {
   isLocalImage: boolean
   currentCover?: TimelineCover
   projectName?: string
+  /**
+   * Ctrl+C on the canvas: puts these elements on the editor's clipboard, for a Ctrl+V on
+   * the timeline. Resolves to how many could be copied.
+   */
+  onCopyElements?: (elements: CoverElement[]) => Promise<number>
 }
 
 export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
@@ -73,6 +79,7 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
   isLocalImage,
   currentCover,
   projectName: _projectName = 'Project',
+  onCopyElements,
 }) => {
   const { t } = useTranslation()
 
@@ -195,6 +202,27 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
   // Selected element ID
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
 
+  // Elements picked by dragging a selection box over the canvas (two or more; one
+  // picked element becomes the ordinary single selection instead).
+  const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([])
+  // The selection box being dragged, in the canvas viewport's scrolled coordinates.
+  const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const [copyNotice, setCopyNotice] = useState<string | null>(null)
+  const copyNoticeTimerRef = useRef<number | null>(null)
+  const selectedElementIdRef = useRef(selectedElementId)
+  selectedElementIdRef.current = selectedElementId
+  const multiSelectedIdsRef = useRef(multiSelectedIds)
+  multiSelectedIdsRef.current = multiSelectedIds
+
+  // Picking one element on its own ends a box selection.
+  useEffect(() => {
+    if (selectedElementId) setMultiSelectedIds([])
+  }, [selectedElementId])
+
+  useEffect(() => () => {
+    if (copyNoticeTimerRef.current) window.clearTimeout(copyNoticeTimerRef.current)
+  }, [])
+
   // Inline text editing ID (when double-clicking a text item)
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null)
 
@@ -285,6 +313,31 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
     setElements(next)
   }, [future])
 
+  const showCopyNotice = useCallback((message: string) => {
+    setCopyNotice(message)
+    if (copyNoticeTimerRef.current) window.clearTimeout(copyNoticeTimerRef.current)
+    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(null), 3500)
+  }, [])
+
+  /**
+   * Ctrl+C: the box-selected elements, or else the one selected element, go on the
+   * editor's clipboard — Ctrl+V on the timeline lays them at the playhead.
+   */
+  const handleCopySelection = useCallback(async () => {
+    if (!onCopyElements) return
+    const ids = multiSelectedIdsRef.current.length > 0
+      ? multiSelectedIdsRef.current
+      : selectedElementIdRef.current ? [selectedElementIdRef.current] : []
+    const picked = elementsRef.current.filter(el => ids.includes(el.id) && !isCoverBackground(el))
+    if (picked.length === 0) return
+    try {
+      const count = await onCopyElements(picked)
+      showCopyNotice(count > 0 ? t('cover.copied', { count }) : t('cover.copyFailed'))
+    } catch {
+      showCopyNotice(t('cover.copyFailed'))
+    }
+  }, [onCopyElements, showCopyNotice, t])
+
   // Global Undo / Redo keyboard shortcuts inside Cover Studio
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -292,7 +345,12 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) {
         return
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        void handleCopySelection()
+      } else if (e.key === 'Escape' && multiSelectedIdsRef.current.length > 0) {
+        setMultiSelectedIds([])
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           e.preventDefault()
           handleRedo()
@@ -308,7 +366,7 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleUndo, handleRedo])
+  }, [handleUndo, handleRedo, handleCopySelection])
 
   // Currently selected element object
   const selectedElement = elements.find(el => el.id === selectedElementId) || null
@@ -489,6 +547,87 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
   }
+
+  /**
+   * Press and drag over the canvas to draw a selection box: every element it touches is
+   * picked. Starts from empty space or from the video frame behind everything (unless the
+   * frame itself is the selected element, which drags as before). A press that does not
+   * move is left to the click handlers, which select or deselect as they always have.
+   */
+  const handleStartMarquee = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const container = containerRef.current
+    if (!container) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    const startX = e.clientX
+    const startY = e.clientY
+    let moved = false
+    let hits: string[] = []
+
+    const update = (clientX: number, clientY: number) => {
+      const left = Math.min(startX, clientX)
+      const right = Math.max(startX, clientX)
+      const top = Math.min(startY, clientY)
+      const bottom = Math.max(startY, clientY)
+      const box = container.getBoundingClientRect()
+      setMarquee({
+        left: left - box.left + container.scrollLeft,
+        top: top - box.top + container.scrollTop,
+        width: right - left,
+        height: bottom - top,
+      })
+      // Hit-test what is actually drawn: text has no stored height, and rotation moves
+      // the corners.
+      hits = elementsRef.current
+        .filter(el => !isCoverBackground(el) && el.visible !== false && !el.isLocked)
+        .filter(el => {
+          const node = document.getElementById(`cover-el-${el.id}`)
+          if (!node) return false
+          const r = node.getBoundingClientRect()
+          return r.right >= left && r.left <= right && r.bottom >= top && r.top <= bottom
+        })
+        .map(el => el.id)
+      setMultiSelectedIds(prev => (prev.length === hits.length && prev.every((id, i) => id === hits[i]) ? prev : hits))
+    }
+
+    const onMove = (ev: MouseEvent) => {
+      if (!moved) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return
+        moved = true
+        setSelectedElementId(null)
+        setInlineEditingId(null)
+      }
+      update(ev.clientX, ev.clientY)
+    }
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setMarquee(null)
+      if (!moved) return
+      // The click that ends the drag must not reselect what it was released over.
+      const swallowClick = (ev: MouseEvent) => {
+        ev.stopPropagation()
+        ev.preventDefault()
+      }
+      window.addEventListener('click', swallowClick, { capture: true, once: true })
+      window.setTimeout(() => window.removeEventListener('click', swallowClick, { capture: true }), 0)
+      if (hits.length === 1) {
+        setMultiSelectedIds([])
+        setSelectedElementId(hits[0])
+      }
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const multiSelectedSet = new Set(multiSelectedIds)
+  /** The outline a box-selected element wears. */
+  const multiSelectOutline = (id: string): React.CSSProperties =>
+    multiSelectedSet.has(id) ? { outline: '2px solid #38bdf8', outlineOffset: '2px' } : {}
 
   // Add new Text element (customizable via preset or type)
   const handleAddText = (
@@ -1032,25 +1171,34 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
           }
         }
 
-        // Shadow
+        // Render each line: stroke first (behind), then fill on top
+        // — matches CSS paintOrder: 'stroke fill' used by the canvas preview.
+        lines.forEach((line, idx) => {
+          const lineY = startY + idx * lineHeight
+          if (tEl.stroke?.enabled) {
+            ctx.strokeStyle = tEl.stroke.color || '#000000'
+            ctx.lineWidth = (tEl.stroke.width ?? 1) * 2
+            ctx.lineJoin = 'round'
+            ctx.strokeText(line, 0, lineY)
+          }
+        })
+
+        // Fill (with shadow) on top so stroke sits behind
         if (tEl.shadow?.enabled) {
           ctx.shadowColor = tEl.shadow.color || 'rgba(0,0,0,0.85)'
           ctx.shadowBlur = (tEl.shadow.blur ?? 10) * 1.6
           ctx.shadowOffsetX = (tEl.shadow.offsetX ?? 0) * 1.6
           ctx.shadowOffsetY = (tEl.shadow.offsetY ?? 4) * 1.6
         }
-
-        // Render each line with stroke & fill
+        ctx.fillStyle = tEl.color || '#ffffff'
         lines.forEach((line, idx) => {
           const lineY = startY + idx * lineHeight
-          if (tEl.stroke?.enabled) {
-            ctx.strokeStyle = tEl.stroke.color || '#000000'
-            ctx.lineWidth = (tEl.stroke.width ?? 1) * 2
-            ctx.strokeText(line, 0, lineY)
-          }
-          ctx.fillStyle = tEl.color || '#ffffff'
           ctx.fillText(line, 0, lineY)
         })
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = 0
       }
 
       ctx.restore()
@@ -1138,6 +1286,9 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex flex-col bg-[#111113] text-zinc-100 select-none overflow-hidden"
+      // While the studio is open its keys are its own: the editor behind it must not also
+      // undo, copy or paste on the timeline (see useEditorKeyboard).
+      data-editor-shortcuts="off"
     >
       {/* ─── Top Studio Bar ─────────────────────────────────────────── */}
       <div
@@ -1330,7 +1481,11 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative overflow-auto p-16 select-none"
             onMouseDown={e => {
-              if (e.target === containerRef.current) setSelectedElementId(null)
+              if (e.target === containerRef.current) {
+                setSelectedElementId(null)
+                setMultiSelectedIds([])
+                handleStartMarquee(e)
+              }
             }}
             onClick={e => {
               if (e.target === containerRef.current) setSelectedElementId(null)
@@ -1352,6 +1507,8 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                   if (e.target === e.currentTarget) {
                     setSelectedElementId(null)
                     setInlineEditingId(null)
+                    setMultiSelectedIds([])
+                    handleStartMarquee(e)
                   }
                 }}
                 onClick={e => {
@@ -1391,6 +1548,13 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                         id={`cover-el-${el.id}`}
                         onMouseDown={e => {
                           e.stopPropagation()
+                          // The frame behind everything is where a selection box starts;
+                          // once it is itself selected, it drags like anything else.
+                          if (isCoverBackground(el) && selectedElementId !== el.id) {
+                            setMultiSelectedIds([])
+                            handleStartMarquee(e)
+                            return
+                          }
                           handleStartMoveElement(e, el)
                         }}
                         onClick={e => {
@@ -1407,6 +1571,7 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                           zIndex: el.zIndex,
                           opacity: el.opacity ?? 1,
                           overflow: 'hidden',
+                          ...multiSelectOutline(el.id),
                           borderRadius: imgEl.borderRadius ? `${imgEl.borderRadius}px` : undefined,
                         }}
                       >
@@ -1461,6 +1626,7 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                           zIndex: el.zIndex,
                           opacity: el.opacity ?? 1,
                           overflow: 'visible',
+                          ...multiSelectOutline(el.id),
                         }}
                       >
                         <ShapeSvgRenderer shape={sEl} widthPx={pxW} heightPx={pxH} />
@@ -1499,6 +1665,7 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                           transform: `translate(-50%, -50%) rotate(${el.rotation || 0}deg)`,
                           zIndex: isInline ? el.zIndex + 20 : el.zIndex,
                           opacity: el.opacity ?? 1,
+                          ...multiSelectOutline(el.id),
                         }}
                       >
                         {isInline ? (
@@ -1562,10 +1729,11 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                                   : '4px',
                                 textShadow: tEl.shadow?.enabled
                                   ? `${tEl.shadow.offsetX}px ${tEl.shadow.offsetY}px ${tEl.shadow.blur}px ${tEl.shadow.color}`
-                                  : '0 2px 8px rgba(0,0,0,0.8)',
+                                  : undefined,
                                 WebkitTextStroke: tEl.stroke?.enabled
                                   ? `${tEl.stroke.width}px ${tEl.stroke.color}`
                                   : undefined,
+                                paintOrder: 'stroke fill',
                                 caretColor: '#38bdf8',
                                 boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25)',
                               }}
@@ -1611,10 +1779,11 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                                 : undefined,
                               textShadow: tEl.shadow?.enabled
                                 ? `${tEl.shadow.offsetX}px ${tEl.shadow.offsetY}px ${tEl.shadow.blur}px ${tEl.shadow.color}`
-                                : '0 2px 8px rgba(0,0,0,0.8)',
+                                : undefined,
                               WebkitTextStroke: tEl.stroke?.enabled
                                 ? `${tEl.stroke.width}px ${tEl.stroke.color}`
                                 : undefined,
+                              paintOrder: 'stroke fill',
                             }}
                           >
                             {tEl.text}
@@ -1656,6 +1825,25 @@ export const CoverDesignModal: React.FC<CoverDesignModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Selection box being dragged */}
+            {marquee && (
+              <div
+                data-cover-marquee
+                className="absolute z-40 pointer-events-none border border-sky-400 bg-sky-400/10 rounded-sm"
+                style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+              />
+            )}
+
+            {/* What Ctrl+C just did */}
+            {copyNotice && (
+              <div
+                data-cover-copy-notice
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 rounded-lg bg-zinc-900/95 border border-sky-500/50 text-xs text-zinc-100 shadow-xl pointer-events-none whitespace-nowrap"
+              >
+                {copyNotice}
+              </div>
+            )}
 
             {/* Bottom Zoom Controller Bar */}
             <div className="absolute bottom-4 left-6 flex items-center gap-3">

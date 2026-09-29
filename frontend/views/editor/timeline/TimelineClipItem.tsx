@@ -15,7 +15,11 @@ import { getAudioFadeDurations, hasKeyframesForProperty } from '@core/keyframes'
 import { TimelineKeyframeRow } from './TimelineKeyframeRow'
 import { TimelineAudioEnvelope } from './TimelineAudioEnvelope'
 import { ClipMatteProgress } from './ClipMatteProgress'
+import { ClipStabilizeProgress } from './ClipStabilizeProgress'
 import { useClipThumbnail } from './useClipThumbnail'
+import { isReplaceableClip } from '@core/clip-replace'
+import { isExternalFileDrag } from '../external-file-drop'
+import { useTranslation } from '../../../i18n/I18nContext'
 
 // Custom scissors cursor SVG for the blade tool
 const SCISSORS_CURSOR_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='6' cy='6' r='3'/><path d='M8.12 8.12 12 12'/><path d='M20 4 8.12 15.88'/><circle cx='6' cy='18' r='3'/><path d='M14.8 14.8 20 20'/></svg>`
@@ -64,6 +68,11 @@ export interface TimelineClipItemProps {
    * clips rarely touch exactly — behaves the same as one on the main track.
    */
   applyTransitionAtPoint?: (trackIndex: number, time: number, type: string, snapSeconds: number) => boolean
+  /**
+   * Media dropped onto this clip with Alt held: replace the clip's media with it. A plain
+   * drop still inserts, as it always has — this only takes over when asked to.
+   */
+  onDropReplace?: (clipId: string, payload: { assetId?: string; files?: FileList }) => void
 }
 
 export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
@@ -91,6 +100,7 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
   getLiveAsset,
   getClipResolution,
   applyTransitionAtPoint,
+  onDropReplace,
 }) => {
   const drawnStart = displayStartTime ?? clip.startTime
   const drawnDuration = displayDuration ?? clip.duration
@@ -101,6 +111,30 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
 
   const hasAudio = clip.type === 'audio' || (clip.type === 'video' && !clip.muted)
   const [dragFade, setDragFade] = useState<{ type: 'in' | 'out'; currentSec: number } | null>(null)
+  const { t } = useTranslation()
+  /**
+   * One piece of media being dragged over this clip: 'hint' says Alt would replace it,
+   * 'armed' is Alt held — a drop now replaces. Set only when it changes, since dragover
+   * fires continuously and the clip list cannot afford a render per event.
+   */
+  const [replaceDrop, setReplaceDrop] = useState<'hint' | 'armed' | null>(null)
+  const canDropReplace = Boolean(onDropReplace) && isReplaceableClip(clip)
+  React.useEffect(() => {
+    if (!replaceDrop) return
+    const clear = () => setReplaceDrop(null)
+    window.addEventListener('dragend', clear)
+    window.addEventListener('drop', clear)
+    return () => {
+      window.removeEventListener('dragend', clear)
+      window.removeEventListener('drop', clear)
+    }
+  }, [replaceDrop])
+  const replacePayloadKind = (e: React.DragEvent): 'asset' | 'files' | null => {
+    const types = Array.from(e.dataTransfer.types).map(type => type.toLowerCase())
+    if (types.includes('assetid')) return 'asset' // one library item; several ('assetids') cannot replace one clip
+    if (isExternalFileDrag(e)) return 'files'
+    return null
+  }
   const clipFades = hasAudio ? getAudioFadeDurations(clip) : { fadeIn: 0, fadeOut: 0 }
   const effectiveFadeIn = dragFade?.type === 'in' ? dragFade.currentSec : clipFades.fadeIn
   const effectiveFadeOut = dragFade?.type === 'out' ? dragFade.currentSec : clipFades.fadeOut
@@ -208,6 +242,17 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
       }}
       onContextMenu={(e) => handleClipContextMenu(e, clip)}
       onDragOver={(e) => {
+        if (canDropReplace && replacePayloadKind(e)) {
+          const next = e.altKey ? 'armed' : 'hint'
+          if (replaceDrop !== next) setReplaceDrop(next)
+          if (e.altKey) {
+            // Claim the drop: the track underneath would otherwise insert.
+            e.preventDefault()
+            e.stopPropagation()
+            e.dataTransfer.dropEffect = 'copy'
+            return
+          }
+        }
         const types = Array.from(e.dataTransfer.types).map(t => t.toLowerCase())
         const isEffect = types.includes('effecttype')
         const isFilter = types.includes('filterid') || types.some(t => t.includes('filter'))
@@ -217,7 +262,21 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
           e.dataTransfer.dropEffect = 'copy'
         }
       }}
+      onDragLeave={(e) => {
+        if (replaceDrop && !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) setReplaceDrop(null)
+      }}
       onDrop={(e) => {
+        if (replaceDrop) setReplaceDrop(null)
+        if (canDropReplace && e.altKey && onDropReplace) {
+          const kind = replacePayloadKind(e)
+          if (kind) {
+            e.preventDefault()
+            e.stopPropagation()
+            if (kind === 'asset') onDropReplace(clip.id, { assetId: e.dataTransfer.getData('assetId') })
+            else onDropReplace(clip.id, { files: e.dataTransfer.files })
+            return
+          }
+        }
         const filterId = e.dataTransfer.getData('filterId') ||
           e.dataTransfer.getData('application/x-komfyedit-filter')
         if (filterId) {
@@ -409,9 +468,34 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
         )
       })()}
 
+      {/* Replace-by-drop: what Alt would do, then what the drop will do */}
+      {replaceDrop && (
+        <div
+          data-replace-drop={replaceDrop}
+          className={`absolute inset-0 z-40 flex items-center justify-center rounded pointer-events-none ${
+            replaceDrop === 'armed'
+              ? 'border-2 border-cyan-300 bg-cyan-400/25'
+              : 'border border-dashed border-cyan-500/50 bg-black/20'
+          }`}
+        >
+          {clipWidthPx >= 70 && (
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              replaceDrop === 'armed' ? 'bg-cyan-400 text-zinc-950' : 'bg-zinc-950/85 text-cyan-200'
+            }`}>
+              {replaceDrop === 'armed' ? t('replaceClip.dropArmed') : t('replaceClip.dropHint')}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Background-removal progress, on the clip being processed */}
       {Boolean(clip.autoMatte?.enabled) && (
         <ClipMatteProgress clipId={clip.id} clipWidthPx={clipWidthPx} />
+      )}
+
+      {/* Stabilization progress, likewise on its own clip */}
+      {Boolean(clip.stabilization?.enabled) && (
+        <ClipStabilizeProgress clipId={clip.id} clipWidthPx={clipWidthPx} />
       )}
 
       {/* Keyframe row for selected clip or clip with keyframes */}

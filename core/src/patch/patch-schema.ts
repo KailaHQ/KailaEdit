@@ -11,6 +11,9 @@ import {
   autoMatteSchema,
   customMatteSchema,
   clipStrokeSchema,
+  stabilizationModeValues,
+  STABILIZATION_SMOOTHING_MIN,
+  STABILIZATION_SMOOTHING_MAX,
 } from '../project-model'
 import { clipBlendModeSchema } from '../blend-modes'
 import type { ValidationError } from '../validator'
@@ -270,6 +273,28 @@ export const editPatchOperationSchema = z.discriminatedUnion('op', [
     op: z.literal('set_custom_matte'),
     clipId: z.string().min(1, 'clipId is required'),
     customMatte: customMatteSchema.nullable().optional(),
+  }),
+  z.object({
+    op: z.literal('replace_clip'),
+    clipId: z.string().min(1, 'clipId is required'),
+    /** A video or image asset already in the project (media_list). */
+    assetId: z.string().min(1, 'assetId is required'),
+    /** Where in a replacing video the clip starts, in seconds. Default: its beginning. */
+    sourceStart: z.number().min(0).optional(),
+  }),
+  z.object({
+    op: z.literal('set_stabilization'),
+    clipId: z.string().min(1, 'clipId is required'),
+    /**
+     * Settings only. The bake is the editor's to make and record: it runs in the
+     * background once the patch is applied, so an agent never supplies one.
+     * null removes stabilization from the clip.
+     */
+    stabilization: z.object({
+      enabled: z.boolean().optional(),
+      smoothing: z.number().min(STABILIZATION_SMOOTHING_MIN).max(STABILIZATION_SMOOTHING_MAX).optional(),
+      mode: z.enum(stabilizationModeValues).optional(),
+    }).strict().nullable().optional(),
   }),
   z.object({
     op: z.literal('set_stroke'),

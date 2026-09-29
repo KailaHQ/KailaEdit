@@ -53,6 +53,7 @@ import { useTimelineXmlExport } from './editor/useTimelineXmlExport'
 import { useProxyManager } from './editor/useProxyManager'
 import { useRenderCache } from './editor/useRenderCache'
 import { useMatteBakeAudit } from '../hooks/useMatteBake'
+import { StabilizeBakeKeeper } from './editor/StabilizeBakeKeeper'
 import {
   createEditorStore,
   EditorStoreProvider,
@@ -375,9 +376,6 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
 
   const { subtitleFileInputRef, handleImportSrt, handleExportSrt } = useSubtitleImportExport()
   const { handleExportTimelineXml } = useTimelineXmlExport()
-  const selectedGapRef = useRef<{ trackIndex: number; startTime: number; endTime: number } | null>(null)
-  const clearSelectedGapRef = useRef<() => void>(() => {})
-  const closeSelectedGapRef = useRef<() => void>(() => {})
 
   const { fileInputRef, handleImportFile, importFiles } = useEditorMediaImport({ currentProjectId })
 
@@ -485,9 +483,6 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
       playbackTimeRef,
       centerOnPlayheadRef,
       getMinZoomRef,
-      selectedGapRef,
-      clearSelectedGapRef,
-      closeSelectedGapRef,
       fitToViewRef,
       toggleFullscreenRef,
       openSettingsRef,
@@ -645,9 +640,6 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
               kbLayout={kbLayout}
               subtitleFileInputRef={subtitleFileInputRef}
               handleImportSrt={handleImportSrt}
-              selectedGapRefBridge={selectedGapRef}
-              clearSelectedGapRefBridge={clearSelectedGapRef}
-              closeSelectedGapRefBridge={closeSelectedGapRef}
               timelineRefBridge={timelineRef}
               trackContainerRefBridge={trackContainerRef}
               trackHeadersRefBridge={trackHeadersRef}
@@ -685,6 +677,8 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
       )}
 
       {showProjectSettingsModal && <ProjectSettingsModal />}
+
+      <StabilizeBakeKeeper projectId={currentProjectId} />
 
       {/* Says why an edit was refused, instead of the control looking dead. */}
       <RejectedEditNotice />

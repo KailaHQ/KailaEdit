@@ -57,6 +57,13 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
   const maskChanges: string[] = []
   const chromaKeyChanges: string[] = []
   const autoMatteChanges: string[] = []
+  const stabilizationChanges: string[] = []
+  const replaceChanges: string[] = []
+  const assetName = (assetId: string) => {
+    const asset = state.editorModel.assets.find(a => a.id === assetId)
+    const path = asset?.path ?? ''
+    return path.split(/[\\/]/).pop() || assetId
+  }
   const customMatteChanges: string[] = []
   const strokeChanges: string[] = []
   const blendModeChanges: string[] = []
@@ -241,6 +248,22 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
         const clean = op.autoMatte.cleanEdge !== undefined ? `, khử nhiễu ${op.autoMatte.cleanEdge}%` : ''
         autoMatteChanges.push(`tách nền tự động (${quality}${feather}${clean}) cho clip "${op.clipId}"`)
       }
+    } else if (op.op === 'replace_clip') {
+      const from = op.sourceStart ? ` từ giây ${op.sourceStart}` : ''
+      replaceChanges.push(`thay media của clip "${op.clipId}" bằng "${assetName(op.assetId)}"${from}, giữ nguyên vị trí và độ dài`)
+    } else if (op.op === 'set_stabilization') {
+      const stab = op.stabilization
+      if (!stab) {
+        stabilizationChanges.push(`gỡ ổn định hình cho clip "${op.clipId}"`)
+      } else if (stab.enabled === false) {
+        stabilizationChanges.push(`tắt ổn định hình cho clip "${op.clipId}"`)
+      } else {
+        const details = [
+          stab.smoothing !== undefined ? `độ mượt ${Math.round(stab.smoothing)}` : null,
+          stab.mode ? (stab.mode === 'tripod' ? 'chế độ chân máy' : 'chế độ theo camera') : null,
+        ].filter(Boolean).join(', ')
+        stabilizationChanges.push(`ổn định hình${details ? ` (${details})` : ''} cho clip "${op.clipId}"`)
+      }
     } else if (op.op === 'set_custom_matte') {
       if (!op.customMatte || op.customMatte.enabled === false) {
         customMatteChanges.push(`gỡ sửa vùng tách nền thủ công cho clip "${op.clipId}"`)
@@ -413,6 +436,12 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
   }
   if (autoMatteChanges.length > 0) {
     parts.push(autoMatteChanges.join(', '))
+  }
+  if (stabilizationChanges.length > 0) {
+    parts.push(stabilizationChanges.join(', '))
+  }
+  if (replaceChanges.length > 0) {
+    parts.push(replaceChanges.join(', '))
   }
   if (customMatteChanges.length > 0) {
     parts.push(customMatteChanges.join(', '))

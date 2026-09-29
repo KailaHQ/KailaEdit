@@ -35,6 +35,7 @@ import { MaskBoundingBox } from './preview/MaskBoundingBox'
 import { TextBoundingBox } from './preview/TextBoundingBox'
 import { useEditorActions, useEditorGetState, useEditorStore } from './editor-store'
 import { useRenderCacheStore } from './render-cache-store'
+import { useStabilizedClips } from './useStabilizedClips'
 
 import {
   type FrameRenderState,
@@ -46,7 +47,7 @@ import {
   EMPTY_TRANSITIONS,
 } from './preview/preview-frame-engine'
 import { useVideoPoolManager, type VideoPoolRefs } from './preview/useVideoPoolManager'
-import { useFrameRenderer, type FrameRendererRefs, type FrameRendererDeps } from './preview/useFrameRenderer'
+import { useFrameRenderer, type FrameRendererRefs, type FrameRendererDeps, type TransformOverride } from './preview/useFrameRenderer'
 import { MonitorSubtitlesOverlay } from './preview/MonitorSubtitlesOverlay'
 import { MonitorLetterbox } from './preview/MonitorLetterbox'
 import { MonitorSafeZoneGuide } from './preview/MonitorSafeZoneGuide'
@@ -54,6 +55,7 @@ import { SourceVideoPreview } from './preview/SourceVideoPreview'
 import { MonitorTransportBar } from './preview/MonitorTransportBar'
 import { MonitorCompositingStack } from './preview/MonitorCompositingStack'
 import { useWebCodecsPreview } from './preview/webcodecs/useWebCodecsPreview'
+import { isTimelineShapeClip, timelineShapeToDataUrl } from './timeline-shape-utils'
 
 export interface ProgramMonitorProps {
   playbackTimeRef: React.MutableRefObject<number>
@@ -136,7 +138,8 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     return () => window.removeEventListener('komfyedit:toggle-asset-preview-playback', handleToggle)
   }, [isPreviewingVideo])
 
-  const clips = useEditorStore(selectClips)
+  // Stabilized clips play their baked file; everything below sees them already swapped.
+  const clips = useStabilizedClips(useEditorStore(selectClips), assets)
   const tracks = useEditorStore(selectTracks)
   const subtitles = useEditorStore(selectSubtitles)
   const { settings } = useSettings()
@@ -455,6 +458,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   )
   const { destroyPoolVideo } = poolManager
 
+  /** The transform box's in-flight drag; the frame renderer draws that clip with it. */
+  const transformOverrideRef = React.useRef<TransformOverride | null>(null)
+  const transformPreviewRafRef = React.useRef(0)
+
   const frameRendererRefs: FrameRendererRefs = {
     activeImageRef,
     lutCanvasRef,
@@ -469,6 +476,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     cachedVideoRefA,
     cachedVideoRefB,
     playbackTimecodeRef,
+    transformOverrideRef,
   }
 
   const frameRendererDeps: FrameRendererDeps = {
@@ -626,6 +634,45 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
 
   // Compositing stack video sync is handled inside renderFrame.
 
+  /**
+   * A drag on the transform box, applied to the picture as it happens.
+   *
+   * Hot path: no store write and no React render per pointer move. The dragged transform
+   * sits in a ref the frame renderer reads, and the last frame's visuals are re-applied
+   * once per animation frame — the styles of the layers on screen, nothing more. The store
+   * is written once, when the box commits on release.
+   */
+  const handlePreviewTransform = React.useCallback((transform: TimelineClip['transform'] | null) => {
+    const clip = selectedClip
+    if (!transform || !clip) {
+      // The release commits the final transform to the store, and the render that follows
+      // draws it; re-applying here would flash the pre-drag transform for a frame.
+      transformOverrideRef.current = null
+      return
+    }
+    transformOverrideRef.current = { clipId: clip.id, transform }
+    if (transformPreviewRafRef.current) return
+    transformPreviewRafRef.current = requestAnimationFrame(() => {
+      transformPreviewRafRef.current = 0
+      const override = transformOverrideRef.current
+      if (!override) return
+      const last = lastFrameRequestRef.current
+      if (last) applyFrameVisuals(last.state, last.mode)
+      // A rectangle shape is drawn for the box it fills, so stretching one side needs a
+      // new image — only then: the URL depends on the box's aspect alone, so a move, a
+      // rotation or a corner scale keeps the same one.
+      const shapeImage = stickerImageRefs.current.get(override.clipId)
+      if (shapeImage && isTimelineShapeClip(clip)) {
+        const src = timelineShapeToDataUrl(clip, override.transform)
+        if (shapeImage.getAttribute('src') !== src) shapeImage.setAttribute('src', src)
+      }
+    })
+  }, [selectedClip, applyFrameVisuals])
+
+  React.useEffect(() => () => {
+    if (transformPreviewRafRef.current) cancelAnimationFrame(transformPreviewRafRef.current)
+  }, [])
+
   const activeClip = frameScene.activeClip
   const compositingStack = frameScene.compositingStack
   const activeTextClips = frameScene.activeTextClips
@@ -655,7 +702,8 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const selectVisualClipAtPoint = React.useCallback((event: React.MouseEvent) => {
     // A drag on the bounding box ends with a click here. The clip stays
     // selected: the user is working on it, and re-picking would hand focus to
-    // whatever happens to sit under the pointer.
+    // whatever happens to sit under the pointer. A press on the box that did not
+    // move clears this flag on release, so a plain click still picks what is on top.
     if (transformInteractionRef.current) {
       transformInteractionRef.current = false
       return
@@ -932,6 +980,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                   // here keeps the flag from surviving a drag that ended off-frame
                   // and swallowing the next click.
                   transformInteractionRef.current = false
+                  // Same for the text overlay's flag, which a double-click raised and
+                  // nothing lowered. A press on a text box raises it again on the
+                  // mousedown that follows this pointerdown, so a text click still works.
+                  clickedTextOverlayRef.current = false
                 }}
                 onClick={(e) => {
                   if (clickedTextOverlayRef.current) {
@@ -1045,22 +1097,27 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               {/* Sticker overlay clips. Above the picture and any transition
                   between shots, but below the pre-rendered segment cache at
                   z-15, which already has the sticker composited into it. */}
-              {activeStickerClips.map(sc => (
-                <img
-                  key={`sticker-${sc.id}`}
-                  src={pathToFileUrl(getClipPath(sc) || sc.asset?.path || '')}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[14]"
-                  ref={(el) => {
-                    if (el) stickerImageRefs.current.set(sc.id, el)
-                    else stickerImageRefs.current.delete(sc.id)
-                  }}
-                  onLoad={() => {
-                    const last = lastFrameRequestRef.current
-                    if (last) applyFrameVisuals(last.state, last.mode)
-                  }}
-                />
-              ))}
+              {activeStickerClips.map(sc => {
+                const src = isTimelineShapeClip(sc)
+                  ? timelineShapeToDataUrl(sc)
+                  : pathToFileUrl(getClipPath(sc) || sc.asset?.path || '')
+                return (
+                  <img
+                    key={`sticker-${sc.id}`}
+                    src={src}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[14]"
+                    ref={(el) => {
+                      if (el) stickerImageRefs.current.set(sc.id, el)
+                      else stickerImageRefs.current.delete(sc.id)
+                    }}
+                    onLoad={() => {
+                      const last = lastFrameRequestRef.current
+                      if (last) applyFrameVisuals(last.state, last.mode)
+                    }}
+                  />
+                )
+              })}
 
               {/* Subtitle overlay */}
               <MonitorSubtitlesOverlay activeSubtitles={activeSubtitles} tracks={tracks} />
@@ -1119,6 +1176,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
               <TransformBoundingBox
                 selectedClip={selectedClip}
                 onInteractionStart={() => { transformInteractionRef.current = true }}
+                // Pointer-up comes before the click. A press that never moved is a click,
+                // and must reach the hit test: otherwise a selected clip whose box covers
+                // the frame — a full-frame video — keeps every click on the clips above it.
+                onInteractionEnd={moved => { transformInteractionRef.current = moved }}
                 assets={assets}
                 videoFrameSize={videoFrameSize}
                 currentTime={currentTime}
@@ -1129,6 +1190,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
                     setClipTransform(selectedClip.id, patch, options)
                   }
                 }}
+                onPreviewTransform={handlePreviewTransform}
               />
 
               {/* Mask Bounding Box for on-screen mask editing */}

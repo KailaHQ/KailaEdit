@@ -3,6 +3,8 @@ import type { KeyframeTrack, ClipMask, ChromaKey, AutoMatte, ClipStroke } from '
 import type { ClipBlendMode } from '../../core/src/blend-modes'
 
 export interface ExportClipTransform {
+  /** Per-axis scale; absent means the uniform `scale`. */
+  scaleX?: number; scaleY?: number;
   scale: number; positionX: number; positionY: number; rotation: number;
   cropTop: number; cropRight: number; cropBottom: number; cropLeft: number;
 }

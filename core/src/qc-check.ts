@@ -3,6 +3,7 @@ import type { Timeline, TimelineClip, SubtitleClip } from './project-model'
 import { getFilterDefinition } from './filters'
 import { isAutoMatteBakeValid } from './auto-matte'
 import { computeStrokesHash } from './custom-matte'
+import { clipAsPlayed, describeClipStabilization, stabilizedClipPath } from './stabilization'
 
 export type QcIssueType =
   | 'ORPHAN_CLIP'
@@ -15,6 +16,8 @@ export type QcIssueType =
   | 'INVALID_CHROMA_KEY'
   | 'AUTO_MATTE_NOT_BAKED'
   | 'CUSTOM_MATTE_UNAPPLIED'
+  | 'STABILIZATION_NOT_BAKED'
+  | 'STABILIZATION_OCCLUSION'
   | 'INVALID_STROKE'
 
 export interface QcIssue {
@@ -226,15 +229,44 @@ export function qcCheck(
       }
     }
 
-    // Check auto matte validity
+    // Check stabilization: an export takes the original footage until the bake lands
+    const stabilization = describeClipStabilization(clip, model?.assets || [], options?.fileExists)
+    if (stabilization && stabilization.enabled && !stabilization.bakeReady) {
+      issues.push({
+        type: 'STABILIZATION_NOT_BAKED',
+        severity: 'warning',
+        message: `Clip "${clip.id}" has stabilization on but no usable stabilized file (${stabilization.status}); an export now uses the unstabilized footage. The editor bakes it in the background while the project is open.`,
+        trackIndex: clip.trackIndex,
+        trackId: tracks[clip.trackIndex]?.id,
+        clipId: clip.id,
+        details: { status: stabilization.status, bakePath: stabilization.bakePath },
+      })
+    }
+    if (stabilization?.occlusionTimes?.length) {
+      issues.push({
+        type: 'STABILIZATION_OCCLUSION',
+        severity: 'warning',
+        message: `Clip "${clip.id}": something passed close to the lens at ${stabilization.occlusionTimes.map(t => `${t.toFixed(1)}s`).join(', ')} and may have been stabilized as camera shake. Consider mode "tripod", or cutting that moment out.`,
+        trackIndex: clip.trackIndex,
+        trackId: tracks[clip.trackIndex]?.id,
+        clipId: clip.id,
+        details: { occlusionTimes: stabilization.occlusionTimes, mode: stabilization.mode },
+      })
+    }
+
+    // Check auto matte validity — against the clip as it plays, so a stabilized clip's
+    // matte has to be of its stabilized file
     if (clip.autoMatte && clip.autoMatte.enabled) {
+      const played = clipAsPlayed(clip, model?.assets || [])
+      const stabilizedPath = stabilizedClipPath(played)
       const isValid = isAutoMatteBakeValid(clip.autoMatte.bake, {
-        trimStart: clip.trimStart || 0,
-        duration: clip.duration,
-        speed: clip.speed ?? 1,
-        reversed: Boolean(clip.reversed),
+        trimStart: played.trimStart || 0,
+        duration: played.duration,
+        speed: played.speed ?? 1,
+        reversed: Boolean(played.reversed),
         model: clip.autoMatte.model || 'rvm-mobilenetv3',
         quality: clip.autoMatte.quality || 'standard',
+        ...(stabilizedPath ? { assetKey: stabilizedPath } : {}),
       })
       const fileExists = !options?.fileExists || (clip.autoMatte.bake?.path ? options.fileExists(clip.autoMatte.bake.path) : false)
 

@@ -2,8 +2,9 @@ import React from 'react'
 import {
   Clipboard, Copy, Scissors, Trash2, Layers, Type, X,
   Eye, FolderOpen, RotateCcw, Volume2, VolumeX,
-  FlipHorizontal2, FlipVertical2, Link2, Unlink2, Music, Snowflake,
+  FlipHorizontal2, FlipVertical2, Link2, Unlink2, Music, Snowflake, Replace,
 } from 'lucide-react'
+import { isReplaceableClip } from '@core/clip-replace'
 import { useEditorActions } from './editor-store'
 import type { Asset, TimelineClip, Track, TextOverlayStyle } from '../../types/project-model'
 import { TEXT_PRESETS } from '../../types/project'
@@ -40,6 +41,8 @@ export interface ClipContextMenuProps {
   getLiveAsset: (clip: TimelineClip) => Asset | null | undefined
   getMaxClipDuration: (clip: TimelineClip) => number
   onRevealAsset: (assetId: string) => void
+  /** Open the picker that swaps this clip's media (Replace clip). */
+  onReplaceClip: (clipId: string) => void
 }
 
 // Reusable menu item component
@@ -101,6 +104,7 @@ export function ClipContextMenu({
   getLiveAsset,
   getMaxClipDuration,
   onRevealAsset,
+  onReplaceClip,
 }: ClipContextMenuProps) {
   const close = () => setClipContextMenu(null)
   const isBackground = clipContextMenu.kind === 'background'
@@ -203,6 +207,7 @@ export function ClipContextMenu({
           getLiveAsset={getLiveAsset}
           getMaxClipDuration={getMaxClipDuration}
           onRevealAsset={onRevealAsset}
+          onReplaceClip={onReplaceClip}
           currentTime={currentTime}
           close={close}
         />
@@ -229,6 +234,7 @@ function SingleClipMenu({
   duplicateClip, splitClipAtPlayhead, removeClip, updateClip, setClipSpeed,
   getLiveAsset, getMaxClipDuration,
   onRevealAsset,
+  onReplaceClip,
   currentTime,
   close,
 }: {
@@ -247,6 +253,7 @@ function SingleClipMenu({
   getLiveAsset: (clip: TimelineClip) => Asset | null | undefined
   getMaxClipDuration: (clip: TimelineClip) => number
   onRevealAsset: (assetId: string) => void
+  onReplaceClip: (clipId: string) => void
   currentTime: number
   close: () => void
 }) {
@@ -316,6 +323,14 @@ function SingleClipMenu({
           label="Freeze Frame"
           disabled={currentTime <= contextClip.startTime + 0.05 || currentTime >= contextClip.startTime + contextClip.duration - 0.05}
           onClick={() => { handleFreezeFrame(); close() }}
+        />
+      )}
+      {isReplaceableClip(contextClip) && (
+        <MenuItem
+          icon={Replace}
+          label="Replace Clip…"
+          title="Swap in another video or image, keeping this clip's place, length and effects"
+          onClick={() => { onReplaceClip(contextClip.id); close() }}
         />
       )}
 

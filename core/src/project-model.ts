@@ -395,6 +395,62 @@ export const DEFAULT_CUSTOM_MATTE: CustomMatte = {
   strokes: [],
 }
 
+/**
+ * How the camera path is smoothed.
+ *
+ * 'auto' follows the camera and removes only the jitter around its path. 'tripod' pins
+ * every frame to one reference frame, which is what a locked-off shot wants — and it is
+ * much harder to fool with a hand passing in front of the lens, which 'auto' reads as
+ * the camera lurching.
+ */
+export const stabilizationModeValues = ['auto', 'tripod'] as const
+export type StabilizationMode = (typeof stabilizationModeValues)[number]
+
+export const STABILIZATION_SMOOTHING_MIN = 5
+export const STABILIZATION_SMOOTHING_MAX = 60
+
+/** Something the bake noticed that the user should hear about. */
+export const stabilizationWarningValues = ['occlusion', 'highZoom'] as const
+export type StabilizationWarning = (typeof stabilizationWarningValues)[number]
+
+export const stabilizationBakeSchema = z.object({
+  path: z.string(),
+  fingerprint: z.string(),
+  createdAt: z.number(),
+  /**
+   * The SOURCE range the stabilized file covers. The file starts at `sourceStart`, not at
+   * zero, so every consumer goes through `resolveStabilizedClip` to shift the clip's trim
+   * into the file's own time.
+   */
+  sourceStart: z.number(),
+  sourceSpan: z.number(),
+  /** Id of the asset that was stabilized; a bake of another asset is never picked up. */
+  assetKey: z.string().optional(),
+  /** How far the picture was scaled up to hide the moving edges, in percent. */
+  zoomPercent: z.number().optional(),
+  warnings: z.array(z.enum(stabilizationWarningValues)).optional(),
+  /** Source seconds where a warning was raised, for pointing the user at it. */
+  warningTimes: z.array(z.number()).optional(),
+})
+
+export type StabilizationBake = z.infer<typeof stabilizationBakeSchema>
+
+export const clipStabilizationSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Frames either side the camera path is averaged over. 15 reads natural, 30 like a gimbal. */
+  smoothing: z.number().min(STABILIZATION_SMOOTHING_MIN).max(STABILIZATION_SMOOTHING_MAX).default(20),
+  mode: z.enum(stabilizationModeValues).default('auto'),
+  bake: stabilizationBakeSchema.optional(),
+})
+
+export type ClipStabilization = z.infer<typeof clipStabilizationSchema>
+
+export const DEFAULT_CLIP_STABILIZATION: ClipStabilization = {
+  enabled: true,
+  smoothing: 20,
+  mode: 'auto',
+}
+
 export const strokeStyleValues = [
   'none',
   'solid',
@@ -460,6 +516,8 @@ export const textOverlayStyleSchema = z.object({
   fontSize: z.number(),
   fontWeight: z.enum(fontWeightValues),
   fontStyle: z.enum(fontStyleValues),
+  /** Underlined text. Optional: styles written before it existed are not underlined. */
+  underline: z.boolean().optional(),
   color: z.string(),
   backgroundColor: z.string(),
   textAlign: z.enum(textAlignValues),
@@ -635,10 +693,29 @@ const baseTimelineClipSchema = z.object({
   chromaKey: chromaKeySchema.optional(),
   autoMatte: autoMatteSchema.optional(),
   customMatte: customMatteSchema.optional(),
+  stabilization: clipStabilizationSchema.optional(),
   stroke: clipStrokeSchema.optional(),
   blendMode: clipBlendModeSchema.default('normal').optional(),
   stickerId: z.string().optional(),
+  shapeProperties: z.object({
+    fillColor: z.string().optional(),
+    strokeColor: z.string().optional(),
+    strokeWidth: z.number().optional(),
+    strokeDasharray: z.string().optional(),
+    cornerRounding: z.number().optional(),
+    sides: z.number().optional(),
+  }).optional(),
 })
+
+export const shapePropertiesSchema = z.object({
+  fillColor: z.string().optional(),
+  strokeColor: z.string().optional(),
+  strokeWidth: z.number().optional(),
+  strokeDasharray: z.string().optional(),
+  cornerRounding: z.number().optional(),
+  sides: z.number().optional(),
+})
+export type ShapeProperties = z.infer<typeof shapePropertiesSchema>
 
 export const timelineClipSchema = z.preprocess((val: any) => {
   if (val && typeof val === 'object' && Array.isArray(val.effects)) {

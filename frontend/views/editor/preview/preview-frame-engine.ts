@@ -1,6 +1,7 @@
 import type * as React from 'react'
 import type { Asset, TimelineClip, TimelineTransition, Track, SubtitleClip, ChromaKey } from '../../../types/project-model'
 import { sampleClipAt, hasKeyframesForProperty, computeMediaTimeFromTimelineTime } from '@core/keyframes'
+import { stabilizedClipPath } from '@core/stabilization'
 import { getClipEffectStyles, resolveEffectiveClipFilter } from '../video-editor-utils'
 import { pathToFileUrl } from '../../../lib/file-url'
 
@@ -96,6 +97,9 @@ export const VIDEO_POOL_PREROLL_SECONDS = 1.5
 export const MAX_COMPOSITING_CANVASES = 3
 
 export function resolveClipPathFromAssets(assets: Asset[], clip: TimelineClip, proxyEnabled = false): string {
+  // Ahead of the proxy: a proxy is of the unstabilized frames.
+  const stabilized = stabilizedClipPath(clip)
+  if (stabilized) return stabilized
   const liveAsset = clip.assetId
     ? assets.find(asset => asset.id === clip.assetId) || clip.asset
     : clip.asset

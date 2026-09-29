@@ -13,6 +13,18 @@ export interface TransformBoundingBoxProps {
   onToggleCropMode: () => void
   onUpdateTransform: (patch: Partial<ClipTransform>, options?: { recordKeyframeAt?: number }) => void
   /**
+   * The transform while a drag is in flight, every pointer move; null when it ends.
+   * The box redraws from its own state, but the picture is drawn elsewhere, so without
+   * this it stayed put until the drag was committed on release.
+   */
+  onPreviewTransform?: (transform: ClipTransform | null) => void
+  /**
+   * The press on the box is over. `moved` says whether it was a drag — only then should
+   * the click that follows leave the selection alone. A press that never moved was a
+   * click, and the click has to be free to pick whatever is on top at that point.
+   */
+  onInteractionEnd?: (moved: boolean) => void
+  /**
    * Raised as soon as a handle is grabbed, before anything moves.
    *
    * The preview clears or re-picks the selection when the frame is clicked,
@@ -52,7 +64,9 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
   cropMode,
   onToggleCropMode,
   onUpdateTransform,
+  onPreviewTransform,
   onInteractionStart,
+  onInteractionEnd,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -162,6 +176,17 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
 
     setActiveDrag(mode)
 
+    // The drag's own running transform. Kept here rather than read back from React
+    // state, so the preview and the final commit never depend on a render having run.
+    let current: ClipTransform = startTf
+    let moved = false
+    const apply = (patch: Partial<ClipTransform>) => {
+      current = { ...current, ...patch }
+      moved = true
+      setLocalTransform(current)
+      onPreviewTransform?.(current)
+    }
+
     const onPointerMove = (ev: PointerEvent) => {
       ev.preventDefault()
       const dx = ev.clientX - startX
@@ -216,11 +241,10 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         }
 
         setSnapLines(newSnap)
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           positionX: Math.round(newX * 10) / 10,
           positionY: Math.round(newY * 10) / 10,
-        }))
+        })
       } else if (mode === 'rotate') {
         const curAngleRad = Math.atan2(ev.clientY - centerY, ev.clientX - centerX)
         let stepRad = curAngleRad - lastAngleRad
@@ -245,10 +269,9 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
           else if (Math.abs(Math.abs(deg) - 180) <= snapThreshold) deg = 180
         }
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           rotation: deg,
-        }))
+        })
       } else if (isShape && (mode === 'scale-e' || mode === 'scale-w')) {
         const localDx = dx * uXx + dy * uXy
         const isEast = mode === 'scale-e'
@@ -271,14 +294,13 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         const newScaleX = (newWidthPx / fitted.width) * 100
         const newScaleY = startScaleY
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           positionX: Math.round(newX * 10) / 10,
           positionY: Math.round(newY * 10) / 10,
           scaleX: Math.round(newScaleX * 10) / 10,
           scaleY: Math.round(newScaleY * 10) / 10,
           scale: Math.round(newScaleX),
-        }))
+        })
       } else if (isShape && (mode === 'scale-n' || mode === 'scale-s')) {
         const localDy = dx * uYx + dy * uYy
         const isNorth = mode === 'scale-n'
@@ -301,14 +323,13 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         const newScaleX = startScaleX
         const newScaleY = (newHeightPx / fitted.height) * 100
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           positionX: Math.round(newX * 10) / 10,
           positionY: Math.round(newY * 10) / 10,
           scaleX: Math.round(newScaleX * 10) / 10,
           scaleY: Math.round(newScaleY * 10) / 10,
           scale: Math.round(newScaleY),
-        }))
+        })
       } else if (isShape && (mode === 'scale-nw' || mode === 'scale-ne' || mode === 'scale-se' || mode === 'scale-sw')) {
         const localDx = dx * uXx + dy * uXy
         const localDy = dx * uYx + dy * uYy
@@ -364,24 +385,22 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
         const newScaleX = startScaleX * clampedScale
         const newScaleY = startScaleY * clampedScale
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           positionX: Math.round(newX * 10) / 10,
           positionY: Math.round(newY * 10) / 10,
           scaleX: Math.round(newScaleX * 10) / 10,
           scaleY: Math.round(newScaleY * 10) / 10,
           scale: Math.round(newScaleX),
-        }))
+        })
       } else if (mode.startsWith('scale-')) {
         const curDist = Math.hypot(ev.clientX - centerX, ev.clientY - centerY)
         const ratio = curDist / initialDistance
         let newScale = Math.round(startTf.scale * ratio)
         newScale = Math.max(5, Math.min(500, newScale))
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           scale: newScale,
-        }))
+        })
       } else if (mode.startsWith('crop-')) {
         // Crop mode adjustments (percentages 0..90)
         const baseW = fitted.width * (startTf.scale / 100)
@@ -405,13 +424,12 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
           cropRight = Math.max(0, Math.min(90 - cropLeft, Math.round(startTf.cropRight - (dx / baseW) * 100)))
         }
 
-        setLocalTransform(prev => ({
-          ...(prev ?? startTf),
+        apply({
           cropTop,
           cropBottom,
           cropLeft,
           cropRight,
-        }))
+        })
       }
     }
 
@@ -421,18 +439,18 @@ export const TransformBoundingBox: React.FC<TransformBoundingBoxProps> = ({
       setActiveDrag(null)
       setSnapLines({})
 
-      setLocalTransform(finalTf => {
-        if (finalTf) {
-          const timeInClip = Math.max(0, Math.min(selectedClip.duration, currentTime - selectedClip.startTime))
-          onUpdateTransform(finalTf, { recordKeyframeAt: timeInClip })
-        }
-        return null
-      })
+      if (moved) {
+        const timeInClip = Math.max(0, Math.min(selectedClip.duration, currentTime - selectedClip.startTime))
+        onUpdateTransform(current, { recordKeyframeAt: timeInClip })
+      }
+      setLocalTransform(null)
+      onPreviewTransform?.(null)
+      onInteractionEnd?.(moved)
     }
 
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
-  }, [selectedClip, localTransform, clipTf, videoFrameSize, fitted, currentTime, onUpdateTransform, onInteractionStart])
+  }, [selectedClip, localTransform, clipTf, videoFrameSize, fitted, currentTime, onUpdateTransform, onPreviewTransform, onInteractionStart, onInteractionEnd])
 
   if (!selectedClip || !isClipActive || selectedClip.type === 'audio' || selectedClip.type === 'adjustment' || selectedClip.type === 'text') {
     return null

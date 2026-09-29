@@ -24,6 +24,12 @@ import type { UseVideoPoolManagerResult, VideoPoolRefs } from './useVideoPoolMan
 import type { CachedSegmentInfo } from '../render-cache-store'
 import { syncCachePlayback, type CacheSlotState } from './cache-video-manager'
 
+/** A transform being dragged on screen, not yet committed to the clip. */
+export interface TransformOverride {
+  clipId: string
+  transform: NonNullable<TimelineClip['transform']>
+}
+
 export interface FrameRendererRefs {
   activeImageRef: React.MutableRefObject<HTMLImageElement | null>
   lutCanvasRef: React.RefObject<LutCanvasRef | null>
@@ -38,6 +44,8 @@ export interface FrameRendererRefs {
   cachedVideoRefA: React.MutableRefObject<HTMLVideoElement | null>
   cachedVideoRefB: React.MutableRefObject<HTMLVideoElement | null>
   playbackTimecodeRef: React.MutableRefObject<HTMLSpanElement | null>
+  /** Set while the transform box is being dragged; that clip is drawn with it. */
+  transformOverrideRef?: React.MutableRefObject<TransformOverride | null>
 }
 
 export interface FrameRendererDeps {
@@ -104,6 +112,7 @@ export function useFrameRenderer(
     cachedVideoRefA,
     cachedVideoRefB,
     playbackTimecodeRef,
+    transformOverrideRef,
   } = frameRefs
 
   const {
@@ -356,8 +365,20 @@ export function useFrameRenderer(
     // reached the canvas at all.
     const hasActiveCanvas = hasActiveLut || activeNeedsCanvas || outgoingNeedsCanvas
 
+    // A clip under the transform box mid-drag is drawn with the dragged transform, so the
+    // picture follows the handles instead of waiting for the release to commit it. Its
+    // transform keyframes are set aside for the drag: they would otherwise win over it.
+    const override = transformOverrideRef?.current ?? null
+    const withOverride = (clip: TimelineClip): TimelineClip => {
+      if (!override || override.clipId !== clip.id) return clip
+      return {
+        ...clip,
+        transform: override.transform,
+        keyframes: clip.keyframes?.filter(track => !track.property.startsWith('transform.')),
+      }
+    }
     const gradedStyle = (clip: TimelineClip, at: number) =>
-      getClipEffectStyles(clip, at, { lutApproximation: !hasActiveCanvas })
+      getClipEffectStyles(withOverride(clip), at, { lutApproximation: !hasActiveCanvas })
 
     if (poolContainer) {
       if (outgoingClip?.asset?.type === 'video') {
@@ -695,7 +716,7 @@ export function useFrameRenderer(
       }
     }
 
-  }, [activeImageRef, activePoolClipIdRef, activePoolPathRef, activeTimeline?.background, blurCanvasRef, compLutCanvasRefs, compositingMediaRefs, compositingSlotMapRef, contributorSyncStatesRef, ensureContributorSyncState, ensurePoolVideo, getContributorKey, getNextVideoClipRef, incomingDissolveImageRef, incomingDissolveVideoRef, incomingLutCanvasRef, lutCanvasRef, preSeekDoneRef, resolveClipPathRef, stickerImageRefs, syncPlaybackContributorVideo, syncRetainedPoolVideos, syncVideoElement, tracksRef, transitionBgRef, videoPoolContainerRef, videoPoolRef])
+  }, [activeImageRef, activePoolClipIdRef, activePoolPathRef, activeTimeline?.background, blurCanvasRef, compLutCanvasRefs, compositingMediaRefs, compositingSlotMapRef, contributorSyncStatesRef, ensureContributorSyncState, ensurePoolVideo, getContributorKey, getNextVideoClipRef, incomingDissolveImageRef, incomingDissolveVideoRef, incomingLutCanvasRef, lutCanvasRef, preSeekDoneRef, resolveClipPathRef, stickerImageRefs, transformOverrideRef, syncPlaybackContributorVideo, syncRetainedPoolVideos, syncVideoElement, tracksRef, transitionBgRef, videoPoolContainerRef, videoPoolRef])
 
   const renderFrame = React.useCallback((atTime: number, mode: MonitorRenderMode) => {
     // 1. Sync complex segment render cache if playhead is within a ready segment

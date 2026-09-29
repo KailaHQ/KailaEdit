@@ -13,16 +13,18 @@ import { sampleClipAt } from '@core/keyframes'
 import { MetadataTab } from './properties/MetadataTab'
 import { AdjustmentTab } from './properties/AdjustmentTab'
 import { TextPropertiesTab } from './properties/TextPropertiesTab'
+import { TextAnimationTab } from './properties/TextAnimationTab'
 import { SpeedPropertiesTab } from './properties/SpeedPropertiesTab'
 import { AudioPropertiesTab } from './properties/AudioPropertiesTab'
 import { BasicVideoSection } from './properties/BasicVideoSection'
+import { StabilizeSection } from './properties/StabilizeSection'
 import { RemoveBgTab } from './removebg/RemoveBgTab'
 import { MaskPropertiesSection } from './properties/MaskPropertiesSection'
 import { RetouchPropertiesSection } from './properties/RetouchPropertiesSection'
 import { EffectsPropertiesTab } from './properties/EffectsPropertiesTab'
 
 /** The tabs across the top of the right-hand panel. */
-type PropertiesTab = 'text' | 'adjust' | 'video' | 'audio' | 'speed' | 'effects' | 'metadata'
+type PropertiesTab = 'text' | 'animation' | 'adjust' | 'video' | 'audio' | 'speed' | 'effects' | 'metadata'
 
 export function ClipPropertiesPanel() {
   const { t } = useTranslation()
@@ -59,7 +61,9 @@ export function ClipPropertiesPanel() {
 
   // Which tabs exist depends on the clip
   const tabs: { id: PropertiesTab; label: string }[] = [
-    ...(selectedClip.type === 'text' ? [{ id: 'text' as const, label: 'Text' }] : []),
+    ...(selectedClip.type === 'text'
+      ? [{ id: 'text' as const, label: 'Text' }, { id: 'animation' as const, label: 'Animation' }]
+      : []),
     ...(selectedClip.type === 'adjustment' ? [{ id: 'adjust' as const, label: 'Adjust' }] : []),
     ...(hasVisualTransformControls ? [{ id: 'video' as const, label: 'Video' }] : []),
     ...(hasAudioControls ? [{ id: 'audio' as const, label: 'Audio' }] : []),
@@ -106,6 +110,9 @@ export function ClipPropertiesPanel() {
             {/* Text Overlay properties */}
             {tab === 'text' && selectedClip.type === 'text' && (
               <TextPropertiesTab selectedClip={selectedClip} />
+            )}
+            {tab === 'animation' && selectedClip.type === 'text' && (
+              <TextAnimationTab selectedClip={selectedClip} />
             )}
 
             {/* Speed tab */}
@@ -156,12 +163,17 @@ export function ClipPropertiesPanel() {
 
                 {/* Sub-tab 1: Basic */}
                 {videoSubTab === 'basic' && (
-                  <BasicVideoSection
-                    selectedClip={selectedClip}
-                    sampledClip={sampledClip}
-                    timeInClip={timeInClip}
-                    hasVisualTransformControls={hasVisualTransformControls}
-                  />
+                  <>
+                    <BasicVideoSection
+                      selectedClip={selectedClip}
+                      sampledClip={sampledClip}
+                      timeInClip={timeInClip}
+                      hasVisualTransformControls={hasVisualTransformControls}
+                    />
+                    {selectedClip.type === 'video' && (
+                      <StabilizeSection selectedClip={selectedClip} />
+                    )}
+                  </>
                 )}
 
                 {/* Sub-tab 2: Remove BG */}

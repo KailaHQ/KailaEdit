@@ -12,6 +12,20 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-09-29
+
+### Added
+- **Timeline Shape Customization in Basic Properties Panel.** Full shape property editing for shapes on the timeline matching Cover Studio: customizable Fill Color (with transparency), Border/Stroke Color, Border Style & Weight (None, Solid, Dashed, Short Dash, Dotted), Corner Rounding, and Polygon Sides (3–16). Located in the Basic subtab of Video Properties with real-time SVG monitor updates and high-resolution export rasterization.
+- **Preset Style Grid in Cover Studio.** Text elements in the cover editor now include a "Preset style" grid in the Effects panel — 23 one-click looks (outlined, boxed, shadowed, glowing, plain) that instantly restyle color, stroke, shadow, and background without changing font, size, or position.
+
+### Changed
+- **Flush Shape Bounding Box & Transform Handles.** Expanded shape coordinate geometry to fill the full bounds of the transform box ([1, 99]), eliminating unnecessary padding gaps so that shape borders sit flush against the resize and rotation handles on the Program Monitor and Cover Studio.
+
+### Fixed
+- **Text preset style rendering mismatch.** Outlined text presets now render identically across preset tiles, the Program Monitor, and exported video. Previously, stroke was drawn on top of fill (eating into the letter body), making preview and export look thinner than the tile. All three layers now use `paintOrder: stroke fill` so the outline sits behind the filled text.
+- **Cover text shadow fallback when disabled.** Applying a "plain" text style in Cover Studio no longer shows a residual drop shadow. Previously, text without an explicit shadow still fell back to a hardcoded `0 2px 8px rgba(0,0,0,0.8)` shadow.
+- **Cover thumbnail stroke/fill order.** Saved cover thumbnails now match the on-screen preview: text stroke is drawn behind the fill, and shadow applies only to the visible fill layer.
+
 ## [1.0.8] - 2026-09-28
 
 ### Added
@@ -29,6 +43,7 @@ A release with no section here is refused by CI before anything is built.
 - **Magnetic Track 1 trimming and overlap safety.** Trimming clips on the main magnetic track ripples downstream media and linked audio in sync without scrambling clip order, and dragging longer clips down to Track 1 will no longer accidentally delete or overwrite underlying clips.
 - **Stale frame flash on cut points.** Prevented the video player pool from briefly flashing the last frame of the preceding cut with reset styling while seeking to the start of a subsequent cut from the same media.
 - **Windowed timeline audio envelope and keyframe alignment.** Audio volume envelopes and keyframe markers remain strictly aligned to their visual clip boundaries during timeline trimming and scrolling.
+- **Cross-track magnetic snapping to cuts and clip boundaries.** Dragging or trimming clips across overlay and audio tracks now magnetically snaps both start and end edges to adjacent cut points, transition junctions, and clip boundaries on tracks below, accompanied by real-time visual snap guide lines.
 - **Timeline cut point transition centering.** Transition indicators on the timeline now align symmetrically across the cut junction between adjacent clips.
 
 ## [1.0.7] - 2026-09-22

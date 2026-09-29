@@ -83,6 +83,109 @@ export const LAYOUT_LIMITS = {
  * on the same track that it overlaps. Returns the updated clips array.
  * `movedIds` = IDs of the clip(s) being moved (they should not be trimmed).
  */
+/** Overlaps shorter than this are rounding at a shared edge, not a collision. */
+const COLLISION_EPSILON = 1e-3
+
+/**
+ * Where a drag lands on top of other clips on an overlay track, gives the dragged clips a
+ * new track of their own instead — the way CapCut does it.
+ *
+ * Dropping onto an overlay track used to overwrite: `resolveOverlaps` trimmed the clip
+ * underneath, or deleted it outright when the drop covered it. Nothing warned during the
+ * drag, so moving one clip could quietly eat most of another. Now the dragged clips keep
+ * exactly the time they were dropped at, move up onto a fresh track of the same kind, and
+ * the clips they would have landed on are left alone.
+ *
+ * Per target track: every moved clip landing on a track where any of them collides goes
+ * up together, so a group dragged as one stays on one track. The main track is left to
+ * its magnet, and clips joined by a transition overlap on purpose, so neither counts.
+ * New tracks are appended — above everything of their kind, which is where the dragged
+ * clip is drawn anyway.
+ */
+export function liftCollidingClipsToNewTracks(
+  tracks: Track[],
+  clips: TimelineClip[],
+  movedIds: ReadonlySet<string>,
+  transitions: ReadonlyArray<{ leftClipId: string; rightClipId: string }> = [],
+  mainTrackIndex: number = mainVideoTrackIndex(tracks),
+  makeTrackId: () => string = () => `track-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+): { tracks: Track[]; clips: TimelineClip[] } {
+  const joined = (a: string, b: string) => transitions.some(t =>
+    (t.leftClipId === a && t.rightClipId === b) || (t.leftClipId === b && t.rightClipId === a))
+
+  const collidingTracks = new Set<number>()
+  for (const moved of clips) {
+    if (!movedIds.has(moved.id) || moved.trackIndex === mainTrackIndex) continue
+    if (collidingTracks.has(moved.trackIndex)) continue
+    const movedEnd = moved.startTime + moved.duration
+    const hits = clips.some(other =>
+      !movedIds.has(other.id)
+      && other.trackIndex === moved.trackIndex
+      && other.startTime < movedEnd - COLLISION_EPSILON
+      && other.startTime + other.duration > moved.startTime + COLLISION_EPSILON
+      && !joined(moved.id, other.id))
+    if (hits) collidingTracks.add(moved.trackIndex)
+  }
+  if (collidingTracks.size === 0) return { tracks, clips }
+
+  const nextTracks = [...tracks]
+  const liftedTo = new Map<number, number>()
+  for (const from of [...collidingTracks].sort((a, b) => a - b)) {
+    const source = tracks[from]
+    const kind = source?.kind ?? 'video'
+    const prefix = kind === 'audio' ? 'A' : kind === 'sticker' ? 'S' : 'V'
+    const sameKind = nextTracks.filter(t => (t.kind ?? 'video') === kind && t.type !== 'subtitle').length
+    liftedTo.set(from, nextTracks.length)
+    nextTracks.push({
+      id: makeTrackId(),
+      name: `${prefix}${sameKind + 1}`,
+      muted: false,
+      locked: false,
+      kind,
+    })
+  }
+
+  return {
+    tracks: nextTracks,
+    clips: clips.map(clip => {
+      const to = movedIds.has(clip.id) ? liftedTo.get(clip.trackIndex) : undefined
+      return to === undefined ? clip : { ...clip, trackIndex: to }
+    }),
+  }
+}
+
+/**
+ * How far a clip's edges may be dragged on an overlay track before they run into the
+ * clips beside it — the way CapCut stops a trim at the neighbour's edge.
+ *
+ * Without this a trim slid straight over the next clip, and on release `resolveOverlaps`
+ * cut the neighbour back or deleted it. `start`–`end` is the clip's span when the trim
+ * began; `trackIndexes` are the tracks being trimmed (the clip's own, plus any linked
+ * clip's). A clip already overlapping that span limits nothing, and neither does one
+ * joined to a resized clip by a transition — those overlap on purpose.
+ */
+export function neighbourTrimBounds(
+  clips: ReadonlyArray<TimelineClip>,
+  resizedIds: ReadonlySet<string>,
+  trackIndexes: Iterable<number>,
+  start: number,
+  end: number,
+  transitions: ReadonlyArray<{ leftClipId: string; rightClipId: string }> = [],
+): { minStart: number; maxEnd: number } {
+  const tracksToCheck = new Set(trackIndexes)
+  const joined = (id: string) => transitions.some(t =>
+    (resizedIds.has(t.leftClipId) && t.rightClipId === id) || (resizedIds.has(t.rightClipId) && t.leftClipId === id))
+  let minStart = 0
+  let maxEnd = Infinity
+  for (const clip of clips) {
+    if (resizedIds.has(clip.id) || !tracksToCheck.has(clip.trackIndex) || joined(clip.id)) continue
+    const clipEnd = clip.startTime + clip.duration
+    if (clipEnd <= start + COLLISION_EPSILON) minStart = Math.max(minStart, clipEnd)
+    else if (clip.startTime >= end - COLLISION_EPSILON) maxEnd = Math.min(maxEnd, clip.startTime)
+  }
+  return { minStart, maxEnd }
+}
+
 export function resolveOverlaps(
   allClips: TimelineClip[],
   movedIds: Set<string>,
@@ -411,6 +514,29 @@ export function resolveEffectiveClipFilter(
   }
 
   return undefined
+}
+
+/**
+ * Every clip with the filter it is actually graded with written onto it — the form the
+ * main process renders from. Its pipeline knows nothing of adjustment layers; it grades a
+ * clip by \`clip.filter\` alone. So anything sent there to render, the export and the
+ * preview's segment cache alike, has to carry the inherited filter on the clip itself.
+ *
+ * Returns the input array when no clip inherits anything, so memoized callers keep it.
+ */
+export function resolveAdjustmentFilters(clips: TimelineClip[], tracks?: Track[]): TimelineClip[] {
+  const adjustments = clips.filter(clip =>
+    clip.type === 'adjustment' && clip.filter && (!tracks || tracks[clip.trackIndex]?.enabled !== false))
+  if (adjustments.length === 0) return clips
+  let changed = false
+  const out = clips.map(clip => {
+    if (clip.filter || (clip.type !== 'video' && clip.type !== 'image')) return clip
+    const inherited = resolveEffectiveClipFilter(clip, adjustments, tracks)
+    if (!inherited) return clip
+    changed = true
+    return { ...clip, filter: inherited }
+  })
+  return changed ? out : clips
 }
 
 export interface ClipEffectStyle {

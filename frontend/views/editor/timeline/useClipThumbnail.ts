@@ -4,26 +4,32 @@ import type { TimelineClip, Asset } from '@/types/project-model'
 const clipThumbnailCache = new Map<string, string>()
 const inFlightRequests = new Map<string, Promise<string | null>>()
 
+/**
+ * The picture for a clip box: the asset's own thumbnail, or — for a video trimmed past
+ * its first frame — a frame from where the clip actually starts.
+ *
+ * The hooks run on every render, whatever the clip is. They used to sit behind early
+ * returns for "not a video" and "starts at the beginning", so a clip crossing either line
+ * — trimmed back to its first frame, or given new media by Replace clip — changed the
+ * number of hooks between renders and React took the whole timeline down with it.
+ */
 export function useClipThumbnail(
   clip: TimelineClip,
   liveAsset: Asset | null | undefined,
 ): string | undefined {
-  if (!liveAsset || clip.type !== 'video') {
-    return liveAsset?.smallThumbnailPath || liveAsset?.path
-  }
+  const fallback = liveAsset?.smallThumbnailPath || liveAsset?.path
+  // Only a video trimmed past its first frame needs a frame of its own.
+  const needsFrame = Boolean(liveAsset && clip.type === 'video' && clip.trimStart && clip.trimStart > 0.05)
+  const roundedTrim = Math.round((clip.trimStart || 0) * 10) / 10
+  const cacheKey = needsFrame && liveAsset ? `${liveAsset.path}:${roundedTrim}` : ''
 
-  // If trimStart is at the very beginning (<= 0.05s), use asset's default smallThumbnailPath
-  if (!clip.trimStart || clip.trimStart <= 0.05) {
-    return liveAsset.smallThumbnailPath || liveAsset.path
-  }
-
-  const roundedTrim = Math.round(clip.trimStart * 10) / 10
-  const cacheKey = `${liveAsset.path}:${roundedTrim}`
-
-  const cached = clipThumbnailCache.get(cacheKey)
-  const [thumbPath, setThumbPath] = useState<string | undefined>(cached || liveAsset.smallThumbnailPath)
+  const [thumbPath, setThumbPath] = useState<string | undefined>(
+    () => (cacheKey && clipThumbnailCache.get(cacheKey)) || liveAsset?.smallThumbnailPath,
+  )
 
   useEffect(() => {
+    if (!cacheKey || !liveAsset) return
+
     // If already in cache, use it immediately
     const existing = clipThumbnailCache.get(cacheKey)
     if (existing) {
@@ -74,7 +80,7 @@ export function useClipThumbnail(
       isCancelled = true
       clearTimeout(timer)
     }
-  }, [cacheKey, liveAsset.path, liveAsset.smallThumbnailPath, clip.trimStart])
+  }, [cacheKey, liveAsset?.path, liveAsset?.smallThumbnailPath, clip.trimStart])
 
-  return thumbPath
+  return needsFrame ? thumbPath : fallback
 }

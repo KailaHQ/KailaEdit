@@ -4,6 +4,7 @@ import { observeLoudness, observeSilence } from '../media-analyzer'
 import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
 import { matteService } from '../matte/matte-service'
+import { stabilizeService } from '../stabilize/stabilize-service'
 import { getAllowedRoots } from '../config'
 import { validatePath } from '../path-validation'
 import { handle } from './typed-handle'
@@ -11,6 +12,7 @@ import { handle } from './typed-handle'
 export function registerVideoProcessingHandlers(): void {
   proxyManager.init()
   renderCacheManager.init()
+  stabilizeService.init()
 
   handle('getAudioPeaks', async ({ filePath, buckets }) => {
     const normalizedPath = validatePath(filePath, getAllowedRoots())
@@ -128,6 +130,33 @@ export function registerVideoProcessingHandlers(): void {
 
   handle('matteBakeStatus', async ({ jobId }) => {
     return matteService.getJobStatus(jobId)
+  })
+
+  handle('stabilizeStart', async (params) => {
+    const normalizedPath = validatePath(params.filePath, getAllowedRoots())
+    return stabilizeService.start({ ...params, filePath: normalizedPath })
+  })
+
+  handle('stabilizeCancel', async ({ jobId }) => {
+    return { success: stabilizeService.cancel(jobId) }
+  })
+
+  handle('stabilizeStatus', async ({ jobId }) => {
+    return stabilizeService.status(jobId)
+  })
+
+  handle('stabilizeMissing', async ({ paths }) => {
+    // Same reason as matteBakeMissing: bake validity compares recorded fields, not the
+    // filesystem, and a cleared cache would otherwise leave clips claiming a bake.
+    const fs = await import('fs')
+    const missing = paths.filter(p => {
+      try {
+        return !fs.existsSync(p) || fs.statSync(p).size <= 0
+      } catch {
+        return true
+      }
+    })
+    return { missing }
   })
 
   handle('imageRemoveBackground', async ({ imageSrc, quality }) => {

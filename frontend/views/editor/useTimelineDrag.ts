@@ -2,13 +2,20 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Asset, SubtitleClip, TimelineClip, Track } from '../../types/project-model'
 import { flushSync } from 'react-dom'
 import { rowIndexAtY, stableRowIndexAtY, type TimelineRowBox } from '@core/timeline-rows'
-import { resolveOverlaps, packMainVideoTrack, pruneEmptyOverlayTracks, mainVideoTrackIndex, type ToolType } from './video-editor-utils'
+import { resolveOverlaps, packMainVideoTrack, pruneEmptyOverlayTracks, mainVideoTrackIndex, liftCollidingClipsToNewTracks, type ToolType } from './video-editor-utils'
 import { createTrackDropHandler } from './timeline/createTrackDropHandler'
 import { createClipMouseDownHandler } from './timeline/createClipMouseDownHandler'
 import { useTimelineScrub } from './timeline/useTimelineScrub'
 import { useTimelineSlipSlide, type SlipSlideClipState } from './timeline/useTimelineSlipSlide'
 import { useTimelineResize, type ResizingClipState } from './timeline/useTimelineResize'
 import { useTimelineLasso, type LassoRect } from './timeline/useTimelineLasso'
+import {
+  collectPlayheadSnapTargets,
+  collectTimelineSnapTargets,
+  snapClipMove,
+  computeSnapThresholdSeconds,
+  type SnapTarget,
+} from '@core/timeline-snap'
 
 export type { SlipSlideClipState, ResizingClipState, LassoRect }
 
@@ -73,7 +80,6 @@ interface UseTimelineDragParams {
   trackTopPx: (realTrackIndex: number, padding?: number) => number
   splitClipAtPlayhead: (clipId: string, atTime?: number, batchClipIds?: string[]) => void
   setSelectedSubtitleId: (id: string | null) => void
-  setSelectedGap: (gap: any) => void
   audioTrackHeight: number
   videoTrackHeight: number
   subtitleTrackHeight: number
@@ -98,6 +104,8 @@ interface UseTimelineDragParams {
     subtitles: SubtitleClip[]
   }) => void
   addFilterClip?: (params: { filterId: string; startTime?: number; trackIndex?: number }) => void
+  /** Draws the playhead at a time without going through the store (see useTimelineScrub). */
+  previewPlayhead?: (time: number) => void
 }
 
 export function useTimelineDrag(params: UseTimelineDragParams) {
@@ -111,14 +119,16 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     assets, timelines, activeTimeline, applyTransitionAtPoint,
     timelineRef, rulerScrollRef, trackContainerRef, trackContentRef,
     orderedTracks, getTrackHeight, trackTopPx,
-    splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
+    splitClipAtPlayhead, setSelectedSubtitleId,
     videoTrackHeight,
     audioTrackHeight,
     stickerTrackHeight = 44,
     addFilterClip,
+    previewPlayhead,
   } = params
 
   const [draggingClip, setDraggingClip] = useState<DraggingClipState | null>(null)
+  const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null)
   const dragPreviewRef = useRef<Record<string, DragPreviewPosition> | null>(null)
   const dragPreviewNodesRef = useRef<Map<string, DragPreviewNode>>(new Map())
   const dragPreviewRafRef = useRef<number | null>(null)
@@ -127,6 +137,9 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
   /** Container box captured at mousedown: re-reading it every move would force
       a layout right after the preview writes a transform. */
   const dragContainerRectRef = useRef<DOMRect | null>(null)
+
+  /** Dashed rows marking where a new track will appear, by track kind. Imperative, like the drag preview. */
+  const newTrackHintsRef = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const clearDragPreviewDom = useCallback(() => {
     if (dragPreviewRafRef.current !== null) {
@@ -139,9 +152,25 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       node.el.style.willChange = node.willChange
     }
     dragPreviewNodesRef.current.clear()
+    for (const hint of newTrackHintsRef.current.values()) hint.remove()
+    newTrackHintsRef.current.clear()
     dragPreviewRef.current = null
     dragRowRef.current = null
     dragContainerRectRef.current = null
+  }, [])
+
+  // What a dragged playhead catches on: clip edges on every track, cuts and markers.
+  // Read through a ref so the scrub handlers are not rebuilt on every clip change.
+  const playheadSnapSourceRef = useRef({ clips, activeTimeline, snapEnabled })
+  playheadSnapSourceRef.current = { clips, activeTimeline, snapEnabled }
+  const getPlayheadSnapTargets = useCallback(() => {
+    const source = playheadSnapSourceRef.current
+    if (!source.snapEnabled) return null
+    return collectPlayheadSnapTargets({
+      clips: source.clips,
+      transitions: source.activeTimeline?.transitions,
+      markers: source.activeTimeline?.markers,
+    })
   }, [])
 
   // Sub-hook: Scrubbing & auto-scrolling
@@ -158,6 +187,9 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     totalDuration,
     setCurrentTime,
     setIsPlaying,
+    getSnapTargets: getPlayheadSnapTargets,
+    onScrubPreview: previewPlayhead,
+    onSnapGuideChange: setSnapGuideTime,
   })
 
   // Helper: expand a set of clip IDs to include their linked counterparts (audio ↔ video)
@@ -228,6 +260,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     expandWithLinkedClips,
     activeTimeline,
     setCurrentTime,
+    onSnapGuideChange: setSnapGuideTime,
   })
 
   const handleClipMouseDown = createClipMouseDownHandler({
@@ -243,7 +276,6 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     setSlipSlideClip,
     setDraggingClip,
     setSelectedSubtitleId,
-    setSelectedGap,
     trackContainerRef,
     trackContentRef,
     dragContainerRectRef,
@@ -301,30 +333,31 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     
     // Snap the primary clip (skip other clips in the drag group for snapping)
     const origPositions = draggingClip.originalPositions
+    let activeSnappedTarget: SnapTarget | null = null
+
     if (snapEnabled) {
-      const snapThreshold = 0.2
-      for (const otherClip of clips) {
-        if (origPositions[otherClip.id]) continue // skip clips in the drag group
-        
-        if (Math.abs(newStartTime - otherClip.startTime) < snapThreshold) {
-          newStartTime = otherClip.startTime
-        }
-        const otherEnd = otherClip.startTime + otherClip.duration
-        if (Math.abs(newStartTime - otherEnd) < snapThreshold) {
-          newStartTime = otherEnd
-        }
-        const clipEnd = newStartTime + primaryClip.duration
-        if (Math.abs(clipEnd - otherClip.startTime) < snapThreshold) {
-          newStartTime = otherClip.startTime - primaryClip.duration
-        }
-      }
-      if (Math.abs(newStartTime - getCurrentTime()) < snapThreshold) {
-        newStartTime = getCurrentTime()
-      }
-      if (Math.abs(newStartTime + primaryClip.duration - getCurrentTime()) < snapThreshold) {
-        newStartTime = getCurrentTime() - primaryClip.duration
-      }
+      const snapThreshold = computeSnapThresholdSeconds(pixelsPerSecond)
+      const ignoreClipIds = new Set(Object.keys(origPositions))
+      const targets = collectTimelineSnapTargets({
+        clips,
+        transitions: activeTimeline?.transitions,
+        currentTime: getCurrentTime(),
+        markers: activeTimeline?.markers,
+        ignoreClipIds,
+      })
+
+      const snapResult = snapClipMove({
+        proposedStartTime: newStartTime,
+        duration: primaryClip.duration,
+        targets,
+        snapThreshold,
+      })
+
+      newStartTime = snapResult.snappedTime
+      activeSnappedTarget = snapResult.snappedTarget
     }
+
+    setSnapGuideTime(activeSnappedTarget ? activeSnappedTarget.time : null)
     
     // Which row is the pointer over?
     //
@@ -460,6 +493,49 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
         const preview = dragPreviewRef.current
         if (!preview) return
 
+        // A drop here onto other clips on an overlay track would send the dragged clips up
+        // to a new track (liftCollidingClipsToNewTracks, which the drop itself runs too).
+        // Showing them there while dragging means the release holds no surprise.
+        const movedIdSet = new Set(Object.keys(preview))
+        const positioned = clips.map(clip => {
+          const target = preview[clip.id]
+          return target && target.trackIndex >= 0
+            ? { ...clip, startTime: target.startTime, trackIndex: target.trackIndex }
+            : clip
+        })
+        const lifted = liftCollidingClipsToNewTracks(
+          tracks, positioned, movedIdSet, activeTimeline?.transitions ?? [], mainVideoTrackIndex(tracks))
+        const liftedKind = new Map<string, string>()
+        if (lifted.clips !== positioned) {
+          for (const clip of lifted.clips) {
+            if (movedIdSet.has(clip.id) && clip.trackIndex >= tracks.length) {
+              liftedKind.set(clip.id, lifted.tracks[clip.trackIndex]?.kind ?? 'video')
+            }
+          }
+        }
+
+        // Where a new track of each kind appears: above the video and sticker stacks,
+        // below the audio stack — where an appended track is displayed.
+        const newTrackSlot = (kind: string): { top: number; height: number } => {
+          if (kind === 'audio') {
+            const last = audioDisplayRows[audioDisplayRows.length - 1]
+            const lastTop = last ? trackTopPx(last.realIndex) : 0
+            const lastHeight = last ? getTrackHeight(last.realIndex) : audioTrackHeight
+            return { top: lastTop + lastHeight, height: audioTrackHeight }
+          }
+          if (kind === 'sticker') {
+            const top = stickerDisplayRows[0]
+            const height = top ? getTrackHeight(top.realIndex) : stickerTrackHeight
+            return { top: (top ? trackTopPx(top.realIndex) : 0) - height, height }
+          }
+          const top = videoDisplayRows[0]
+          return { top: (top ? trackTopPx(top.realIndex) : 0) - videoTrackHeight, height: videoTrackHeight }
+        }
+        const slotKindFor = (clipId: string, trackIndex: number): string | undefined =>
+          trackIndex === -1 ? 'video' : trackIndex === -2 ? 'audio' : trackIndex === -3 ? 'sticker' : liftedKind.get(clipId)
+        const hintKinds = new Set<string>()
+        let hintParent: HTMLElement | null = null
+
         for (const [clipId, target] of Object.entries(preview)) {
           const original = origPositions[clipId]
           if (!original) continue
@@ -478,21 +554,12 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
           }
 
           const xPx = (target.startTime - original.startTime) * pixelsPerSecond
+          const slotKind = slotKindFor(clipId, target.trackIndex)
           let yPx: number
-          if (target.trackIndex === -1) {
-            const topVideoTrack = videoDisplayRows[0]
-            const topVideoTop = topVideoTrack ? trackTopPx(topVideoTrack.realIndex, 4) : 0
-            yPx = (topVideoTop - videoTrackHeight) - trackTopPx(original.trackIndex, 4)
-          } else if (target.trackIndex === -2) {
-            const lastAudioTrack = audioDisplayRows[audioDisplayRows.length - 1]
-            const lastAudioTop = lastAudioTrack ? trackTopPx(lastAudioTrack.realIndex, 4) : 0
-            const lastAudioHeight = lastAudioTrack ? getTrackHeight(lastAudioTrack.realIndex) : audioTrackHeight
-            yPx = (lastAudioTop + lastAudioHeight) - trackTopPx(original.trackIndex, 4)
-          } else if (target.trackIndex === -3) {
-            const topStickerTrack = stickerDisplayRows[0]
-            const topStickerTop = topStickerTrack ? trackTopPx(topStickerTrack.realIndex, 4) : 0
-            const topStickerHeight = topStickerTrack ? getTrackHeight(topStickerTrack.realIndex) : stickerTrackHeight
-            yPx = (topStickerTop - topStickerHeight) - trackTopPx(original.trackIndex, 4)
+          if (slotKind) {
+            yPx = (newTrackSlot(slotKind).top + 4) - trackTopPx(original.trackIndex, 4)
+            hintKinds.add(slotKind)
+            hintParent = hintParent ?? node.el.parentElement
           } else {
             yPx = trackTopPx(target.trackIndex, 4) - trackTopPx(original.trackIndex, 4)
           }
@@ -500,12 +567,34 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
           node.el.style.zIndex = '40'
           node.el.style.willChange = 'transform'
         }
+
+        // The rows themselves: one dashed slot per kind a new track is coming for.
+        const hints = newTrackHintsRef.current
+        for (const [kind, hint] of hints) {
+          if (!hintKinds.has(kind)) { hint.remove(); hints.delete(kind) }
+        }
+        for (const kind of hintKinds) {
+          const slot = newTrackSlot(kind)
+          let hint = hints.get(kind)
+          if (!hint || !hint.isConnected) {
+            if (!hintParent) break
+            hint = document.createElement('div')
+            hint.dataset.newTrackHint = kind
+            hint.style.cssText = 'position:absolute;left:0;right:0;pointer-events:none;z-index:35;'
+              + 'border:1px dashed rgba(34,211,238,0.75);border-radius:4px;background:rgba(34,211,238,0.08);'
+            hintParent.appendChild(hint)
+            hints.set(kind, hint)
+          }
+          hint.style.top = `${slot.top + 2}px`
+          hint.style.height = `${Math.max(4, slot.height - 4)}px`
+        }
       })
     }
-  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, getCurrentTime, lassoRect, orderedTracks, trackContainerRef, trackTopPx, videoTrackHeight, audioTrackHeight, stickerTrackHeight, getTrackHeight])
+  }, [draggingClip, clips, pixelsPerSecond, snapEnabled, tracks, getCurrentTime, lassoRect, orderedTracks, trackContainerRef, trackTopPx, videoTrackHeight, audioTrackHeight, stickerTrackHeight, getTrackHeight, activeTimeline])
   
 
   const handleMouseUp = useCallback((e?: MouseEvent | Event) => {
+    setSnapGuideTime(null)
     // Finalize lasso selection
     if (handleLassoUp(e)) return
 
@@ -591,9 +680,13 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
       })
       const currentTransitions = activeTimeline?.transitions ?? []
       const mainIndex = mainVideoTrackIndex(allTracks)
-      const resolved = resolveOverlaps(positioned, movedIds, currentTransitions, mainIndex >= 0 ? mainIndex : 0)
-      const packed = packMainVideoTrack(allTracks, resolved, currentTransitions)
-      const pruned = pruneEmptyOverlayTracks(allTracks, packed, subtitles)
+      // Landing on other clips on an overlay track sends the dragged clips up to a new
+      // track rather than overwriting what is there — so resolveOverlaps below finds
+      // nothing on an overlay track left to trim. The main track keeps its magnet.
+      const lifted = liftCollidingClipsToNewTracks(allTracks, positioned, movedIds, currentTransitions, mainIndex)
+      const resolved = resolveOverlaps(lifted.clips, movedIds, currentTransitions, mainIndex >= 0 ? mainIndex : 0)
+      const packed = packMainVideoTrack(lifted.tracks, resolved, currentTransitions)
+      const pruned = pruneEmptyOverlayTracks(lifted.tracks, packed, subtitles)
       flushSync(() => {
         replaceTimelineDocument({
           tracks: pruned.tracks,
@@ -659,5 +752,7 @@ export function useTimelineDrag(params: UseTimelineDragParams) {
     handleSlipSlideUp,
     handleTrackDrop,
     lassoOriginRef,
+    snapGuideTime,
+    setSnapGuideTime,
   }
 }

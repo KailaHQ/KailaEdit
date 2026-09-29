@@ -12,6 +12,7 @@ import {
 
 import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
+import { stabilizeService } from '../stabilize/stabilize-service'
 import { removeEntry } from '../storage/remove-entry'
 
 import { getSystemFonts } from '../fonts/system-fonts'
@@ -105,6 +106,7 @@ export function registerAppHandlers(): void {
     const appCacheDir = path.join(app.getPath('userData'), 'Cache')
     const proxyDir = proxyManager.getProxyDir()
     const renderCacheDir = renderCacheManager.getCacheDir()
+    const stabilizeDir = stabilizeService.getCacheDir()
 
     let totalBytes = 0
     const scanDir = (dir: string) => {
@@ -126,6 +128,7 @@ export function registerAppHandlers(): void {
     scanDir(appCacheDir)
     scanDir(proxyDir)
     scanDir(renderCacheDir)
+    scanDir(stabilizeDir)
 
     const formatBytes = (bytes: number) => {
       if (bytes < 1024) return `${bytes} B`
@@ -149,6 +152,8 @@ export function registerAppHandlers(): void {
     freedBytes += proxyManager.clearProxies()
     // Clear render cache files
     freedBytes += renderCacheManager.clearCache()
+    // Clear stabilized bakes; clips fall back to the original until re-baked
+    freedBytes += stabilizeService.clearCache()
 
     if (fs.existsSync(previewDir)) {
       try {

@@ -10,6 +10,7 @@ import type {
   BrushMode,
 } from './project-model'
 import type { AssetTranscript } from './transcript-store'
+import type { OverlayClipboardItem } from './overlay-clipboard'
 import {
   DEFAULT_LAYOUT,
   type EditorLayout,
@@ -43,8 +44,10 @@ export interface EditorUndoSnapshot {
 }
 
 export interface EditorClipboardState {
-  kind: 'clips' | null
+  /** 'overlays': objects copied out of the cover designer (see overlay-clipboard). */
+  kind: 'clips' | 'overlays' | null
   clips: TimelineClip[]
+  overlays?: OverlayClipboardItem[]
   copiedFromTimelineId: string | null
 }
 
