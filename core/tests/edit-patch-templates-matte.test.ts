@@ -265,7 +265,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
       expect(val.valid).toBe(true)
 
       const desc = describePatch(state, patch)
-      expect(desc).toContain('tách nền tự động (standard, làm mềm biên 15%, khử nhiễu 10%) cho clip "clip-1"')
+      expect(desc).toContain('auto matte (standard, feather 15%, clean edge 10%) for clip "clip-1"')
 
       const applied = applyPatch(state, patch)
       expect(applied.success).toBe(true)
@@ -292,7 +292,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
         }],
       }
       const descRemove = describePatch(applied.state, removePatch)
-      expect(descRemove).toContain('gỡ tách nền tự động cho clip "clip-1"')
+      expect(descRemove).toContain('remove auto matte for clip "clip-1"')
 
       const removed = applyPatch(applied.state, removePatch)
       expect(removed.success).toBe(true)
@@ -323,7 +323,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
       expect(val.valid).toBe(true)
 
       const desc = describePatch(state, patch)
-      expect(desc).toContain('sửa vùng tách nền thủ công (1 nét vẽ) cho clip "clip-1"')
+      expect(desc).toContain('custom matte (1 strokes) for clip "clip-1"')
 
       const applied = applyPatch(state, patch)
       expect(applied.success).toBe(true)
@@ -349,7 +349,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
         }],
       }
       const descRemove = describePatch(applied.state, removePatch)
-      expect(descRemove).toContain('gỡ sửa vùng tách nền thủ công cho clip "clip-1"')
+      expect(descRemove).toContain('remove custom matte for clip "clip-1"')
 
       const removed = applyPatch(applied.state, removePatch)
       expect(removed.success).toBe(true)
@@ -383,7 +383,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
       expect(val.valid).toBe(true)
 
       const desc = describePatch(state, patch)
-      expect(desc).toContain('viền luminescence màu #00E5FF dày 12% cho clip "clip-1"')
+      expect(desc).toContain('stroke luminescence color #00E5FF width 12% for clip "clip-1"')
 
       const applied = applyPatch(state, patch)
       expect(applied.success).toBe(true)
@@ -411,7 +411,7 @@ describe('Edit Patch: Templates, Shorts, Auto Matte, and Stroke', () => {
         }],
       }
       const descRemove = describePatch(applied.state, removePatch)
-      expect(descRemove).toContain('gỡ viền cho clip "clip-1"')
+      expect(descRemove).toContain('remove stroke for clip "clip-1"')
 
       const removed = applyPatch(applied.state, removePatch)
       expect(removed.success).toBe(true)

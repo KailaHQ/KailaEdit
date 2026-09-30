@@ -122,7 +122,8 @@ export function applyCoverTextLook(look: CoverTextLook): Partial<TextCoverElemen
 }
 
 /** The CSS that draws a look on a preset tile — the same way the cover canvas draws text. */
-export function coverTextLookCss(look: CoverTextLook, scale = 0.35): CSSProperties {
+/** A 15px tile sample against the ~36px text these looks are applied to. */
+export function coverTextLookCss(look: CoverTextLook, scale = 15 / 36): CSSProperties {
   const hasShadow = look.shadowEnabled && (look.shadowBlur > 0 || look.shadowOffsetX !== 0 || look.shadowOffsetY !== 0)
   return {
     color: look.color,

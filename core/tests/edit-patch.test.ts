@@ -133,7 +133,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       expect(editPatchSchema.safeParse(unknownOp).success).toBe(false)
     })
 
-    it('từ chối cut_range bao trùm toàn bộ timeline vì lý do an toàn', () => {
+    it('rejects cut_range covering the entire timeline for safety', () => {
       const state = makeTestState(60)
       const fullCutPatch = {
         version: 1,
@@ -142,7 +142,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       const validation = validateEditPatch(state, fullCutPatch)
       expect(validation.valid).toBe(false)
       if (!validation.valid) {
-        expect(validation.error).toContain('bao trùm toàn bộ timeline')
+        expect(validation.error).toContain('covers the entire timeline')
       }
     })
   })
@@ -193,7 +193,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
 
       const patch: EditPatch = {
         version: 1,
-        description: 'Xoá khoảng lặng',
+        description: 'Remove silences',
         operations: [
           { op: 'cut_range', startTime: 10, endTime: 20 },
         ],
@@ -203,7 +203,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
 
       // Semantic diff output formatting check
       expect(typeof description).toBe('string')
-      expect(description).toContain('Xoá khoảng lặng')
+      expect(description).toContain('Remove silences')
       expect(description).toContain('V1 shortened from')
 
       // Assert state was not mutated in any way
@@ -252,7 +252,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       // Total removed: 15s. Expected final V1 duration: 60 - 15 = 45s.
       const silencePatch: EditPatch = {
         version: 1,
-        description: 'Xoá 3 đoạn im lặng',
+        description: 'Delete 3 silence segments',
         operations: [
           { op: 'cut_range', startTime: 10, endTime: 15 },
           { op: 'cut_range', startTime: 25, endTime: 30 },
@@ -262,7 +262,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
 
       // Check describePatch
       const description = describePatch(state, silencePatch)
-      expect(description).toContain('Xoá 3 đoạn im lặng')
+      expect(description).toContain('Delete 3 silence segments')
       expect(description).toContain('cut 3 ranges (15.0s)')
       expect(description).toContain('V1 shortened from 1:00 to 0:45 (-15.0s)')
 
@@ -316,7 +316,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       // 2. Valid set_filter patch
       const validSetPatch: EditPatch = {
         version: 1,
-        description: 'Chỉnh màu phong cách điện ảnh',
+        description: 'Color grade cinematic style',
         operations: [
           { op: 'set_filter', clipId: targetClipId, filterId: 'cine-teal-orange', intensity: 85 },
         ],
@@ -326,7 +326,7 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       expect(setValidation.valid).toBe(true)
 
       const desc = describePatch(state, validSetPatch)
-      expect(desc).toContain('Chỉnh màu phong cách điện ảnh')
+      expect(desc).toContain('Color grade cinematic style')
       expect(desc).toContain('apply filter Cine Teal & Orange (85%)')
 
       // Apply set_filter

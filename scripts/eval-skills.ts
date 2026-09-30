@@ -922,8 +922,11 @@ Quy trình hoàn chỉnh Sprint 5`
 
         // Invariant 2: Clarification question contains constructive guidance
         const constructiveQuestion =
-          !!evalResult.clarificationQuestion && evalResult.clarificationQuestion.includes('cụ thể') ||
-          (evalResult.clarificationQuestion?.includes('cắt') || false)
+          !!evalResult.clarificationQuestion &&
+          (evalResult.clarificationQuestion.toLowerCase().includes('specific') ||
+            evalResult.clarificationQuestion.toLowerCase().includes('concrete') ||
+            evalResult.clarificationQuestion.toLowerCase().includes('cut') ||
+            evalResult.clarificationQuestion.includes('cụ thể'))
         invariants.push({
           name: 'Negative: Clarification guidance suggests valid concrete actions',
           passed: constructiveQuestion,

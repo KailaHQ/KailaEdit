@@ -60,9 +60,9 @@ export function MonitorTransportBar({
   const isPlayState = isPreviewingVideo ? previewVideoPlaying : isPlaying
 
   return (
-    <div data-source-video-preview className="flex h-[36px] flex-shrink-0 items-center gap-2 border-t border-zinc-800 px-4">
+    <div data-source-video-preview className="grid h-[36px] flex-shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-zinc-800 px-4">
       {/* Left: current / total timecode */}
-      <div className="flex flex-shrink-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5 justify-self-start">
         <span
           ref={playbackTimecodeRef}
           className="select-none font-mono text-[12px] tabular-nums text-accent"
@@ -79,8 +79,10 @@ export function MonitorTransportBar({
         </span>
       </div>
 
-      {/* Centre: play / pause with frame stepping either side */}
-      <div className="flex flex-1 items-center justify-center gap-1">
+      {/* Centre: play / pause with frame stepping either side. The three columns share the
+          bar's width so this sits in the middle of the bar — under the middle of the picture —
+          however much wider the timecode on one side is than the buttons on the other. */}
+      <div className="flex items-center justify-center gap-1">
         <Tooltip content={tooltipLabel('Step Back', getShortcutLabel(kbLayout, 'transport.stepBackward'))} side="top">
           <button
             className="cc-icon-btn"
@@ -108,7 +110,7 @@ export function MonitorTransportBar({
       </div>
 
       {/* Right: playback resolution, preview zoom, fullscreen */}
-      <div className="flex flex-shrink-0 items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1 justify-self-end">
         <div className="relative">
           <button
             onClick={(e) => { e.stopPropagation(); setPlaybackResOpen(prev => !prev) }}

@@ -24,7 +24,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'transition',
     filename: 'whoosh.wav',
     duration: 0.45,
-    description: 'Âm thanh lướt nhanh cho punch-in zoom, chuyển cảnh nhanh, trượt chữ',
+    description: 'Fast swish sound for punch-in zoom, quick scene transitions, and sliding text',
     keywords: ['whoosh', 'swoosh', 'zoom', 'punch-in', 'chuyển cảnh', 'transition'],
   },
   {
@@ -33,7 +33,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'transition',
     filename: 'whoosh-fast.wav',
     duration: 0.25,
-    description: 'Âm lướt vút siêu nhanh cho whip pan, lướt nhanh thẻ bài, chuyển slide',
+    description: 'Super fast whip sound for whip pans, quick card swipes, and slide transitions',
     keywords: ['whoosh', 'fast', 'whip', 'swipe', 'slide', 'nhanh'],
   },
   {
@@ -42,7 +42,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'transition',
     filename: 'whoosh-deep.wav',
     duration: 0.65,
-    description: 'Âm chuyển cảnh trầm hùng tráng phong cách điện ảnh',
+    description: 'Cinematic deep transition whoosh sound',
     keywords: ['cinematic', 'deep', 'whoosh', 'bass', 'điện ảnh', 'trầm'],
   },
   {
@@ -51,7 +51,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'transition',
     filename: 'glitch.wav',
     duration: 0.35,
-    description: 'Hiệu ứng nhiễu sóng kỹ thuật số, giật màn hình, chuyển cảnh cyberpunk',
+    description: 'Digital static noise, screen glitch, cyberpunk scene transition',
     keywords: ['glitch', 'digital', 'cyber', 'nhiễu', 'static', 'tech'],
   },
   {
@@ -60,7 +60,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'transition',
     filename: 'rewind.wav',
     duration: 0.50,
-    description: 'Tiếng tua băng cassette ngược nhanh khi quay lại đoạn trước',
+    description: 'Fast cassette tape rewind sound for flashbacks',
     keywords: ['rewind', 'tape', 'cassette', 'tua', 'ngược', 'flashback'],
   },
 
@@ -71,7 +71,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'pop.wav',
     duration: 0.15,
-    description: 'Âm thanh vui nhộn khi sticker, badge, icon xuất hiện',
+    description: 'Playful bubble pop sound for stickers, badges, and icon appearances',
     keywords: ['pop', 'bubble', 'badge', 'sticker', 'appear', 'nhẹ'],
   },
   {
@@ -80,7 +80,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'mouse-click.wav',
     duration: 0.08,
-    description: 'Tiếng click chuột máy tính dứt khoát khi chọn nút bấm hoặc link',
+    description: 'Crisp mouse click sound for buttons and link clicks',
     keywords: ['click', 'mouse', 'ui', 'button', 'nút', 'chuột'],
   },
   {
@@ -89,7 +89,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'keyboard-type.wav',
     duration: 0.12,
-    description: 'Tiếng gõ phím cơ giòn tan khi gõ chữ hoặc hiện title text',
+    description: 'Crisp mechanical keystroke sound for typing or title reveals',
     keywords: ['keyboard', 'type', 'key', 'bàn phím', 'gõ', 'chữ', 'text'],
   },
   {
@@ -98,7 +98,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'camera-shutter.wav',
     duration: 0.30,
-    description: 'Tiếng màn trập máy ảnh chụp hình khi chụp ảnh màn hình, freeze frame',
+    description: 'Camera shutter click for screenshots and freeze frames',
     keywords: ['camera', 'shutter', 'photo', 'máy ảnh', 'chụp hình', 'freeze'],
   },
   {
@@ -107,7 +107,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'cork-pop.wav',
     duration: 0.20,
-    description: 'Tiếng mở nắp chai sâm-panh nổ bôm bốp vui tai',
+    description: 'Playful champagne bottle cork pop sound',
     keywords: ['cork', 'pop', 'bottle', 'chai', 'mở', 'ăn mừng'],
   },
   {
@@ -116,7 +116,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'accent',
     filename: 'snap.wav',
     duration: 0.12,
-    description: 'Tiếng búng tay dứt khoát khi thay đổi ý tưởng hoặc xuất hiện bất ngờ',
+    description: 'Crisp finger snap sound for idea switches or sudden reveals',
     keywords: ['snap', 'finger', 'búng tay', 'thay đổi', 'magic'],
   },
 
@@ -127,7 +127,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'ding.wav',
     duration: 0.85,
-    description: 'Tiếng chuông ngân vang khi hiển thị con số ấn tượng, điểm quan trọng, kết quả',
+    description: 'Resonant bell chime for striking numbers, highlights, and results',
     keywords: ['ding', 'chime', 'bell', 'number', 'số', 'highlight', 'tiền', 'free'],
   },
   {
@@ -136,7 +136,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'bell-chime.wav',
     duration: 0.90,
-    description: 'Tiếng chuông quầy lễ tân đanh và ngân nga gây chú ý',
+    description: 'Crisp desk bell chime to capture attention',
     keywords: ['bell', 'hotel', 'desk', 'chuông', 'gọi', 'chú ý'],
   },
   {
@@ -145,7 +145,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'success.wav',
     duration: 0.60,
-    description: 'Hợp âm chuông ngân thành công, đúng đáp án, hoàn thành nhiệm vụ',
+    description: 'Harmonic chime chord for correct answers or completed tasks',
     keywords: ['success', 'complete', 'win', 'thành công', 'đúng', 'chúc mừng'],
   },
   {
@@ -154,7 +154,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'coin.wav',
     duration: 0.35,
-    description: 'Tiếng nhặt xu vàng game Mario phong cách retro vui nhộn',
+    description: 'Playful 8-bit retro Mario-style gold coin pickup sound',
     keywords: ['coin', 'retro', '8bit', 'mario', 'xu', 'tiền', 'game'],
   },
   {
@@ -163,7 +163,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'cash-register.wav',
     duration: 0.75,
-    description: 'Tiếng máy đếm tiền / mở két tính tiền kinh điển khi chốt đơn, doanh thu',
+    description: 'Classic cha-ching cash register sound for sales and revenue',
     keywords: ['cash', 'money', 'register', 'cha-ching', 'tiền', 'bán hàng', 'két'],
   },
   {
@@ -172,7 +172,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'alert.wav',
     duration: 0.40,
-    description: 'Âm báo 2 tone cảnh báo chú ý, lưu ý, disclaimer, lỗi cần tránh',
+    description: 'Two-tone warning chime for notes, disclaimers, and errors',
     keywords: ['alert', 'warning', 'cảnh báo', 'chú ý', 'lưu ý', 'disclaimer'],
   },
   {
@@ -181,7 +181,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'error-buzz.wav',
     duration: 0.30,
-    description: 'Tiếng buzz báo sai, lỗi, cấm đoán hoặc câu trả lời không đúng',
+    description: 'Buzzer sound for wrong answers, errors, or failed actions',
     keywords: ['error', 'buzz', 'wrong', 'sai', 'thất bại', 'cấm', 'fail'],
   },
   {
@@ -190,7 +190,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'notification',
     filename: 'level-up.wav',
     duration: 0.65,
-    description: 'Hợp âm thăng tiến chúc mừng lên cấp độ mới, nâng cấp tính năng',
+    description: 'Triumphant fanfare chord for level up or feature upgrades',
     keywords: ['level up', 'fanfare', 'upgrade', 'lên cấp', 'thăng hạng', 'game'],
   },
 
@@ -201,7 +201,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'impact',
     filename: 'sub-boom.wav',
     duration: 1.20,
-    description: 'Cú đập sub-bass rung chuyển tạo điểm nhấn cực mạnh, kịch tính',
+    description: 'Shaking sub-bass boom for dramatic hits and sudden emphasis',
     keywords: ['sub', 'boom', 'bass', 'impact', 'cinematic', 'trầm', 'rung', 'đột ngột'],
   },
   {
@@ -210,7 +210,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'impact',
     filename: 'thud-impact.wav',
     duration: 0.40,
-    description: 'Tiếng va đập chắc nịch khi rơi đồ, đặt vật nặng, đóng cửa mạnh',
+    description: 'Heavy thud impact for dropped items or slamming doors',
     keywords: ['thud', 'hit', 'drop', 'đập', 'rơi', 'nặng'],
   },
   {
@@ -219,7 +219,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'impact',
     filename: 'metal-hit.wav',
     duration: 0.50,
-    description: 'Tiếng va chạm kim loại đanh thép phong cách hành động',
+    description: 'Crisp metallic clang impact for action hits',
     keywords: ['metal', 'clang', 'hit', 'kim loại', 'va chạm', 'kiếm'],
   },
   {
@@ -228,7 +228,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'impact',
     filename: 'dramatic-riser.wav',
     duration: 1.50,
-    description: 'Âm thanh tăng dần cao độ dồn dập xây dựng cao trào, hồi hộp',
+    description: 'Tension riser sound building suspense and climax',
     keywords: ['riser', 'tension', 'suspense', 'hồi hộp', 'cao trào', 'dồn dập'],
   },
 
@@ -239,7 +239,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'comedy',
     filename: 'funny-boing.wav',
     duration: 0.45,
-    description: 'Tiếng lò xo nảy tưng tưng hoạt hình hài hước kinh điển',
+    description: 'Classic cartoon spring boing sound effect',
     keywords: ['boing', 'spring', 'cartoon', 'lò xo', 'hài hước', 'funny', 'nhảy'],
   },
   {
@@ -248,7 +248,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'comedy',
     filename: 'record-scratch.wav',
     duration: 0.40,
-    description: 'Tiếng xước đĩa dừng phanh đột ngột khi xảy ra sự cố ngớ ngẩn bất ngờ',
+    description: 'Abrupt vinyl record scratch for sudden comical pauses',
     keywords: ['scratch', 'vinyl', 'record', 'dừng', 'ngạc nhiên', 'bất ngờ', 'meme'],
   },
   {
@@ -257,7 +257,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'comedy',
     filename: 'fail-trombone.wav',
     duration: 1.20,
-    description: 'Tiếng kèn buồn thê thảm tụt dốc khi thất bại hài hước, quê độ',
+    description: 'Sad trombone wah-wah sound for comical failures',
     keywords: ['trombone', 'sad', 'wah-wah', 'fail', 'thất bại', 'quê', 'buồn'],
   },
 
@@ -268,7 +268,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'foley',
     filename: 'applause.wav',
     duration: 1.50,
-    description: 'Tiếng vỗ tay hoan hô nhiệt liệt của khán giả trường quay',
+    description: 'Enthusiastic studio audience cheering and applause',
     keywords: ['applause', 'cheer', 'clap', 'vỗ tay', 'khán giả', 'tán thưởng'],
   },
   {
@@ -277,7 +277,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'foley',
     filename: 'heartbeat.wav',
     duration: 0.80,
-    description: 'Tiếng tim đập thình thịch hồi hộp lo lắng hoặc gay cấn',
+    description: 'Tense thumping heartbeat for suspense and anxiety',
     keywords: ['heartbeat', 'heart', 'pulse', 'tim đập', 'hồi hộp', 'lo lắng'],
   },
   {
@@ -286,7 +286,7 @@ export const SFX_DEFINITIONS: SfxDefinition[] = [
     category: 'foley',
     filename: 'clock-tick.wav',
     duration: 0.15,
-    description: 'Tiếng kim đồng hồ tích tắc đếm ngược thời gian gấp gáp',
+    description: 'Ticking clock sound for countdowns and urgency',
     keywords: ['clock', 'tick', 'time', 'đồng hồ', 'tích tắc', 'đếm ngược'],
   },
 ]
@@ -299,13 +299,13 @@ export interface SfxCategoryInfo {
 }
 
 export const SFX_CATEGORIES: SfxCategoryInfo[] = [
-  { id: 'all', nameVi: 'Tất cả', nameEn: 'All', label: 'Tất cả' },
-  { id: 'transition', nameVi: 'Chuyển cảnh', nameEn: 'Transitions', label: 'Chuyển cảnh' },
-  { id: 'accent', nameVi: 'Điểm nhấn', nameEn: 'Accents & UI', label: 'Điểm nhấn' },
-  { id: 'notification', nameVi: 'Thông báo / Game', nameEn: 'Notifications & Game', label: 'Thông báo / Game' },
-  { id: 'impact', nameVi: 'Va đập / Kịch tính', nameEn: 'Impacts & Hits', label: 'Va đập / Kịch tính' },
-  { id: 'comedy', nameVi: 'Hài hước / Meme', nameEn: 'Comedy & Meme', label: 'Hài hước / Meme' },
-  { id: 'foley', nameVi: 'Hiệu ứng Foley', nameEn: 'Foley & Ambience', label: 'Hiệu ứng Foley' },
+  { id: 'all', nameVi: 'Tất cả', nameEn: 'All', label: 'All' },
+  { id: 'transition', nameVi: 'Chuyển cảnh', nameEn: 'Transitions', label: 'Transitions' },
+  { id: 'accent', nameVi: 'Điểm nhấn', nameEn: 'Accents & UI', label: 'Accents & UI' },
+  { id: 'notification', nameVi: 'Thông báo / Game', nameEn: 'Notifications & Game', label: 'Notifications & Game' },
+  { id: 'impact', nameVi: 'Va đập / Kịch tính', nameEn: 'Impacts & Hits', label: 'Impacts & Hits' },
+  { id: 'comedy', nameVi: 'Hài hước / Meme', nameEn: 'Comedy & Meme', label: 'Comedy & Meme' },
+  { id: 'foley', nameVi: 'Hiệu ứng Foley', nameEn: 'Foley & Ambience', label: 'Foley & Ambience' },
 ]
 
 export function getSfxDefinition(id: string): SfxDefinition | undefined {

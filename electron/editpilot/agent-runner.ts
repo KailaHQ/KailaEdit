@@ -230,7 +230,7 @@ export const MCP_SERVER_NAME = 'komfyedit'
 export function registerMcpServer(agentId: EditPilotAgentId): Promise<{ ok: boolean; output: string }> {
   const definition = EDIT_PILOT_AGENTS[agentId]
   if (!definition.mcpRegisterArgs) {
-    return Promise.resolve({ ok: false, output: `${definition.label} không dùng cách đăng ký này.` })
+    return Promise.resolve({ ok: false, output: `${definition.label} does not use this registration method.` })
   }
 
   const config = readEditPilotConfig()
@@ -254,9 +254,9 @@ export function registerMcpServer(agentId: EditPilotAgentId): Promise<{ ok: bool
     child.stderr?.on('data', chunk => { output += String(chunk) })
     child.on('error', err => resolve({ ok: false, output: err.message }))
     child.on('close', code => {
-      logger.info(`[editpilot] Đăng ký MCP cho ${definition.label}: mã ${code}`)
+      logger.info(`[editpilot] Registering MCP for ${definition.label}: code ${code}`)
       if (code !== 0) {
-        resolve({ ok: false, output: output.trim() || `Thoát với mã ${code}` })
+        resolve({ ok: false, output: output.trim() || `Exited with code ${code}` })
         return
       }
       // Registering the server is only half of it: without a standing
@@ -265,7 +265,7 @@ export function registerMcpServer(agentId: EditPilotAgentId): Promise<{ ok: bool
       const grant = grantMcpPermission(definition)
       resolve({
         ok: true,
-        output: [output.trim(), grant].filter(Boolean).join('\n') || `Thoát với mã ${code}`,
+        output: [output.trim(), grant].filter(Boolean).join('\n') || `Exited with code ${code}`,
       })
     })
   })
@@ -288,7 +288,7 @@ function grantMcpPermission(definition: EditPilotAgentDefinition): string {
 
   try {
     if (!fs.existsSync(path.dirname(settingsPath))) {
-      return `Chưa thấy thư mục cấu hình của ${definition.label}; hãy chạy CLI một lần rồi bấm lại.`
+      return `Configuration directory for ${definition.label} not found; please run the CLI once and try again.`
     }
     const raw = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : ''
     let currentRaw = raw
@@ -297,11 +297,11 @@ function grantMcpPermission(definition: EditPilotAgentDefinition): string {
     const patchKomfy = addPermissionRule(currentRaw, ruleKomfy)
     if (patchKomfy.added) currentRaw = patchKomfy.json
 
-    if (!patchKaila.added && !patchKomfy.added) return `Quyền ${ruleKaila} đã có sẵn.`
+    if (!patchKaila.added && !patchKomfy.added) return `Permission ${ruleKaila} is already granted.`
     fs.writeFileSync(settingsPath, currentRaw, 'utf8')
-    return `Đã thêm quyền ${ruleKaila} vào ${settingsPath}.`
+    return `Added permission ${ruleKaila} to ${settingsPath}.`
   } catch (err) {
-    return `Không thêm được quyền: ${String(err)}`
+    return `Could not add permission: ${String(err)}`
   }
 }
 
@@ -457,7 +457,7 @@ export async function runOneShot(params: {
   fs.mkdirSync(workDir, { recursive: true })
 
   const plan = buildSpawnPlan(command, args)
-  logger.info(`[editpilot] Hỏi nhanh ${definition.label} (${command})`)
+  logger.info(`[editpilot] Running one-shot ${definition.label} (${command})`)
 
   return new Promise(resolve => {
     const child = spawn(plan.file, plan.args, {
@@ -482,21 +482,21 @@ export async function runOneShot(params: {
 
     const timer = setTimeout(() => {
       child.kill()
-      logger.warn(`[editpilot] Hỏi nhanh ${definition.label} quá hạn`)
-      finish(failed(`Quá ${(params.timeoutMs ?? ONE_SHOT_TIMEOUT_MS) / 1000}s không phản hồi`))
+      logger.warn(`[editpilot] One-shot ${definition.label} timed out`)
+      finish(failed(`No response after ${(params.timeoutMs ?? ONE_SHOT_TIMEOUT_MS) / 1000}s`))
     }, params.timeoutMs ?? ONE_SHOT_TIMEOUT_MS)
 
     child.stdout?.on('data', chunk => { stdout += String(chunk) })
     child.stderr?.on('data', chunk => { stderr += String(chunk) })
     child.on('error', err => {
-      logger.warn(`[editpilot] Hỏi nhanh thất bại: ${err.message}`)
+      logger.warn(`[editpilot] One-shot failed: ${err.message}`)
       finish(failed(err.message))
     })
     child.on('close', code => {
       if (code !== 0 || !stdout.trim()) {
         const detail = summarizeFailureDetail(stderr, [])
-        logger.warn(`[editpilot] Hỏi nhanh thoát mã ${code}: ${detail}`)
-        finish(failed(detail || `Thoát với mã ${code}`))
+        logger.warn(`[editpilot] One-shot exited with code ${code}: ${detail}`)
+        finish(failed(detail || `Exited with code ${code}`))
         return
       }
       finish({ ok: true, agentLabel: definition.label, text: stdout })
@@ -509,7 +509,7 @@ export async function startRun({ runId, prompt, projectsDir, projectId, projectN
   const statuses = await detectAgents(config)
   const agentId = resolveActiveAgent(config, statuses)
   if (!agentId) {
-    throw new Error('Chưa có agent CLI nào dùng được. Mở phần cấu hình EditPilot để chọn.')
+    throw new Error('No usable agent CLI found. Open EditPilot settings to configure one.')
   }
 
   const definition = EDIT_PILOT_AGENTS[agentId]
@@ -522,7 +522,7 @@ export async function startRun({ runId, prompt, projectsDir, projectId, projectN
       const bridge = await getOrCreateLiveBridge(projectId)
       livePort = bridge.port
     } catch (err) {
-      logger.warn(`[editpilot] Không thể khởi tạo live bridge: ${err}`)
+      logger.warn(`[editpilot] Failed to initialize live bridge: ${err}`)
     }
   }
 

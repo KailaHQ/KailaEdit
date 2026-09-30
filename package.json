@@ -1,7 +1,7 @@
 {
   "name": "kailaedit",
   "productName": "KailaEdit",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "KailaEdit - Desktop Video Editor",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -53,7 +53,6 @@
     "clsx": "^2.1.1",
     "electron-updater": "6.8.9",
     "ffmpeg-static": "5.3.0",
-    "js-yaml": "^4.1.1",
     "lucide-react": "^0.400.0",
     "mp4box": "2.4.1",
     "onnxruntime-node": "1.29.0",
@@ -75,6 +74,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.7.7",
+    "js-yaml": "^4.3.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.7.0",
@@ -108,7 +108,12 @@
     "overrides": {
       "minimatch": "^10.2.3",
       "rollup": "^4.59.0",
-      "tar": "^7.5.11"
+      "tar": "^7.5.11",
+      "adm-zip": "^0.6.1",
+      "fast-uri": "^3.1.7",
+      "qs": "^6.16.0",
+      "ip-address": "^10.5.1",
+      "js-yaml": "^4.3.2"
     }
   }
 }

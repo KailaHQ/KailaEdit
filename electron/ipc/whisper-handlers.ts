@@ -112,13 +112,13 @@ export function registerWhisperHandlers(): void {
       if (cli.ok) {
         const highlights = parseHighlightResponse(cli.text)
         if (highlights.length > 0) {
-          logger.info(`[whisper] Highlight qua ${cli.agentLabel}: ${highlights.length} đoạn`)
+          logger.info(`[whisper] Highlight via ${cli.agentLabel}: ${highlights.length} segments`)
           return { success: true, highlights }
         }
-        logger.warn(`[whisper] ${cli.agentLabel} không trả về JSON đọc được; chuyển sang LLM endpoint`)
+        logger.warn(`[whisper] ${cli.agentLabel} did not return parseable JSON; falling back to LLM endpoint`)
       }
     } catch (err: any) {
-      logger.warn(`[whisper] Hỏi CLI thất bại (${err?.message}); chuyển sang LLM endpoint`)
+      logger.warn(`[whisper] CLI request failed (${err?.message}); falling back to LLM endpoint`)
     }
 
     return whisperService.analyzeHighlightsWithLlm(params)
@@ -142,11 +142,11 @@ export function registerWhisperHandlers(): void {
 
     const suggestions = parseBrollSuggestions(cli.text)
     if (suggestions.length === 0) {
-      logger.warn(`[broll] ${cli.agentLabel} không trả về JSON đọc được`)
+      logger.warn(`[broll] ${cli.agentLabel} did not return parseable JSON`)
       return { success: false, error: `CLI_FAILED: ${cli.agentLabel}` }
     }
 
-    logger.info(`[broll] Gợi ý qua ${cli.agentLabel}: ${suggestions.length}/${spots.length} đoạn`)
+    logger.info(`[broll] Suggestions via ${cli.agentLabel}: ${suggestions.length}/${spots.length} segments`)
     return { success: true, agentLabel: cli.agentLabel, suggestions }
   })
 }

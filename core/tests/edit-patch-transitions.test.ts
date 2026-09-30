@@ -155,7 +155,7 @@ describe('validation refuses what cannot work, with a reason', () => {
       { op: 'set_transition', leftClipId: 'a', rightClipId: 'c', type: 'dissolve', duration: 1 },
     ]))
     expect(result.valid).toBe(false)
-    expect(result.valid === false && result.error).toMatch(/khoảng trống|chồng lên nhau/)
+    expect(result.valid === false && result.error).toMatch(/gap|overlapping/)
   })
 
   it('rejects a locked track', () => {

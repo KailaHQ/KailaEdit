@@ -13,9 +13,9 @@ export function ShapesLibrary() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const categories: { id: ShapeCategory; label: string }[] = useMemo(() => [
-    { id: 'all', label: t('library.shapes.categories.all' as any) || 'Tất cả' },
-    { id: 'line', label: t('library.shapes.categories.line' as any) || 'Đường kẻ & Mũi tên' },
-    { id: 'basic', label: t('library.shapes.categories.basic' as any) || 'Hình cơ bản' },
+    { id: 'all', label: t('library.shapes.categories.all' as any) || 'All' },
+    { id: 'line', label: t('library.shapes.categories.line' as any) || 'Lines & Arrows' },
+    { id: 'basic', label: t('library.shapes.categories.basic' as any) || 'Basic Shapes' },
   ], [t])
 
   const filteredShapes = useMemo(() => {
@@ -51,7 +51,7 @@ export function ShapesLibrary() {
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
         <input
           type="text"
-          placeholder={t('library.shapes.searchPlaceholder' as any) || 'Tìm hình khối...'}
+          placeholder={t('library.shapes.searchPlaceholder' as any) || 'Search shapes...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full rounded-[6px] bg-zinc-900 border border-zinc-800 py-1.5 pl-8 pr-7 text-[12px] text-zinc-200 placeholder:text-zinc-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
@@ -96,10 +96,10 @@ export function ShapesLibrary() {
           <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-zinc-500">
             <Shapes className="h-8 w-8 text-zinc-600" />
             <p className="text-[12px] font-medium text-zinc-400">
-              {t('library.shapes.notFound' as any) || 'Không tìm thấy hình khối'}
+              {t('library.shapes.notFound' as any) || 'No shapes found'}
             </p>
             <p className="text-[11px] text-zinc-600 max-w-[200px]">
-              {t('library.shapes.emptySearchHint' as any) || 'Thử tìm kiếm với từ khóa khác.'}
+              {t('library.shapes.emptySearchHint' as any) || 'Try searching with a different keyword.'}
             </p>
           </div>
         ) : (
@@ -109,7 +109,7 @@ export function ShapesLibrary() {
                 <div
                   key={shape.id}
                   onClick={() => handleAddShape(shape)}
-                  title={`${shape.name} - ${t('library.shapes.clickToAdd' as any) || 'Bấm để thêm vào timeline'}`}
+                  title={`${shape.name} - ${t('library.shapes.clickToAdd' as any) || 'Click to add to timeline'}`}
                   className="group relative flex flex-col items-center justify-center rounded-lg border border-zinc-800/80 bg-zinc-900/50 p-2.5 hover:border-accent/60 hover:bg-zinc-800/90 transition-all cursor-pointer shadow-sm"
                 >
                   <div className="flex h-14 w-14 items-center justify-center">

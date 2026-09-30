@@ -51,7 +51,7 @@ function probeCommand(command: string, versionArgs: string[]): Promise<{ version
 
     const timer = setTimeout(() => {
       child.kill()
-      finish({ error: `Quá ${PROBE_TIMEOUT_MS / 1000}s không phản hồi` })
+      finish({ error: `No response after ${PROBE_TIMEOUT_MS / 1000}s` })
     }, PROBE_TIMEOUT_MS)
 
     child.on('error', err => {
@@ -64,7 +64,7 @@ function probeCommand(command: string, versionArgs: string[]): Promise<{ version
       const output = (stdout || stderr).trim().split(/\r?\n/)[0]?.trim() ?? ''
       // Some CLIs report their version on a non-zero exit; trust output first.
       if (output) finish({ version: output })
-      else finish({ error: `Thoát với mã ${code}, không có output` })
+      else finish({ error: `Exited with code ${code}, no output` })
     })
   })
 }
@@ -80,7 +80,7 @@ export async function detectAgents(config: EditPilotConfig): Promise<EditPilotAg
     const override = config.commandOverrides[definition.id]?.trim()
     const candidates = override ? [override, ...definition.commands] : definition.commands
 
-    let lastError = 'Không tìm thấy'
+    let lastError = 'Not found'
     for (const command of candidates) {
       const probe = await probeCommand(command, definition.versionArgs)
       if ('version' in probe) {
@@ -104,7 +104,7 @@ export async function detectAgents(config: EditPilotConfig): Promise<EditPilotAg
     } satisfies EditPilotAgentStatus
   }))
 
-  logger.info(`[editpilot] Đã dò agent: ${results.map(r => `${r.id}=${r.installed ? r.version : 'không có'}`).join(', ')}`)
+  logger.info(`[editpilot] Probed agents: ${results.map(r => `${r.id}=${r.installed ? r.version : 'none'}`).join(', ')}`)
   return results
 }
 

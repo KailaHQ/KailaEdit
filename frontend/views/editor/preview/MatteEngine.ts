@@ -16,7 +16,7 @@ import ortWasmMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url'
 import ortWasmBinaryUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url'
 
 /** WebGPU runs on the jsep build; plain wasm runs on the other one. */
-const ORT_RUNTIME_FILES = {
+export const ORT_RUNTIME_FILES = {
   webgpu: { mjs: ortJsepMjsUrl, wasm: ortJsepWasmUrl },
   wasm: { mjs: ortWasmMjsUrl, wasm: ortWasmBinaryUrl },
 } as const
@@ -124,45 +124,23 @@ export class MatteEngine {
     this.initPromise = (async () => {
       this.resetStates()
 
-      // Detect WebGPU support in renderer
-      let preferredProvider: 'webgpu' | 'wasm' = 'wasm'
-      if (typeof navigator !== 'undefined' && 'gpu' in navigator && (navigator as any).gpu) {
-        try {
-          const adapter = await (navigator as any).gpu.requestAdapter()
-          if (adapter) {
-            preferredProvider = 'webgpu'
-          }
-        } catch {
-          preferredProvider = 'wasm'
-        }
-      }
-
-      console.log(`[MatteEngine] Detected preferred provider: ${preferredProvider}`)
+      // RVM runs on wasm only. On WebGPU (onnxruntime-web 1.29) the session is created but
+      // every run throws — its AveragePool uses ceil_mode, which the WebGPU kernel refuses —
+      // and the throw leaves the page's one WebGPU backend stuck mid-kernel: every later
+      // WebGPU run, the smart brush's Segment Anything included, then fails with "kernel is
+      // not allowed to be called recursively", and the smart brush fell back to growing by
+      // colour, which runs over a wall the same tone as the skin.
+      // The runtime is the jsep build whenever WebGPU exists, so SAM can still use the GPU;
+      // it is chosen once per page, whichever engine loads first.
+      const hasGpu = typeof navigator !== 'undefined' && 'gpu' in navigator && Boolean((navigator as any).gpu)
+      if (!ort.env.wasm.wasmPaths) ort.env.wasm.wasmPaths = hasGpu ? ORT_RUNTIME_FILES.webgpu : ORT_RUNTIME_FILES.wasm
 
       const modelUrl = '/models/rvm_mobilenetv3.onnx'
-      let session: ort.InferenceSession | null = null
-
-      if (preferredProvider === 'webgpu') {
-        try {
-          ort.env.wasm.wasmPaths = ORT_RUNTIME_FILES.webgpu
-          session = await ort.InferenceSession.create(modelUrl, {
-            executionProviders: ['webgpu'],
-          })
-          this.provider = 'webgpu'
-          console.log('[MatteEngine] Initialized session with WebGPU provider')
-        } catch (err) {
-          console.warn('[MatteEngine] Failed to create WebGPU session, falling back to WASM:', err)
-        }
-      }
-
-      if (!session) {
-        ort.env.wasm.wasmPaths = ORT_RUNTIME_FILES.wasm
-        session = await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['wasm'],
-        })
-        this.provider = 'wasm'
-        console.log('[MatteEngine] Initialized session with WASM provider')
-      }
+      const session = await ort.InferenceSession.create(modelUrl, {
+        executionProviders: ['wasm'],
+      })
+      this.provider = 'wasm'
+      console.log('[MatteEngine] Initialized session with WASM provider')
 
       this.session = session
       this.isDetecting = false

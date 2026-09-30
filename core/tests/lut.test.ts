@@ -89,7 +89,7 @@ TITLE "Missing Size"
 1.0 1.0 1.0
 `
       expect(() => parseCubeLut(cube)).toThrow(LutParseError)
-      expect(() => parseCubeLut(cube)).toThrow(/thiếu chỉ thị LUT_3D_SIZE/)
+      expect(() => parseCubeLut(cube)).toThrow(/missing the required LUT_3D_SIZE/)
     })
 
     it('rejects LUT_1D_SIZE', () => {
@@ -98,7 +98,7 @@ LUT_1D_SIZE 256
 0.0 0.0 0.0
 `
       expect(() => parseCubeLut(cube)).toThrow(LutParseError)
-      expect(() => parseCubeLut(cube)).toThrow(/chỉ hỗ trợ 3D LUT/)
+      expect(() => parseCubeLut(cube)).toThrow(/Only 3D LUTs/)
     })
 
     it('rejects invalid or out of range LUT_3D_SIZE', () => {
@@ -116,7 +116,7 @@ LUT_3D_SIZE 2
 1.0 1.0 1.0
 ` // Expected 8 points, only 2 provided
       expect(() => parseCubeLut(cube)).toThrow(LutParseError)
-      expect(() => parseCubeLut(cube)).toThrow(/không đủ dữ liệu/)
+      expect(() => parseCubeLut(cube)).toThrow(/insufficient data/)
     })
 
     it('throws on non-numeric RGB lines', () => {
@@ -132,7 +132,7 @@ LUT_3D_SIZE 2
 0.0 0.0 0.0
 `
       expect(() => parseCubeLut(cube)).toThrow(LutParseError)
-      expect(() => parseCubeLut(cube)).toThrow(/không hợp lệ/)
+      expect(() => parseCubeLut(cube)).toThrow(/Invalid RGB value/)
     })
   })
 

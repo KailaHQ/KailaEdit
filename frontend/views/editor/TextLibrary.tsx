@@ -1,8 +1,10 @@
 import { MoveUp, MoveRight, Eye, Zap, Keyboard, Type, Sparkles } from 'lucide-react'
-import { TEXT_PRESETS, TEXT_ANIMATIONS } from '@core/text-presets'
+import { TEXT_PRESETS, textAnimationsForPhase } from '@core/text-presets'
 import { useTranslation } from '../../i18n/I18nContext'
 import { selectClips, selectSelectedClipIds } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
+import { DEFAULT_TEXT_STYLE } from '../../types/project-model'
+import { textStyleTileCss } from './properties/text-style-presets'
 
 export function TextLibrary({ section }: { section: string }) {
   const { t } = useTranslation()
@@ -93,18 +95,8 @@ export function TextLibrary({ section }: { section: string }) {
                   >
                     <span
                       style={{
-                        fontFamily: st.fontFamily || 'sans-serif',
-                        fontWeight: st.fontWeight || 'bold',
-                        fontStyle: st.fontStyle || 'normal',
-                        color: st.color || '#FFFFFF',
-                        backgroundColor: st.backgroundColor || 'transparent',
-                        padding: st.padding ? `${Math.min(st.padding, 6)}px` : undefined,
-                        borderRadius: st.borderRadius ? `${Math.min(st.borderRadius, 4)}px` : undefined,
-                        letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
-                        textShadow: st.shadowBlur ? `${st.shadowOffsetX || 0}px ${st.shadowOffsetY || 0}px ${st.shadowBlur}px ${st.shadowColor || 'black'}` : undefined,
-                        WebkitTextStroke: st.strokeWidth && st.strokeColor ? `${st.strokeWidth}px ${st.strokeColor}` : undefined,
-                        fontSize: '15px',
-                        lineHeight: 1,
+                        // What applying the preset produces: its own style over the defaults.
+                        ...textStyleTileCss({ ...DEFAULT_TEXT_STYLE, ...st }),
                         whiteSpace: 'nowrap',
                       }}
                     >
@@ -130,7 +122,7 @@ export function TextLibrary({ section }: { section: string }) {
             {t('library.text.animations')}
           </h4>
           <div className="grid grid-cols-1 gap-2">
-            {TEXT_ANIMATIONS.map((anim) => (
+            {textAnimationsForPhase('in').map((anim) => (
               <button
                 key={anim.id}
                 onClick={() => handleApplyAnimation(anim.id)}

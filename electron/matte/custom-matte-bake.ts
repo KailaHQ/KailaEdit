@@ -7,7 +7,9 @@ import { renderCacheManager } from '../export/render-cache-manager'
 import { removeEntryQuietly } from '../storage/remove-entry'
 import { quietChildStdio } from '../process/quiet-child-stdio'
 import { logger } from '../logger'
-import { rasterizeStrokes, blendCustomMatte, computeStrokesHash } from '../../core/src/custom-matte'
+import { rasterizeStrokes, blendCustomMatte, computeStrokesHash, customMatteStartsEmpty, warpMask } from '../../core/src/custom-matte'
+import { frameToReference, motionHash, strokeToReference, type MatteMotion } from '../../core/src/matte-motion'
+import { isNearIdentity } from '../../core/src/global-motion'
 import type { BrushStroke } from '../../core/src/project-model'
 import { probeVideo } from '../media/probe'
 
@@ -23,6 +25,8 @@ export interface CustomMatteBakeParams {
   baseMatteOffset?: number
   baseMattePlaybackRate?: number
   strokes: BrushStroke[]
+  /** How the picture moves over the source, when the camera does. See core/matte-motion. */
+  motion?: MatteMotion
   onProgress?: (percent: number) => void
 }
 
@@ -38,12 +42,19 @@ export function computeCustomMatteFingerprint(
    * hash the same and the second would be served the first one's file.
    */
   window?: { offset: number; duration: number; playbackRate?: number },
+  /** The picture's motion, and where the clip sits in its source: both change every frame of the bake. */
+  motion?: { motion: MatteMotion; trimStart: number; speed: number },
 ): string {
   const strokesHash = computeStrokesHash(strokes)
   const windowKey = window
     ? `${window.offset.toFixed(4)}:${window.duration.toFixed(4)}:${(window.playbackRate ?? 1).toFixed(4)}`
     : 'full'
-  const payload = [clipId, strokesHash, baseFingerprint || 'no-base', windowKey].join(':')
+  // `v2`: a brush with no base matte keeps only what it paints; earlier bakes kept everything.
+  // `v3`: a shot with camera motion carries the matte along with it.
+  const motionKey = motion
+    ? `${motionHash(motion.motion)}:${motion.trimStart.toFixed(4)}:${motion.speed.toFixed(4)}`
+    : ''
+  const payload = [motion ? 'v3' : 'v2', clipId, strokesHash, baseFingerprint || 'no-base', windowKey, motionKey].join(':')
   return crypto.createHash('sha256').update(payload).digest('hex').substring(0, 16)
 }
 
@@ -59,7 +70,9 @@ export interface CustomMatteBakeResult {
 
 export class CustomMatteBakeService {
   public async ensureBake(params: CustomMatteBakeParams): Promise<CustomMatteBakeResult> {
-    const { clipId, baseMattePath, baseMatteFingerprint, filePath, duration, strokes, onProgress } = params
+    const { clipId, baseMattePath, baseMatteFingerprint, filePath, duration, strokes, motion, onProgress } = params
+    const trimStart = params.trimStart ?? 0
+    const clipSpeed = params.speed ?? 1
     const baseMatteOffset = Math.max(0, params.baseMatteOffset ?? 0)
     const baseMattePlaybackRate = params.baseMattePlaybackRate ?? 1
 
@@ -74,7 +87,7 @@ export class CustomMatteBakeService {
       offset: baseMatteOffset,
       duration,
       playbackRate: baseMattePlaybackRate,
-    })
+    }, motion ? { motion, trimStart, speed: clipSpeed } : undefined)
     const cacheDir = renderCacheManager.getCacheDir()
     if (!fs.existsSync(cacheDir)) {
       fs.mkdirSync(cacheDir, { recursive: true })
@@ -117,7 +130,22 @@ export class CustomMatteBakeService {
     )
 
     // Pre-rasterize strokes into width x height mask
-    const raster = rasterizeStrokes(strokes, width, height)
+    const raster = rasterizeStrokes(strokes, width, height, {
+      toReference: motion ? paintedAt => strokeToReference(motion, paintedAt, trimStart, clipSpeed) : undefined,
+    })
+    // The masks as they lie on this frame of the clip. A still, or a shot the camera does not
+    // move in, is the same for every frame.
+    const scratch = { brush: new Uint8Array(frameSize), eraser: new Uint8Array(frameSize) }
+    const masksForFrame = (frameIndex: number): { brushMask: Uint8Array; eraserMask: Uint8Array } => {
+      if (!motion) return raster
+      const sourceTime = trimStart + (frameIndex / fps) * clipSpeed
+      const toRef = frameToReference(motion, sourceTime)
+      if (isNearIdentity(toRef, 5e-4)) return raster
+      return {
+        brushMask: warpMask(raster.brushMask, width, height, toRef, scratch.brush),
+        eraserMask: warpMask(raster.eraserMask, width, height, toRef, scratch.eraser),
+      }
+    }
 
     // Output video encoder
     const encodeProcess: any = spawn(
@@ -183,7 +211,8 @@ export class CustomMatteBakeService {
 
           while (offset + frameSize <= combined.length) {
             const alphaFrame = new Uint8Array(combined.buffer, combined.byteOffset + offset, frameSize)
-            const blended = blendCustomMatte(alphaFrame, raster.brushMask, raster.eraserMask, width, height)
+            const masks = masksForFrame(frameIndex)
+            const blended = blendCustomMatte(alphaFrame, masks.brushMask, masks.eraserMask, width, height)
             const outBuf = Buffer.from(blended.buffer as ArrayBuffer, blended.byteOffset, blended.byteLength)
 
             if (!encodeProcess.stdin.destroyed) {
@@ -228,14 +257,20 @@ export class CustomMatteBakeService {
     } else {
       // No base matte: initialize solid opaque base (255) and blend
       return new Promise((resolve) => {
-        const blendedSolid = blendCustomMatte(null, raster.brushMask, raster.eraserMask, width, height)
-        const frameBuf = Buffer.from(blendedSolid.buffer, blendedSolid.byteOffset, blendedSolid.byteLength)
+        const startsEmpty = customMatteStartsEmpty(strokes, false)
+        const solidFrame = (index: number): Buffer => {
+          const masks = masksForFrame(index)
+          const blended = blendCustomMatte(null, masks.brushMask, masks.eraserMask, width, height, startsEmpty)
+          return Buffer.from(blended.buffer, blended.byteOffset, blended.byteLength)
+        }
+        // With no motion every frame is the same, so it is built once.
+        const staticBuf: Buffer | null = motion ? null : solidFrame(0)
 
         let written = 0
         const writeFrames = async () => {
           while (written < expectedFrames) {
             if (encodeProcess.stdin.destroyed) break
-            const canWrite = encodeProcess.stdin.write(frameBuf)
+            const canWrite = encodeProcess.stdin.write(staticBuf ?? solidFrame(written))
             written++
 
             if (onProgress && expectedFrames > 0) {

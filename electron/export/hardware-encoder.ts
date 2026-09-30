@@ -90,7 +90,7 @@ export function setCachedHardwareCapabilitiesForTest(caps: HardwareEncoderCapabi
 }
 
 export function getEncoderDisplayName(encoder: string | null | undefined): string {
-  if (!encoder) return 'Chỉ hỗ trợ phần mềm (CPU: libx264)'
+  if (!encoder) return 'Software only (CPU: libx264)'
   switch (encoder) {
     case 'h264_nvenc':
       return 'NVIDIA NVENC (H.264)'

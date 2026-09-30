@@ -7,8 +7,12 @@ the renderer by `scripts/prepare-ml-assets.mjs`.
 | File | Size | Model | License |
 |---|---|---|---|
 | `rvm_mobilenetv3.onnx` | ~15 MB | RobustVideoMatting, MobileNetV3 backbone | **GPL-3.0** |
+| `mobile_sam_image_encoder.onnx` | 28.2 MB | MobileSAM image encoder (smart brush / smart eraser) | Apache-2.0 (export: MIT) |
+| `sam_mask_decoder_single.onnx` | 16.5 MB | Segment Anything mask decoder, single mask | Apache-2.0 (export: MIT) |
 
-Source: <https://github.com/PeterL1n/RobustVideoMatting>
+Sources: <https://github.com/PeterL1n/RobustVideoMatting>, <https://huggingface.co/Acly/MobileSAM>
+
+The MobileSAM pair is loaded in the renderer by `frontend/views/editor/preview/SamEngine.ts`.
 
 ## Why this file is committed
 

@@ -95,8 +95,8 @@ describe('KE-701: Text Animation Filtergraph Export', () => {
     // Contains yExpr with nested time expression
     expect(fg).toContain("y=(h-text_h)*")
     expect(fg).toContain("if(lte((t-0.000),0)")
-    // Contains opacity alpha expression
-    expect(fg).toContain("alpha='min(1\\,max(0\\,(")
+    // The flight starts at the frame edge, so it needs no fade to hide its start
+    expect(fg).not.toContain("alpha='")
   })
 
   it('exports slide-in animation with dynamic positionX expression in drawtext', () => {

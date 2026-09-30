@@ -55,17 +55,17 @@ describe('resolveCut', () => {
   it('refuses a gap, and says which problem it is', () => {
     const result = resolveCut(timeline([clip('a', 0, 4), clip('b', 5, 4)]), 'a', 'b')
     expect(result.ok).toBe(false)
-    expect(result.ok === false && result.reason).toMatch(/khoảng trống/)
+    expect(result.ok === false && result.reason).toMatch(/gap/)
   })
 
   it('refuses two clips on different tracks', () => {
     const result = resolveCut(timeline([clip('a', 0, 4), clip('b', 4, 4, { trackIndex: 1 })]), 'a', 'b')
-    expect(result.ok === false && result.reason).toMatch(/cùng một track/)
+    expect(result.ok === false && result.reason).toMatch(/same track/)
   })
 
   it('refuses clips too short to overlap', () => {
     const result = resolveCut(timeline([clip('a', 0, 0.1), clip('b', 0.1, 0.1)]), 'a', 'b')
-    expect(result.ok === false && result.reason).toMatch(/quá ngắn/)
+    expect(result.ok === false && result.reason).toMatch(/too short/)
   })
 })
 
@@ -307,7 +307,7 @@ describe('setTransitionAtCut — closing a gap first', () => {
   it('refuses the gap when no licence is given', () => {
     const result = setTransitionAtCut(GAPPED(), 'a', 'b', 'dissolve', 1, makeId)
     expect(result.ok).toBe(false)
-    expect(result.ok === false && result.reason).toMatch(/khoảng trống/)
+    expect(result.ok === false && result.reason).toMatch(/gap/)
   })
 
   it('pulls the right clip onto the left one, then overlaps it', () => {
@@ -333,7 +333,7 @@ describe('setTransitionAtCut — closing a gap first', () => {
   it('leaves a gap wider than the licence alone', () => {
     const result = setTransitionAtCut(GAPPED(), 'a', 'b', 'dissolve', 1, makeId, { closeGapUpTo: 0.2 })
     expect(result.ok).toBe(false)
-    expect(result.ok === false && result.reason).toMatch(/khoảng trống/)
+    expect(result.ok === false && result.reason).toMatch(/gap/)
   })
 
   it('does not shift anything when the clips already meet', () => {

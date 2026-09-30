@@ -39,7 +39,7 @@ describe('stickers core definitions', () => {
   it('retrieves sticker definition by id correctly', () => {
     const star = getStickerDefinition('star')
     expect(star).toBeDefined()
-    expect(star?.name).toBe('Ngôi sao vàng')
+    expect(star?.name).toBe('Gold Star')
     expect(star?.filename).toBe('star.png')
     expect(isValidStickerId('star')).toBe(true)
     expect(isValidStickerId('nonexistent')).toBe(false)
@@ -146,7 +146,7 @@ describe('addStickerClip action', () => {
     // would be tiny on a 4K timeline and huge on a small one.
     const shortEdge = 512 // no width/height on this timeline, so it comes from the asset
     expect((stickerClip!.transform.scale / 100) * shortEdge).toBeCloseTo(DEFAULT_STICKER_PIXELS, 0)
-    expect(stickerClip?.importedName).toContain('Ngôi sao vàng')
+    expect(stickerClip?.importedName).toContain('Gold Star')
 
     // An asset must be registered in editorModel.assets
     const asset = state.editorModel.assets.find(a => a.id === stickerClip?.assetId)

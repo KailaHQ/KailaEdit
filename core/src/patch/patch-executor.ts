@@ -182,7 +182,7 @@ export function executePatchOperations(state: EditorState, operations: EditPatch
         const timeline = selectActiveTimeline(current)
         const target = timeline?.clips.find(clip => clip.id === op.clipId)
         if (!target) {
-          throw new Error(`Clip "${op.clipId}" không tồn tại trên timeline`)
+          throw new Error(`Clip "${op.clipId}" does not exist on timeline`)
         }
         const merged = mergeClipPatch(target as unknown as Record<string, unknown>, op.patch)
         current = updateClip(current, op.clipId, merged as never)
@@ -505,7 +505,7 @@ export function executePatchOperations(state: EditorState, operations: EditPatch
         const timeline = selectActiveTimeline(current)
         const targetClip = timeline?.clips.find(c => c.id === op.clipId)
         if (!targetClip) {
-          throw new Error(`Clip "${op.clipId}" không tồn tại trên timeline`)
+          throw new Error(`Clip "${op.clipId}" does not exist on timeline`)
         }
 
         let asset = current.editorModel.assets.find(a => a.id === op.imageAssetId)

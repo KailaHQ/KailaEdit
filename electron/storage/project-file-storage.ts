@@ -59,6 +59,12 @@ export function writeProjectFileAtomic(
   content: string,
 ): { success: true; path: string } | { success: false; error: string } {
   let tempPath: string | null = null
+  // Sanitising maps 'a.b' and 'a_b' to the same file, so a write under an id
+  // that sanitising would change could silently replace another project.
+  // Ids the app generates never trip this; only a foreign id from an import can.
+  if (sanitizeProjectId(projectId) !== projectId) {
+    return { success: false, error: `Invalid project id: ${projectId}` }
+  }
   try {
     fs.mkdirSync(projectsDir, { recursive: true })
     const targetPath = getProjectFilePath(projectsDir, projectId)

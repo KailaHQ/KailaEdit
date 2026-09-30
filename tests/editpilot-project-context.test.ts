@@ -58,14 +58,14 @@ describe('S5-2: EditPilot Project Context & Runner Integration', () => {
       if (!projectId || !projectId.trim()) {
         return {
           success: false as const,
-          error: 'Chưa có project nào đang mở. Vui lòng mở một project trước khi dùng EditPilot.',
+          error: 'No project is currently open. Please open a project before using EditPilot.',
         }
       }
       return { success: true as const }
     }
 
     expect(validate(null).success).toBe(false)
-    expect(validate(null).error).toContain('Chưa có project nào đang mở')
+    expect(validate(null).error).toContain('No project is currently open')
     expect(validate('  ').success).toBe(false)
     expect(validate('valid-id').success).toBe(true)
   })

@@ -93,6 +93,7 @@ class WhisperService {
         fs.writeFileSync(filePath, encrypted)
         return { success: true, isEncrypted: true }
       } else {
+        logger.warn(`[whisper-service] OS encryption unavailable; ${filePath} is stored unencrypted (base64 only)`)
         const base64 = Buffer.from(trimmed, 'utf8').toString('base64')
         fs.writeFileSync(filePath, Buffer.from(`RAW:${base64}`, 'utf8'))
         return { success: true, isEncrypted: false }
@@ -124,7 +125,11 @@ class WhisperService {
         return { apiKey: decrypted, hasKey: true, isEncrypted: true }
       }
 
-      return { apiKey: '', hasKey: true, isEncrypted: false }
+      // Encrypted on disk but the OS keystore is not available now: the key
+      // cannot be read, so report it as missing and let the user re-enter it
+      // rather than showing "saved" and failing every request with an empty key.
+      logger.warn(`[whisper-service] ${filePath} is encrypted but OS encryption is unavailable`)
+      return { apiKey: '', hasKey: false, isEncrypted: false }
     } catch (err) {
       logger.warn(`[whisper-service] Failed to read stored key from ${filePath}: ${err}`)
       return { apiKey: '', hasKey: false, isEncrypted: false }

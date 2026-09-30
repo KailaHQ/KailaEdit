@@ -1,16 +1,13 @@
 import React from 'react'
-import {
-  Layers, Menu, Pipette, Shield,
-} from 'lucide-react'
-import { pathToFileUrl } from '../../lib/file-url'
+import { Layers } from 'lucide-react'
 import type { TimelineClip, Asset } from '../../types/project-model'
-import { isExternalFileDrag, hasMediaFiles } from './external-file-drop'
 import { formatTime } from './video-editor-utils'
 
 import { getEffectiveTimelineDimensions } from '@core/video-resolution'
 import { type LutCanvasRef } from './preview/LutCanvas'
 import type { KeyboardLayout } from '../../lib/keyboard-shortcuts'
 import { useSettings } from '../../contexts/SettingsContext'
+import { useTranslation } from '../../i18n/I18nContext'
 import {
   selectActiveTimeline,
   selectAssets,
@@ -28,11 +25,8 @@ import {
   selectTotalDuration,
   selectTracks,
 } from './editor-selectors'
-import { TransformBoundingBox } from './preview/TransformBoundingBox'
 import { clipScreenBox } from '@core/video-editor-utils'
 
-import { MaskBoundingBox } from './preview/MaskBoundingBox'
-import { TextBoundingBox } from './preview/TextBoundingBox'
 import { useEditorActions, useEditorGetState, useEditorStore } from './editor-store'
 import { useRenderCacheStore } from './render-cache-store'
 import { useStabilizedClips } from './useStabilizedClips'
@@ -41,21 +35,20 @@ import {
   type FrameRenderState,
   type VideoContributorSyncState,
   resolveClipPathFromAssets,
-  applyPlaybackResolution,
   buildFrameRenderCache,
-  isImageClip,
   EMPTY_TRANSITIONS,
 } from './preview/preview-frame-engine'
 import { useVideoPoolManager, type VideoPoolRefs } from './preview/useVideoPoolManager'
 import { useFrameRenderer, type FrameRendererRefs, type FrameRendererDeps, type TransformOverride } from './preview/useFrameRenderer'
-import { MonitorSubtitlesOverlay } from './preview/MonitorSubtitlesOverlay'
-import { MonitorLetterbox } from './preview/MonitorLetterbox'
-import { MonitorSafeZoneGuide } from './preview/MonitorSafeZoneGuide'
-import { SourceVideoPreview } from './preview/SourceVideoPreview'
 import { MonitorTransportBar } from './preview/MonitorTransportBar'
-import { MonitorCompositingStack } from './preview/MonitorCompositingStack'
 import { useWebCodecsPreview } from './preview/webcodecs/useWebCodecsPreview'
 import { isTimelineShapeClip, timelineShapeToDataUrl } from './timeline-shape-utils'
+import { useMonitorDrop } from './preview/useMonitorDrop'
+import { useMonitorEyedropper } from './preview/useMonitorEyedropper'
+import { MonitorHeader } from './preview/MonitorHeader'
+import { useMonitorZoomPan } from './preview/useMonitorZoomPan'
+import { useMonitorPlaybackLoop } from './preview/useMonitorPlaybackLoop'
+import { MonitorStage } from './preview/MonitorStage'
 
 export interface ProgramMonitorProps {
   playbackTimeRef: React.MutableRefObject<number>
@@ -93,6 +86,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     setPreviewAssetId,
     insertAssetsToTimeline,
   } = useEditorActions()
+  const { t } = useTranslation()
 
   const currentTime = useEditorStore(selectCurrentTime)
   const totalDuration = useEditorStore(selectTotalDuration)
@@ -102,6 +96,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const assets = useEditorStore(selectAssets)
   const previewAsset = useEditorStore(selectPreviewAsset)
   const isPreviewingVideo = Boolean(previewAsset && previewAsset.type === 'video')
+
   const [sourceVideoDimensions, setSourceVideoDimensions] = React.useState<{ width: number; height: number } | null>(null)
   const [previewVideoPlaying, setPreviewVideoPlaying] = React.useState(true)
   const [previewVideoCurrentTime, setPreviewVideoCurrentTime] = React.useState(0)
@@ -159,49 +154,11 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const fps = activeTimelineFps ?? settings.defaultFps ?? 30
   const timecodeFormat = settings.timecodeFormat ?? 'timecode'
 
-  // Press 'C' to toggle Crop mode for selected visual clip, Esc to exit crop / eyedropper / preview
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return
-      }
-
-      if (e.key === 'c' || e.key === 'C') {
-        if (selectedClip && (selectedClip.type === 'video' || selectedClip.type === 'image')) {
-          e.preventDefault()
-          toggleCropMode()
-        }
-      } else if (e.key === 'Escape') {
-        if (cropMode) {
-          e.preventDefault()
-          setCropMode(false)
-        }
-        if (eyedropperMode) {
-          e.preventDefault()
-          setEyedropperMode(false)
-        }
-        if (isPreviewingVideo) {
-          e.preventDefault()
-          setPreviewAssetId(null)
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cropMode, eyedropperMode, isPreviewingVideo, selectedClip, setCropMode, setEyedropperMode, setPreviewAssetId, toggleCropMode])
-
   const effectiveDimensions = React.useMemo(() => {
     return getEffectiveTimelineDimensions(activeTimeline, assets, fps)
   }, [activeTimeline, assets, fps])
 
-  // Flag to prevent the video frame wrapper's onClick from clearing selection
-  // when the user clicked on a text overlay (mousedown fires first on the overlay,
-  // but click may bubble up to the wrapper if the mouse moved slightly).
   const clickedTextOverlayRef = React.useRef(false)
-  // Set while a transform handle is being used, so the click that ends the
-  // drag does not re-run the selection hit test against a stale rectangle.
   const transformInteractionRef = React.useRef(false)
   const previewContainerRef = React.useRef<HTMLDivElement>(null)
   const videoFrameWrapperRef = React.useRef<HTMLDivElement>(null)
@@ -209,14 +166,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const incomingDissolveVideoRef = React.useRef<HTMLVideoElement | null>(null)
   const incomingDissolveImageRef = React.useRef<HTMLImageElement | null>(null)
   const activeImageRef = React.useRef<HTMLImageElement | null>(null)
-  /**
-   * The same element as `activeImageRef`, kept in state because the LUT canvas
-   * needs it as a prop. A ref read during render is null on the very render
-   * that mounts the image, and nothing re-renders when a ref is attached — so
-   * the graded canvas was handed `null` and quietly drew nothing, which is why
-   * a filter on a still looked like it had not been applied while the same
-   * filter on a video (whose element comes from the imperative pool) worked.
-   */
   const [activeImageEl, setActiveImageEl] = React.useState<HTMLImageElement | null>(null)
   const attachActiveImage = React.useCallback((element: HTMLImageElement | null) => {
     activeImageRef.current = element
@@ -236,7 +185,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const transitionBgRef = React.useRef<HTMLDivElement | null>(null)
   const videoPoolRef = React.useRef<Map<string, HTMLVideoElement>>(new Map())
   const compositingMediaRefs = React.useRef<Map<string, HTMLVideoElement | HTMLImageElement>>(new Map())
-  /** Sticker overlay images by clip id, styled per frame in applyFrameVisuals. */
   const stickerImageRefs = React.useRef<Map<string, HTMLImageElement>>(new Map())
   const activePoolPathRef = React.useRef('')
   const activePoolClipIdRef = React.useRef<string | null>(null)
@@ -250,77 +198,31 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   cachedSegmentsRef.current = cachedSegments
   const cachedVideoRefA = React.useRef<HTMLVideoElement | null>(null)
   const cachedVideoRefB = React.useRef<HTMLVideoElement | null>(null)
-  const [previewZoom, setPreviewZoom] = React.useState<number | 'fit'>('fit')
-  const [previewZoomOpen, setPreviewZoomOpen] = React.useState(false)
-  const [previewPan, setPreviewPan] = React.useState({ x: 0, y: 0 })
-  const previewPanRef = React.useRef({ dragging: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 })
+
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [playbackResOpen, setPlaybackResOpen] = React.useState(false)
   const [playbackResolution, setPlaybackResolution] = React.useState<1 | 0.5 | 0.25>(0.5)
   const [videoFrameSize, setVideoFrameSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 })
   const [sourceVideoFrameSize, setSourceVideoFrameSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 })
   const [showSafeZoneGuide, setShowSafeZoneGuide] = React.useState(false)
-  const [isDragOver, setIsDragOver] = React.useState(false)
 
-  const handleDragOver = React.useCallback((e: React.DragEvent) => {
-    const types = Array.from(e.dataTransfer.types).map(t => t.toLowerCase())
-    if (isExternalFileDrag(e) || types.includes('assetid') || types.includes('assetids') || types.includes('asset')) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
-      setIsDragOver(true)
-    }
-  }, [])
+  const {
+    previewZoom,
+    setPreviewZoom,
+    previewPan,
+    handlePanMouseDown,
+    handlePanMouseMove,
+    handlePanMouseUp,
+    handlePanMouseLeave,
+  } = useMonitorZoomPan({ containerRef: previewContainerRef })
 
-  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return
-    setIsDragOver(false)
-  }, [])
-
-  const handleDrop = React.useCallback((e: React.DragEvent) => {
-    setIsDragOver(false)
-    const types = Array.from(e.dataTransfer.types).map(t => t.toLowerCase())
-    if (!isExternalFileDrag(e) && !types.includes('assetid') && !types.includes('assetids') && !types.includes('asset')) {
-      return
-    }
-    e.preventDefault()
-
-    if (isExternalFileDrag(e)) {
-      const files = e.dataTransfer.files
-      if (!hasMediaFiles(files) || !importFiles) return
-      void importFiles(files).then(imported => {
-        if (imported.length > 0) {
-          setPreviewAssetId(null)
-          insertAssetsToTimeline({
-            assets: imported,
-            startTime: currentTime,
-          })
-        }
-      })
-      return
-    }
-
-    const assetJson = e.dataTransfer.getData('asset')
-    let droppedAsset: Asset | null = null
-    if (assetJson) {
-      try {
-        droppedAsset = JSON.parse(assetJson) as Asset
-      } catch {}
-    }
-    if (!droppedAsset) {
-      const assetId = e.dataTransfer.getData('assetId')
-      if (assetId) {
-        droppedAsset = assets.find(a => a.id === assetId) ?? null
-      }
-    }
-
-    if (droppedAsset) {
-      setPreviewAssetId(null)
-      insertAssetsToTimeline({
-        assets: [droppedAsset],
-        startTime: currentTime,
-      })
-    }
-  }, [assets, currentTime, importFiles, insertAssetsToTimeline, setPreviewAssetId])
+  const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useMonitorDrop({
+    importFiles,
+    currentTime,
+    setPreviewAssetId,
+    insertAssetsToTimeline,
+    assets,
+  })
 
   React.useEffect(() => {
     const container = previewContainerRef.current
@@ -333,7 +235,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
       if (cw <= 0 || ch <= 0) return
       const containerRatio = cw / ch
 
-      // Timeline frame dimensions (always follows timeline resolution / ratio)
       const timelineRatio = effectiveDimensions.aspectRatio || 16 / 9
       let tfw: number
       let tfh: number
@@ -348,7 +249,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
       const th = Math.round(tfh)
       setVideoFrameSize(prev => (prev.width === tw && prev.height === th ? prev : { width: tw, height: th }))
 
-      // Source video preview dimensions (always follows raw asset ratio)
       if (isPreviewingVideo) {
         const sourceRatio = sourceVideoDimensions
           ? sourceVideoDimensions.width / sourceVideoDimensions.height
@@ -369,16 +269,11 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     }
 
     updateFrameSize()
-
-    const observer = new ResizeObserver(() => {
-      updateFrameSize()
-    })
+    const observer = new ResizeObserver(() => updateFrameSize())
     observer.observe(container)
-
-    return () => {
-      observer.disconnect()
-    }
+    return () => observer.disconnect()
   }, [effectiveDimensions.aspectRatio, isPreviewingVideo, sourceVideoDimensions, previewAsset?.width, previewAsset?.height])
+
   const timelineTransitions = useEditorStore(
     state => selectActiveTimeline(state)?.transitions ?? EMPTY_TRANSITIONS,
   )
@@ -401,21 +296,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
 
   React.useImperativeHandle(ref, () => ({ toggleFullscreen }), [toggleFullscreen])
 
-  React.useEffect(() => {
-    clipsRef.current = clips
-  }, [clips])
-
-  React.useEffect(() => {
-    tracksRef.current = tracks
-  }, [tracks])
-
-  React.useEffect(() => {
-    getClipPathRef.current = getClipPath
-  }, [getClipPath])
-
-  React.useEffect(() => {
-    frameRenderCacheRef.current = frameRenderCache
-  }, [frameRenderCache])
+  React.useEffect(() => { clipsRef.current = clips }, [clips])
+  React.useEffect(() => { tracksRef.current = tracks }, [tracks])
+  React.useEffect(() => { getClipPathRef.current = getClipPath }, [getClipPath])
+  React.useEffect(() => { frameRenderCacheRef.current = frameRenderCache }, [frameRenderCache])
 
   const resolveClipPathRef = React.useCallback((clip: TimelineClip): string => {
     const resolved = getClipPathRef.current(clip)
@@ -435,7 +319,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     }
     return best
   }, [])
-  // ── Video pool & frame rendering hooks ─────────────────────────────────
+
   const lastFrameRequestRef = React.useRef<{ state: FrameRenderState; mode: import('./preview/preview-frame-engine').MonitorRenderMode } | null>(null)
   const poolRefs: VideoPoolRefs = {
     videoPoolRef,
@@ -458,7 +342,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   )
   const { destroyPoolVideo } = poolManager
 
-  /** The transform box's in-flight drag; the frame renderer draws that clip with it. */
   const transformOverrideRef = React.useRef<TransformOverride | null>(null)
   const transformPreviewRafRef = React.useRef(0)
 
@@ -499,103 +382,39 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     renderFrame,
   } = useFrameRenderer(poolManager, poolRefs, frameRendererRefs, frameRendererDeps, playbackTimeRef)
 
-  React.useEffect(() => {
-    const pool = videoPoolRef.current
-    for (const [, video] of pool) {
-      applyPlaybackResolution(video, playbackResolution)
-    }
-    if (cachedVideoRefA.current) {
-      applyPlaybackResolution(cachedVideoRefA.current, playbackResolution)
-    }
-    if (cachedVideoRefB.current) {
-      applyPlaybackResolution(cachedVideoRefB.current, playbackResolution)
-    }
-  }, [playbackResolution])
-
-  React.useEffect(() => {
-    if (!isPlaying) {
-      if (cachedVideoRefA.current && !cachedVideoRefA.current.paused) {
-        cachedVideoRefA.current.pause()
-      }
-      if (cachedVideoRefB.current && !cachedVideoRefB.current.paused) {
-        cachedVideoRefB.current.pause()
-      }
-    }
-  }, [isPlaying])
-
-  React.useEffect(() => {
-    return () => {
-      for (const poolPath of Array.from(videoPoolRef.current.keys())) {
-        destroyPoolVideo(poolPath)
-      }
-      for (const ref of [cachedVideoRefA, cachedVideoRefB]) {
-        if (ref.current) {
-          ref.current.pause()
-          ref.current.removeAttribute('src')
-          ref.current.load()
-        }
-      }
-    }
-  }, [destroyPoolVideo])
+  useMonitorPlaybackLoop({
+    isPlaying,
+    playbackTimeRef,
+    currentTime,
+    clips,
+    subtitles,
+    tracks,
+    isPreviewingVideo,
+    playbackResolution,
+    videoPoolRef,
+    cachedVideoRefA,
+    cachedVideoRefB,
+    lastFrameRequestRef,
+    lutCanvasRef,
+    destroyPoolVideo,
+    renderFrame,
+    applyFrameVisuals,
+    containerRef: previewContainerRef,
+    setIsFullscreen,
+    selectedClip,
+    cropMode,
+    eyedropperMode,
+    toggleCropMode,
+    setCropMode,
+    setEyedropperMode,
+    setPreviewAssetId,
+  })
 
   React.useLayoutEffect(() => {
     const lastFrame = lastFrameRequestRef.current
     if (!lastFrame) return
     applyFrameVisuals(lastFrame.state, lastFrame.mode)
   }, [applyFrameVisuals, frameScene])
-
-  React.useEffect(() => {
-    if (!isPlaying) return
-
-    let animFrameId = 0
-    const tick = () => {
-      renderFrame(playbackTimeRef.current, 'playback')
-      animFrameId = requestAnimationFrame(tick)
-    }
-
-    animFrameId = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(animFrameId)
-    }
-  }, [isPlaying, playbackTimeRef, renderFrame])
-
-  React.useEffect(() => {
-    if (isPlaying) return
-    renderFrame(currentTime, 'scrub')
-  }, [clips, currentTime, isPlaying, renderFrame, subtitles, tracks])
-
-  // Re-sync timeline visuals when exiting video preview mode so there is never a black screen
-  React.useEffect(() => {
-    if (!isPreviewingVideo) {
-      lastFrameRequestRef.current = null
-      renderFrame(currentTime, 'scrub')
-      requestAnimationFrame(() => {
-        lutCanvasRef.current?.renderNow()
-        const last = lastFrameRequestRef.current
-        if (last) {
-          applyFrameVisuals(last.state, last.mode)
-        }
-      })
-    }
-  }, [isPreviewingVideo, currentTime, renderFrame, applyFrameVisuals])
-
-  React.useEffect(() => {
-    const handler = () => setIsFullscreen(document.fullscreenElement === previewContainerRef.current)
-    document.addEventListener('fullscreenchange', handler)
-    return () => document.removeEventListener('fullscreenchange', handler)
-  }, [])
-
-  React.useEffect(() => {
-    if (!previewZoomOpen) return
-    const handler = () => setPreviewZoomOpen(false)
-    const raf = requestAnimationFrame(() => {
-      window.addEventListener('click', handler)
-    })
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('click', handler)
-    }
-  }, [previewZoomOpen])
 
   React.useEffect(() => {
     if (!playbackResOpen) return
@@ -609,44 +428,9 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     }
   }, [playbackResOpen])
 
-  React.useEffect(() => {
-    if (previewZoom === 'fit') {
-      setPreviewPan({ x: 0, y: 0 })
-    }
-  }, [previewZoom])
-
-  React.useEffect(() => {
-    const el = previewContainerRef.current
-    if (!el) return
-    const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
-      e.preventDefault()
-      setPreviewZoom(prev => {
-        const current = prev === 'fit' ? 100 : prev
-        const delta = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        return Math.round(Math.min(1600, Math.max(10, current * delta)))
-      })
-    }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
-  }, [])
-
-
-  // Compositing stack video sync is handled inside renderFrame.
-
-  /**
-   * A drag on the transform box, applied to the picture as it happens.
-   *
-   * Hot path: no store write and no React render per pointer move. The dragged transform
-   * sits in a ref the frame renderer reads, and the last frame's visuals are re-applied
-   * once per animation frame — the styles of the layers on screen, nothing more. The store
-   * is written once, when the box commits on release.
-   */
   const handlePreviewTransform = React.useCallback((transform: TimelineClip['transform'] | null) => {
     const clip = selectedClip
     if (!transform || !clip) {
-      // The release commits the final transform to the store, and the render that follows
-      // draws it; re-applying here would flash the pre-drag transform for a frame.
       transformOverrideRef.current = null
       return
     }
@@ -658,9 +442,6 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
       if (!override) return
       const last = lastFrameRequestRef.current
       if (last) applyFrameVisuals(last.state, last.mode)
-      // A rectangle shape is drawn for the box it fills, so stretching one side needs a
-      // new image — only then: the URL depends on the box's aspect alone, so a move, a
-      // rotation or a corner scale keeps the same one.
       const shapeImage = stickerImageRefs.current.get(override.clipId)
       if (shapeImage && isTimelineShapeClip(clip)) {
         const src = timelineShapeToDataUrl(clip, override.transform)
@@ -683,27 +464,10 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     currentTime,
     isPlaying,
     resolveClipPath: getClipPath,
-    // Matte snapshots must share the transport's source. A second source decoder
-    // on the React clock competes with imperative playhead seeks and can redraw old frames.
     enabled: !activeClip?.autoMatte?.enabled,
   })
 
-  /**
-   * Clicking the picture selects the clip under the pointer.
-   *
-   * Every visual clip is drawn with `pointer-events: none` so the compositing
-   * layers never swallow a drag, which meant a click always landed on the frame
-   * behind them and cleared the selection — selecting a sticker on the timeline
-   * and then clicking it on screen made its transform handles disappear.
-   *
-   * Topmost first: the compositing stack is drawn lowest track first, so walking
-   * it backwards picks what the user can actually see.
-   */
   const selectVisualClipAtPoint = React.useCallback((event: React.MouseEvent) => {
-    // A drag on the bounding box ends with a click here. The clip stays
-    // selected: the user is working on it, and re-picking would hand focus to
-    // whatever happens to sit under the pointer. A press on the box that did not
-    // move clears this flag on release, so a plain click still picks what is on top.
     if (transformInteractionRef.current) {
       transformInteractionRef.current = false
       return
@@ -734,6 +498,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
 
     clearClipSelection()
   }, [activeClip, activeStickerClips, assets, clearClipSelection, compositingStack, selectClip])
+
   const activeSubtitles = frameScene.activeSubtitles
   const activeLetterbox = frameScene.activeLetterbox
   const activeAdjustmentEffects = frameScene.activeAdjustmentEffects
@@ -744,542 +509,204 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     }
     : null
 
-  const sampleColorAtEvent = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!selectedClip) {
-      setEyedropperMode(false)
-      return
-    }
-
-    const wrapper = videoFrameWrapperRef.current
-    if (!wrapper) {
-      setEyedropperMode(false)
-      return
-    }
-
-    const rect = wrapper.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) {
-      setEyedropperMode(false)
-      return
-    }
-
-    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
-
-    let sourceEl: HTMLImageElement | HTMLVideoElement | null = null
-    if (activeClip && isImageClip(activeClip)) {
-      sourceEl = activeImageRef.current
-    } else if (activeClip?.asset?.type === 'video') {
-      sourceEl = videoPoolRef.current.get(activePoolPathRef.current) ?? null
-    }
-
-    if (!sourceEl) {
-      setEyedropperMode(false)
-      return
-    }
-
-    try {
-      const canvas = document.createElement('canvas')
-      const sw = (sourceEl instanceof HTMLVideoElement ? sourceEl.videoWidth : sourceEl.naturalWidth) || 640
-      const sh = (sourceEl instanceof HTMLVideoElement ? sourceEl.videoHeight : sourceEl.naturalHeight) || 360
-      canvas.width = sw
-      canvas.height = sh
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (ctx) {
-        ctx.drawImage(sourceEl, 0, 0, sw, sh)
-        const px = Math.min(sw - 1, Math.max(0, Math.floor(normX * sw)))
-        const py = Math.min(sh - 1, Math.max(0, Math.floor(normY * sh)))
-        const pixel = ctx.getImageData(px, py, 1, 1).data
-        const r = pixel[0].toString(16).padStart(2, '0')
-        const g = pixel[1].toString(16).padStart(2, '0')
-        const b = pixel[2].toString(16).padStart(2, '0')
-        const hex = `#${r}${g}${b}`.toUpperCase()
-        setClipChromaKey(selectedClip.id, { color: hex, enabled: true })
-      }
-    } catch (err) {
-      console.warn('[ProgramMonitor] Eyedropper sample failed:', err)
-    } finally {
-      setEyedropperMode(false)
-    }
-  }, [activeClip, selectedClip, setClipChromaKey, setEyedropperMode])
+  const { sampleColorAtEvent } = useMonitorEyedropper({
+    selectedClip,
+    activeClip: activeClip ?? null,
+    videoFrameWrapperRef,
+    activeImageRef,
+    videoPoolRef,
+    activePoolPathRef,
+    setClipChromaKey,
+    setEyedropperMode,
+  })
 
   return (
-    // h-full, not flex-1: the resizable Panel that hosts this is a plain block,
-    // so a flex-grow here would resolve against nothing and the preview would
-    // collapse to its content height.
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-zinc-900">
-        {/* Player header — names the pane after the timeline it plays. */}
-        <div className="flex h-[34px] flex-shrink-0 items-center justify-between border-b border-zinc-800 px-4">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="truncate text-[13px] text-zinc-100 font-medium">
-              Player{activeTimelineName ? ` - ${activeTimelineName}` : ''}
-            </span>
-            {isPreviewingVideo && sourceVideoDimensions ? (
-              <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-blue-950/80 text-blue-300 border border-blue-500/40">
-                Gốc: {sourceVideoDimensions.width}×{sourceVideoDimensions.height}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => openProjectSettingsModal()}
-                className="px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-teal-400 transition-colors border border-zinc-700/60"
-                title="Change project / timeline dimensions"
-              >
-                {effectiveDimensions.aspectRatioLabel}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowSafeZoneGuide(prev => !prev)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors border ${
-                showSafeZoneGuide
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border-zinc-700/60'
-              }`}
-              title="Toggle TikTok / Reels 9:16 Safe Zone Guide"
-            >
-              <Shield className="h-3 w-3" />
-              Safe Zone
-            </button>
+      <MonitorHeader
+        activeTimelineName={activeTimelineName}
+        isPreviewingVideo={isPreviewingVideo}
+        sourceVideoDimensions={sourceVideoDimensions}
+        effectiveDimensions={effectiveDimensions}
+        showSafeZoneGuide={showSafeZoneGuide}
+        onToggleSafeZoneGuide={() => setShowSafeZoneGuide(prev => !prev)}
+        onOpenProjectSettings={() => openProjectSettingsModal()}
+      />
+
+      <div
+        ref={previewContainerRef}
+        className={`flex-1 relative overflow-hidden min-h-0 min-w-0 ${isFullscreen ? 'bg-black' : ''}`}
+        style={{ backgroundColor: '#000', ...(previewZoom !== 'fit' ? { cursor: 'grab' } : {}) }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={(e) => {
+          if (isPreviewingVideo && !((e.target as HTMLElement).closest('[data-source-video-preview]'))) {
+            setPreviewAssetId(null)
+          }
+        }}
+        onMouseDown={handlePanMouseDown}
+        onMouseMove={handlePanMouseMove}
+        onMouseUp={handlePanMouseUp}
+        onMouseLeave={handlePanMouseLeave}
+      >
+        {isDragOver && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-400 backdrop-blur-[2px] pointer-events-none">
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-900/95 text-white font-medium text-xs shadow-2xl border border-blue-500/40">
+              <Layers className="w-4 h-4 text-blue-400 animate-bounce" />
+              <span>{t('monitor.dropVideoPrompt', { time: formatTime(currentTime, fps, timecodeFormat) })}</span>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => openProjectSettingsModal()}
-            className="cc-icon-btn"
-            title="Project / timeline settings"
-          >
-            <Menu className="h-4 w-4" />
-          </button>
-        </div>
+        )}
 
-        {/* Preview (existing) */}
-        <div
-          ref={previewContainerRef}
-          className={`flex-1 relative overflow-hidden min-h-0 min-w-0 ${isFullscreen ? 'bg-black' : ''}`}
-          style={{ backgroundColor: '#000', ...(previewZoom !== 'fit' ? { cursor: 'grab' } : {}) }}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={(e) => {
-            if (isPreviewingVideo && !((e.target as HTMLElement).closest('[data-source-video-preview]'))) {
-              setPreviewAssetId(null)
-            }
-          }}
-          onMouseDown={(e) => {
-            if (previewZoom === 'fit') return
-            if (e.button !== 0 && e.button !== 1) return
-            previewPanRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, startPanX: previewPan.x, startPanY: previewPan.y }
-          }}
-          onMouseMove={(e) => {
-            if (!previewPanRef.current.dragging) return
-            setPreviewPan({
-              x: previewPanRef.current.startPanX + (e.clientX - previewPanRef.current.startX),
-              y: previewPanRef.current.startPanY + (e.clientY - previewPanRef.current.startY),
-            })
-          }}
-          onMouseUp={() => { previewPanRef.current.dragging = false }}
-          onMouseLeave={() => { previewPanRef.current.dragging = false }}
-        >
-          {/* Drop indicator overlay when dragging media over preview */}
-          {isDragOver && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-400 backdrop-blur-[2px] pointer-events-none">
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-900/95 text-white font-medium text-xs shadow-2xl border border-blue-500/40">
-                <Layers className="w-4 h-4 text-blue-400 animate-bounce" />
-                <span>Thả video để thêm vào Timeline tại {formatTime(currentTime, fps, timecodeFormat)}</span>
-              </div>
-            </div>
-          )}
-
-          {clips.length === 0 && !isPreviewingVideo ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-48 h-28 border-2 border-dashed border-zinc-700 rounded-lg flex flex-col items-center justify-center mb-4 mx-auto">
-                  <Layers className="h-8 w-8 text-zinc-600 mb-2" />
-                  <p className="text-zinc-500 text-xs">Drop clips here</p>
-                </div>
-                <p className="text-zinc-600 text-xs">Click assets or drag them to the timeline</p>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-              style={previewZoom !== 'fit' ? {
-                transform: `translate(${previewPan.x}px, ${previewPan.y}px) scale(${(previewZoom as number) / 100})`,
-                transformOrigin: 'center center',
-              } : undefined}
-            >
-              {/* Dedicated Source Video Preview (completely isolated from timeline overlays) */}
-              {isPreviewingVideo && previewAsset && (
-                <SourceVideoPreview
-                  previewAsset={previewAsset}
-                  sourceVideoDimensions={sourceVideoDimensions}
-                  sourceVideoFrameSize={sourceVideoFrameSize}
-                  videoRef={previewVideoRef}
-                  onLoadedMetadata={(e) => {
-                    const v = e.currentTarget
-                    if (v.videoWidth && v.videoHeight) {
-                      setSourceVideoDimensions({ width: v.videoWidth, height: v.videoHeight })
-                    }
-                    setPreviewVideoDuration(v.duration || previewAsset.duration || 0)
-                  }}
-                  onTimeUpdate={(e) => {
-                    setPreviewVideoCurrentTime(e.currentTarget.currentTime)
-                  }}
-                  onPlay={() => setPreviewVideoPlaying(true)}
-                  onPause={() => setPreviewVideoPlaying(false)}
-                  onTogglePlay={(e) => {
-                    e.stopPropagation()
-                    if (previewVideoRef.current) {
-                      if (previewVideoRef.current.paused) {
-                        previewVideoRef.current.play().catch(() => {})
-                      } else {
-                        previewVideoRef.current.pause()
-                      }
-                    }
-                  }}
-                  onClose={() => setPreviewAssetId(null)}
-                  closeTooltip="Đóng xem trước (Esc)"
-                />
-              )}
-
-              {/* Eyedropper active banner */}
-              {eyedropperMode && !isPreviewingVideo && (
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-600/90 text-white text-xs shadow-lg backdrop-blur-sm pointer-events-auto">
-                  <Pipette className="h-3.5 w-3.5 animate-bounce" />
-                  <span>Click video to sample chroma key background color (Esc to cancel)</span>
-                  <button
-                    type="button"
-                    onClick={() => setEyedropperMode(false)}
-                    className="ml-1 text-zinc-200 hover:text-white font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Video frame wrapper — background with exact timeline dimensions & aspect ratio */}
-              <div
-                ref={videoFrameWrapperRef}
-                className={`relative bg-black shadow-2xl ${isPreviewingVideo ? 'hidden' : ''}`}
-                style={{
-                  display: isPreviewingVideo ? 'none' : undefined,
-                  cursor: eyedropperMode ? 'crosshair' : undefined,
-                  ...(videoFrameSize.width > 0
-                    ? { width: videoFrameSize.width, height: videoFrameSize.height }
-                    : {
-                        width: '100%',
-                        aspectRatio: `${effectiveDimensions.width} / ${effectiveDimensions.height}`,
-                      }),
-                  backgroundColor:
-                    activeTimeline?.background?.type === 'color' && activeTimeline.background.color
-                      ? activeTimeline.background.color
-                      : '#000000',
-                }}
-                onPointerDown={() => {
-                  // The bounding box stops propagation on its own handles, so a
-                  // press that reaches the frame is a press outside them. Clearing
-                  // here keeps the flag from surviving a drag that ended off-frame
-                  // and swallowing the next click.
-                  transformInteractionRef.current = false
-                  // Same for the text overlay's flag, which a double-click raised and
-                  // nothing lowered. A press on a text box raises it again on the
-                  // mousedown that follows this pointerdown, so a text click still works.
-                  clickedTextOverlayRef.current = false
-                }}
-                onClick={(e) => {
-                  if (clickedTextOverlayRef.current) {
-                    return
-                  }
-                  if (eyedropperMode) {
-                    e.stopPropagation()
-                    sampleColorAtEvent(e)
-                    return
-                  }
-                  selectVisualClipAtPoint(e)
-                }}
-              >
-              {/* Media rendering layers — strictly clipped to frame aspect ratio */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <MonitorCompositingStack
-                activeTimeline={activeTimeline}
-                effectiveDimensions={effectiveDimensions}
-                frameScene={frameScene}
-                compositingStack={compositingStack}
-                activeClip={activeClip ?? null}
-                activeStickerClips={activeStickerClips}
-                crossDissolveState={crossDissolveState}
-                isPlaying={isPlaying}
-                currentTime={currentTime}
-                getClipPath={getClipPath}
-                blurCanvasRef={blurCanvasRef}
-                videoPoolContainerRef={videoPoolContainerRef}
-                lutCanvasRef={lutCanvasRef}
-                incomingLutCanvasRef={incomingLutCanvasRef}
-                incomingDissolveVideoRef={incomingDissolveVideoRef}
-                incomingDissolveImageRef={incomingDissolveImageRef}
-                transitionBgRef={transitionBgRef}
-                compositingMediaRefs={compositingMediaRefs}
-                compositingSlotMapRef={compositingSlotMapRef}
-                compLutCanvasRefs={compLutCanvasRefs}
-                videoPoolRef={videoPoolRef}
-                activePoolPathRef={activePoolPathRef}
-                attachActiveImage={attachActiveImage}
-                activeImageEl={activeImageEl}
-                applyFrameVisuals={applyFrameVisuals}
-                lastFrameRequestRef={lastFrameRequestRef}
-                webCodecsFrame={webCodecsFrame}
-              />
-
-              {/* Pre-rendered complex segment render cache overlay (double buffered A/B) */}
-              <video
-                ref={cachedVideoRefA}
-                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
-                  hasActiveCache && isPlaying ? (activeCacheSlot === 0 ? 'z-[15] opacity-100' : 'z-[14] opacity-0') : 'hidden'
-                }`}
-                muted
-                playsInline
-                preload="auto"
-              />
-              <video
-                ref={cachedVideoRefB}
-                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
-                  hasActiveCache && isPlaying ? (activeCacheSlot === 1 ? 'z-[15] opacity-100' : 'z-[14] opacity-0') : 'hidden'
-                }`}
-                muted
-                playsInline
-                preload="auto"
-              />
-
-              {/* Adjustment layer effects */}
-              {activeAdjustmentEffects.map(({ clip: adjClip, filterStyle, hasVignette, vignetteAmount, hasGrain, grainAmount }) => {
-                const backdropFilter = filterStyle.filter && filterStyle.filter !== 'none' ? String(filterStyle.filter) : undefined
-                return (
-                  <React.Fragment key={`adj-fx-${adjClip.id}`}>
-                    {backdropFilter && (
-                      <div
-                        className="absolute inset-0 z-[22] pointer-events-none"
-                        style={{ backdropFilter, WebkitBackdropFilter: backdropFilter }}
-                      />
-                    )}
-                    {hasVignette && (
-                      <div
-                        className="absolute inset-0 z-[22] pointer-events-none"
-                        style={{
-                          background: `radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,${vignetteAmount}) 100%)`,
-                        }}
-                      />
-                    )}
-                    {hasGrain && (
-                      <canvas
-                        ref={(canvas) => {
-                          if (!canvas) return
-                          const ctx = canvas.getContext('2d')
-                          if (!ctx) return
-                          const w = canvas.width = 256
-                          const h = canvas.height = 256
-                          const imageData = ctx.createImageData(w, h)
-                          for (let i = 0; i < imageData.data.length; i += 4) {
-                            const v = Math.random() * 255
-                            imageData.data[i] = v
-                            imageData.data[i + 1] = v
-                            imageData.data[i + 2] = v
-                            imageData.data[i + 3] = (grainAmount / 100) * 80
-                          }
-                          ctx.putImageData(imageData, 0, 0)
-                        }}
-                        className="absolute inset-0 z-[22] pointer-events-none w-full h-full"
-                        style={{ mixBlendMode: 'overlay', imageRendering: 'pixelated' }}
-                      />
-                    )}
-                  </React.Fragment>
-                )
-              })}
-
-              {/* Sticker overlay clips. Above the picture and any transition
-                  between shots, but below the pre-rendered segment cache at
-                  z-15, which already has the sticker composited into it. */}
-              {activeStickerClips.map(sc => {
-                const src = isTimelineShapeClip(sc)
-                  ? timelineShapeToDataUrl(sc)
-                  : pathToFileUrl(getClipPath(sc) || sc.asset?.path || '')
-                return (
-                  <img
-                    key={`sticker-${sc.id}`}
-                    src={src}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[14]"
-                    ref={(el) => {
-                      if (el) stickerImageRefs.current.set(sc.id, el)
-                      else stickerImageRefs.current.delete(sc.id)
-                    }}
-                    onLoad={() => {
-                      const last = lastFrameRequestRef.current
-                      if (last) applyFrameVisuals(last.state, last.mode)
-                    }}
-                  />
-                )
-              })}
-
-              {/* Subtitle overlay */}
-              <MonitorSubtitlesOverlay activeSubtitles={activeSubtitles} tracks={tracks} />
-
-              {/* Letterbox overlay from adjustment layers */}
-              <MonitorLetterbox activeLetterbox={activeLetterbox} />
-              </div>{/* end media rendering layers */}
-
-              {/* Text overlay clips with bounding box & resize/scale/width/rotate handles */}
-              {activeTextClips.map(tc => {
-                const isSelected = selectedClipIds.has(tc.id)
-                return (
-                  <TextBoundingBox
-                    key={`text-${tc.id}`}
-                    clip={tc}
-                    isSelected={isSelected}
-                    currentTime={currentTime}
-                    frameElement={videoFrameWrapperRef.current}
-                    onSelect={() => {
-                      clickedTextOverlayRef.current = true
-                      selectClip(tc.id)
-                    }}
-                    onDoubleClick={() => {
-                      selectClip(tc.id)
-                      setShowPropertiesPanel(true)
-                    }}
-                    onUpdatePosition={(posX, posY) => {
-                      setClipTextPosition(tc.id, posX, posY)
-                    }}
-                    onUpdateFontSize={(fontSize) => {
-                      setClipTextStyleField(tc.id, 'fontSize', fontSize)
-                    }}
-                    onUpdateMaxWidth={(maxWidth) => {
-                      setClipTextStyleField(tc.id, 'maxWidth', maxWidth)
-                    }}
-                    onUpdateRotation={(rotation) => {
-                      setClipTransform(tc.id, { rotation })
-                    }}
-                    onDelete={() => {
-                      deleteClips([tc.id])
-                    }}
-                    onInteractionStart={() => {
-                      clickedTextOverlayRef.current = true
-                    }}
-                    onInteractionEnd={() => {
-                      requestAnimationFrame(() => {
-                        clickedTextOverlayRef.current = false
-                      })
-                    }}
-                  />
-                )
-              })}
-              {/* Note: Clip-level masks will be implemented in KE-501 (resolved in KE-106). */}
-
-              {/* Transform Bounding Box for active selected visual clip */}
-              <TransformBoundingBox
-                selectedClip={selectedClip}
-                onInteractionStart={() => { transformInteractionRef.current = true }}
-                // Pointer-up comes before the click. A press that never moved is a click,
-                // and must reach the hit test: otherwise a selected clip whose box covers
-                // the frame — a full-frame video — keeps every click on the clips above it.
-                onInteractionEnd={moved => { transformInteractionRef.current = moved }}
-                assets={assets}
-                videoFrameSize={videoFrameSize}
-                currentTime={currentTime}
-                cropMode={cropMode}
-                onToggleCropMode={() => toggleCropMode()}
-                onUpdateTransform={(patch, options) => {
-                  if (selectedClip) {
-                    setClipTransform(selectedClip.id, patch, options)
-                  }
-                }}
-                onPreviewTransform={handlePreviewTransform}
-              />
-
-              {/* Mask Bounding Box for on-screen mask editing */}
-              <MaskBoundingBox
-                selectedClip={selectedClip}
-                assets={assets}
-                videoFrameSize={videoFrameSize}
-                currentTime={currentTime}
-                maskMode={maskMode}
-                onUpdateMask={(patch) => {
-                  if (selectedClip) {
-                    setClipMask(selectedClip.id, patch)
-                  }
-                }}
-              />
-
-              {/* Safe Zone Guide overlay for 9:16 Shorts/Reels */}
-              <MonitorSafeZoneGuide show={Boolean(showSafeZoneGuide)} />
-              </div>{/* end video frame wrapper */}
-
-              {/* Transparent overlay to prevent video element default interactions */}
-              <div
-                className="absolute inset-0 z-20 pointer-events-none"
-              />
-            </div>
-          )}
-
-          {/* Timecode + clip info moved to bottom status bar */}
-        </div>
-
-        {/* Transport row */}
-        <MonitorTransportBar
-          playbackTimecodeRef={playbackTimecodeRef}
+        <MonitorStage
+          clips={clips}
           isPreviewingVideo={isPreviewingVideo}
-          previewVideoPlaying={previewVideoPlaying}
-          previewVideoCurrentTime={previewVideoCurrentTime}
-          previewVideoDuration={previewVideoDuration}
-          currentTime={currentTime}
-          contentDuration={contentDuration}
-          totalDuration={totalDuration}
-          fps={fps}
-          timecodeFormat={timecodeFormat}
-          isPlaying={isPlaying}
-          kbLayout={kbLayout}
-          playbackResolution={playbackResolution}
-          setPlaybackResolution={setPlaybackResolution}
+          previewAsset={previewAsset}
+          sourceVideoDimensions={sourceVideoDimensions}
+          sourceVideoFrameSize={sourceVideoFrameSize}
+          previewVideoRef={previewVideoRef}
+          setSourceVideoDimensions={setSourceVideoDimensions}
+          setPreviewVideoDuration={setPreviewVideoDuration}
+          setPreviewVideoCurrentTime={setPreviewVideoCurrentTime}
+          setPreviewVideoPlaying={setPreviewVideoPlaying}
+          setPreviewAssetId={setPreviewAssetId}
+          eyedropperMode={eyedropperMode}
+          setEyedropperMode={setEyedropperMode}
+          videoFrameWrapperRef={videoFrameWrapperRef}
+          videoFrameSize={videoFrameSize}
+          effectiveDimensions={effectiveDimensions}
+          activeTimeline={activeTimeline}
+          transformInteractionRef={transformInteractionRef}
+          clickedTextOverlayRef={clickedTextOverlayRef}
+          sampleColorAtEvent={sampleColorAtEvent}
+          selectVisualClipAtPoint={selectVisualClipAtPoint}
           previewZoom={previewZoom}
-          setPreviewZoom={setPreviewZoom}
-          isFullscreen={isFullscreen}
-          toggleFullscreen={toggleFullscreen}
-          onStepBackward={() => {
-            if (isPreviewingVideo && previewVideoRef.current) {
-              previewVideoRef.current.pause()
-              previewVideoRef.current.currentTime = Math.max(0, previewVideoRef.current.currentTime - (1 / fps))
-            } else {
-              pause()
-              stepCurrentTime(-1 / fps)
+          previewPan={previewPan}
+          frameScene={frameScene}
+          compositingStack={compositingStack}
+          activeClip={activeClip ?? null}
+          activeStickerClips={activeStickerClips}
+          crossDissolveState={crossDissolveState}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          getClipPath={getClipPath}
+          blurCanvasRef={blurCanvasRef}
+          videoPoolContainerRef={videoPoolContainerRef}
+          lutCanvasRef={lutCanvasRef}
+          incomingLutCanvasRef={incomingLutCanvasRef}
+          incomingDissolveVideoRef={incomingDissolveVideoRef}
+          incomingDissolveImageRef={incomingDissolveImageRef}
+          transitionBgRef={transitionBgRef}
+          compositingMediaRefs={compositingMediaRefs}
+          compositingSlotMapRef={compositingSlotMapRef}
+          compLutCanvasRefs={compLutCanvasRefs}
+          videoPoolRef={videoPoolRef}
+          activePoolPathRef={activePoolPathRef}
+          attachActiveImage={attachActiveImage}
+          activeImageEl={activeImageEl}
+          applyFrameVisuals={applyFrameVisuals}
+          lastFrameRequestRef={lastFrameRequestRef}
+          webCodecsFrame={webCodecsFrame}
+          cachedVideoRefA={cachedVideoRefA}
+          cachedVideoRefB={cachedVideoRefB}
+          hasActiveCache={hasActiveCache}
+          activeCacheSlot={activeCacheSlot}
+          activeAdjustmentEffects={activeAdjustmentEffects}
+          stickerImageRefs={stickerImageRefs}
+          activeSubtitles={activeSubtitles}
+          tracks={tracks}
+          activeLetterbox={activeLetterbox}
+          activeTextClips={activeTextClips}
+          selectedClipIds={selectedClipIds}
+          playbackTimeRef={playbackTimeRef}
+          selectedClip={selectedClip ?? null}
+          assets={assets}
+          cropMode={cropMode}
+          maskMode={maskMode}
+          showSafeZoneGuide={showSafeZoneGuide}
+          onSelectClip={(id) => {
+            clickedTextOverlayRef.current = true
+            selectClip(id)
+          }}
+          onShowPropertiesPanel={() => setShowPropertiesPanel(true)}
+          onUpdateTextPosition={(clipId, posX, posY) => setClipTextPosition(clipId, posX, posY)}
+          onUpdateTextFontSize={(clipId, fontSize) => setClipTextStyleField(clipId, 'fontSize', fontSize)}
+          onUpdateTextMaxWidth={(clipId, maxWidth) => setClipTextStyleField(clipId, 'maxWidth', maxWidth)}
+          onUpdateTextRotation={(clipId, rotation) => setClipTransform(clipId, { rotation })}
+          onDeleteClips={(ids) => deleteClips(ids)}
+          onToggleCropMode={() => toggleCropMode()}
+          onUpdateTransform={(patch, options) => {
+            if (selectedClip) {
+              setClipTransform(selectedClip.id, patch, options)
             }
           }}
-          onTogglePlayPause={() => {
-            if (isPreviewingVideo && previewVideoRef.current) {
-              if (previewVideoRef.current.paused) {
-                previewVideoRef.current.play().catch(() => {})
-              } else {
-                previewVideoRef.current.pause()
-              }
-            } else {
-              if (isPlaying) {
-                pause()
-              } else {
-                const cd = selectContentDuration(getEditorState())
-                if (cd > 0 && (currentTime >= cd - 0.04 || playbackTimeRef.current >= cd - 0.04)) {
-                  playbackTimeRef.current = 0
-                  setCurrentTime(0)
-                }
-                play()
-              }
-            }
-          }}
-          onStepForward={() => {
-            if (isPreviewingVideo && previewVideoRef.current) {
-              previewVideoRef.current.pause()
-              previewVideoRef.current.currentTime = Math.min(previewVideoDuration, previewVideoRef.current.currentTime + (1 / fps))
-            } else {
-              pause()
-              setCurrentTime(Math.min(contentDuration > 0 ? contentDuration : totalDuration, currentTime + (1 / fps)))
+          onPreviewTransform={handlePreviewTransform}
+          onUpdateMask={(patch) => {
+            if (selectedClip) {
+              setClipMask(selectedClip.id, patch)
             }
           }}
         />
       </div>
+
+      <MonitorTransportBar
+        playbackTimecodeRef={playbackTimecodeRef}
+        isPreviewingVideo={isPreviewingVideo}
+        previewVideoPlaying={previewVideoPlaying}
+        previewVideoCurrentTime={previewVideoCurrentTime}
+        previewVideoDuration={previewVideoDuration}
+        currentTime={currentTime}
+        contentDuration={contentDuration}
+        totalDuration={totalDuration}
+        fps={fps}
+        timecodeFormat={timecodeFormat}
+        isPlaying={isPlaying}
+        kbLayout={kbLayout}
+        playbackResolution={playbackResolution}
+        setPlaybackResolution={setPlaybackResolution}
+        previewZoom={previewZoom}
+        setPreviewZoom={setPreviewZoom}
+        isFullscreen={isFullscreen}
+        toggleFullscreen={toggleFullscreen}
+        onStepBackward={() => {
+          if (isPreviewingVideo && previewVideoRef.current) {
+            previewVideoRef.current.pause()
+            previewVideoRef.current.currentTime = Math.max(0, previewVideoRef.current.currentTime - (1 / fps))
+          } else {
+            pause()
+            stepCurrentTime(-1 / fps)
+          }
+        }}
+        onTogglePlayPause={() => {
+          if (isPreviewingVideo && previewVideoRef.current) {
+            if (previewVideoRef.current.paused) {
+              previewVideoRef.current.play().catch(() => {})
+            } else {
+              previewVideoRef.current.pause()
+            }
+          } else {
+            if (isPlaying) {
+              pause()
+            } else {
+              const cd = selectContentDuration(getEditorState())
+              if (cd > 0 && (currentTime >= cd - 0.04 || playbackTimeRef.current >= cd - 0.04)) {
+                playbackTimeRef.current = 0
+                setCurrentTime(0)
+              }
+              play()
+            }
+          }
+        }}
+        onStepForward={() => {
+          if (isPreviewingVideo && previewVideoRef.current) {
+            previewVideoRef.current.pause()
+            previewVideoRef.current.currentTime = Math.min(previewVideoDuration, previewVideoRef.current.currentTime + (1 / fps))
+          } else {
+            pause()
+            setCurrentTime(Math.min(contentDuration > 0 ? contentDuration : totalDuration, currentTime + (1 / fps)))
+          }
+        }}
+      />
+    </div>
   )
 })

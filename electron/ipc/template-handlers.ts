@@ -1,4 +1,7 @@
+import path from 'path'
 import { handle } from './typed-handle'
+import { getAllowedRoots } from '../config'
+import { validatePath } from '../path-validation'
 import {
   BUILTIN_TEMPLATES,
   builtinTemplateFileName,
@@ -13,6 +16,18 @@ import {
 } from '../storage/template-file-storage'
 
 /**
+ * The folder comes from the renderer, so it gets the same allow-list as every
+ * other renderer-supplied path. A folder the user picked in Settings is
+ * approved for the session by the folder dialog; after a restart they re-pick
+ * it once.
+ */
+function resolveTemplatesDir(presetsDir?: string): string {
+  const configured = presetsDir?.trim()
+  if (configured) validatePath(configured, getAllowedRoots())
+  return getTemplatesDir(presetsDir)
+}
+
+/**
  * Templates live wherever the user's presets live, and the renderer is what
  * knows that — settings are its state, not the main process's. So the folder
  * is passed in on every call rather than cached here, which also means a user
@@ -25,7 +40,7 @@ import {
  */
 export function registerTemplateHandlers(): void {
   handle('templateList', ({ presetsDir }) => {
-    const dir = getTemplatesDir(presetsDir)
+    const dir = resolveTemplatesDir(presetsDir)
 
     const builtin = BUILTIN_TEMPLATES.map(template => ({
       fileName: builtinTemplateFileName(template),
@@ -50,14 +65,22 @@ export function registerTemplateHandlers(): void {
     const builtin = findBuiltinTemplate(fileName)
     if (builtin) return { success: true, template: builtin }
 
-    const result = readTemplate(getTemplatesDir(presetsDir), fileName)
+    const result = readTemplate(resolveTemplatesDir(presetsDir), fileName)
     return result.success
       ? { success: true, template: result.template }
       : { success: false, error: result.error }
   })
 
   handle('templateSave', ({ presetsDir, template, media, cover }) => {
-    const result = writeTemplate(getTemplatesDir(presetsDir), template, media, cover)
+    const roots = getAllowedRoots()
+    for (const entry of media) {
+      validatePath(entry.sourcePath, roots)
+      if (path.basename(entry.fileName) !== entry.fileName) {
+        throw new Error(`Invalid template media name: ${entry.fileName}`)
+      }
+    }
+    if (cover) validatePath(cover.videoPath, roots)
+    const result = writeTemplate(resolveTemplatesDir(presetsDir), template, media, cover)
     return result.success
       ? { success: true, fileName: result.fileName, path: result.path }
       : { success: false, error: result.error }
@@ -69,6 +92,6 @@ export function registerTemplateHandlers(): void {
     if (findBuiltinTemplate(fileName)) {
       return { success: false, error: 'BUILTIN_TEMPLATE' }
     }
-    return deleteTemplate(getTemplatesDir(presetsDir), fileName)
+    return deleteTemplate(resolveTemplatesDir(presetsDir), fileName)
   })
 }

@@ -43,10 +43,55 @@ export function useFrameTextUnit(
   return height / TEXT_REFERENCE_FRAME_HEIGHT
 }
 
+/** What a text clip's keyframes make of it at one instant. */
+export interface AnimatedTextState {
+  posX: number
+  posY: number
+  scale: number
+  rotation: number
+  opacity: number
+  text: string
+}
+
+export function animatedTextState(clip: TimelineClip, time: number): AnimatedTextState {
+  const ts = clip.textStyle!
+  const timeInClip = Math.max(0, Math.min(clip.duration, time - clip.startTime))
+  const sampled = hasKeyframes(clip) ? sampleClipAt(clip, timeInClip) : null
+  const has = (property: Parameters<typeof hasKeyframesForProperty>[1]) => Boolean(sampled) && hasKeyframesForProperty(clip, property)
+
+  let text = ts.text || 'Text'
+  // Typewriter effect via textProgress (0..100)
+  if (sampled && sampled.textProgress < 100) {
+    const visibleChars = Math.max(0, Math.min(ts.text.length, Math.floor((ts.text.length * sampled.textProgress) / 100)))
+    text = ts.text.slice(0, visibleChars)
+  }
+  return {
+    posX: ts.positionX + (sampled && has('transform.positionX') ? sampled.positionX : 0),
+    posY: ts.positionY + (sampled && has('transform.positionY') ? sampled.positionY : 0),
+    scale: sampled && has('transform.scale') ? sampled.scale / 100 : 1,
+    rotation: sampled && has('transform.rotation') ? sampled.rotation : (clip.transform?.rotation ?? 0),
+    opacity: (sampled && has('opacity') ? sampled.opacity : (ts.opacity ?? 100)) / 100,
+    text,
+  }
+}
+
+export function textBoxTransform(state: Pick<AnimatedTextState, 'scale' | 'rotation'>): string {
+  const parts = ['translate(-50%, -50%)']
+  if (state.scale !== 1) parts.push(`scale(${state.scale})`)
+  if (state.rotation !== 0) parts.push(`rotate(${state.rotation}deg)`)
+  return parts.join(' ')
+}
+
 export interface TextBoundingBoxProps {
   clip: TimelineClip
   isSelected: boolean
   currentTime: number
+  /**
+   * While playing, `currentTime` only reaches the store four times a second, which is far too
+   * slow to animate text with. The live time is read from here instead, every frame.
+   */
+  isPlaying?: boolean
+  playbackTimeRef?: React.MutableRefObject<number>
   frameElement: HTMLElement | null
   onSelect: () => void
   onDoubleClick: () => void
@@ -63,6 +108,8 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
   clip,
   isSelected,
   currentTime,
+  isPlaying = false,
+  playbackTimeRef,
   frameElement,
   onSelect,
   onDoubleClick,
@@ -84,39 +131,47 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
   const [localMaxWidth, setLocalMaxWidth] = useState<number | null>(null)
   const [localRotation, setLocalRotation] = useState<number | null>(null)
 
-  // Sample keyframe animation if available
-  const timeInClip = Math.max(0, Math.min(clip.duration, currentTime - clip.startTime))
-  const sampled = hasKeyframes(clip) ? sampleClipAt(clip, timeInClip) : null
+  // Sample keyframe animation if available. Playing reads the live clock: the store's
+  // `currentTime` is published at 4 Hz, and text animated from it moved in 4 Hz steps.
+  const live = isPlaying && playbackTimeRef ? playbackTimeRef.current : currentTime
+  const animated = animatedTextState(clip, live)
 
-  const hasPosX = hasKeyframesForProperty(clip, 'transform.positionX')
-  const hasPosY = hasKeyframesForProperty(clip, 'transform.positionY')
-  const hasScale = hasKeyframesForProperty(clip, 'transform.scale')
-  const hasRot = hasKeyframesForProperty(clip, 'transform.rotation')
-  const hasOp = hasKeyframesForProperty(clip, 'opacity')
-
-  const basePosX = ts.positionX + (sampled && hasPosX ? sampled.positionX : 0)
-  const basePosY = ts.positionY + (sampled && hasPosY ? sampled.positionY : 0)
-  const scale = sampled && hasScale ? sampled.scale / 100 : 1
-  const baseRotation = sampled && hasRot ? sampled.rotation : (clip.transform?.rotation ?? 0)
-  const opacity = (sampled && hasOp ? sampled.opacity : (ts.opacity ?? 100)) / 100
-
-  const effectivePosX = localPos ? localPos.x : basePosX
-  const effectivePosY = localPos ? localPos.y : basePosY
+  const effectivePosX = localPos ? localPos.x : animated.posX
+  const effectivePosY = localPos ? localPos.y : animated.posY
   const effectiveFontSize = localFontSize ?? ts.fontSize
   const effectiveMaxWidth = localMaxWidth ?? (ts.maxWidth > 0 ? ts.maxWidth : DEFAULT_TEXT_MAX_WIDTH)
-  const effectiveRotation = localRotation ?? baseRotation
+  const effectiveRotation = localRotation ?? animated.rotation
+  const opacity = animated.opacity
 
-  // Typewriter effect via textProgress (0..100)
-  let displayText = ts.text || 'Text'
-  if (sampled && sampled.textProgress < 100) {
-    const visibleChars = Math.max(0, Math.min(ts.text.length, Math.floor((ts.text.length * sampled.textProgress) / 100)))
-    displayText = ts.text.slice(0, visibleChars)
-  }
+  const transform = textBoxTransform({ scale: animated.scale, rotation: effectiveRotation })
 
-  const transformParts = ['translate(-50%, -50%)']
-  if (scale !== 1) transformParts.push(`scale(${scale})`)
-  if (effectiveRotation !== 0) transformParts.push(`rotate(${effectiveRotation}deg)`)
-  const transform = transformParts.join(' ')
+  // The words live in a node React never touches, so the frame loop below can rewrite them
+  // (the typewriter) without the two fighting over it.
+  const textRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (textRef.current && textRef.current.textContent !== animated.text) textRef.current.textContent = animated.text
+  })
+
+  // Every frame of playback: place the box straight from the clock, bypassing React.
+  useLayoutEffect(() => {
+    if (!isPlaying || !playbackTimeRef) return
+    let frame = 0
+    const tick = () => {
+      const box = boxRef.current
+      const state = animatedTextState(clip, playbackTimeRef.current)
+      if (box && !localPos && localFontSize === null && localMaxWidth === null && localRotation === null) {
+        box.style.left = `${state.posX}%`
+        box.style.top = `${state.posY}%`
+        box.style.transform = textBoxTransform(state)
+        box.style.opacity = String(state.opacity)
+        const words = textRef.current
+        if (words && words.textContent !== state.text) words.textContent = state.text
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [isPlaying, playbackTimeRef, clip, localPos, localFontSize, localMaxWidth, localRotation])
 
   // Drag text box to move position
   const handleBoxMouseDown = (e: React.MouseEvent) => {
@@ -317,6 +372,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
     >
       {/* Text rendering */}
       <div
+        ref={textRef}
         style={{
           fontFamily: ts.fontFamily,
           fontSize: `${effectiveFontSize * unit}px`,
@@ -343,9 +399,7 @@ export const TextBoundingBox: React.FC<TextBoundingBoxProps> = ({
           wordBreak: 'break-word',
           userSelect: 'none',
         }}
-      >
-        {displayText}
-      </div>
+      />
 
       {/* Bounding box & handles (only when selected) */}
       {isSelected && (

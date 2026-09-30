@@ -6,7 +6,13 @@ export interface CacheSlotState {
   activeSlot: 0 | 1
   hasActiveCache: boolean
   slotCachePaths: { 0: string | null; 1: string | null }
+  /** Past the end of a segment but still showing its last frame, until the live picture is ready. */
+  holding?: boolean
+  holdSince?: number
 }
+
+/** The longest the last frame of a segment is held for the live picture to catch up. */
+export const MAX_HOLD_MS = 600
 
 export const PRELOAD_THRESHOLD_SECONDS = 2.0
 
@@ -25,64 +31,54 @@ export function syncCachePlayback(
   playbackResolution: 1 | 0.5 | 0.25,
   onSlotChange?: (newSlot: 0 | 1) => void,
   onActiveCacheChange?: (hasActive: boolean) => void,
+  /**
+   * Whether the live layers under the cache are showing the right picture yet. Leaving a
+   * segment while they are not shows them mid-seek, hidden — a black flash at the end of
+   * every transition — so the segment's last frame stays up until they are (or MAX_HOLD_MS).
+   */
+  liveReady?: () => boolean,
+  now: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
 ): void {
   const activeCache = cachedSegments.find(
     s => s.ready && s.cachePath && atTime >= s.startTime && atTime < s.endTime,
   )
 
   if (activeCache && activeCache.cachePath) {
-    if (!state.hasActiveCache) {
-      state.hasActiveCache = true
-      onActiveCacheChange?.(true)
-    }
-
+    state.holding = false
+    state.holdSince = undefined
     const activeFileUrl = pathToFileUrl(activeCache.cachePath)
     const currentSlot = state.activeSlot
     const otherSlot: 0 | 1 = currentSlot === 0 ? 1 : 0
-    const currentVid = currentSlot === 0 ? cachedVideoA : cachedVideoB
-    const otherVid = otherSlot === 0 ? cachedVideoA : cachedVideoB
+    const videoOf = (slot: 0 | 1) => (slot === 0 ? cachedVideoA : cachedVideoB)
 
-    let playingSlot: 0 | 1 = currentSlot
-    let activeVid = currentVid
-
+    // Which slot is to play this segment.
+    let playingSlot: 0 | 1
     if (state.slotCachePaths[currentSlot] === activeFileUrl) {
-      // Current slot already has this segment loaded
       playingSlot = currentSlot
-      activeVid = currentVid
     } else if (state.slotCachePaths[otherSlot] === activeFileUrl) {
-      // Preloaded slot has this segment -> zero-delay swap!
+      // Preloaded.
       playingSlot = otherSlot
-      activeVid = otherVid
-      state.activeSlot = otherSlot
-      onSlotChange?.(otherSlot)
-      if (currentVid && !currentVid.paused) {
-        currentVid.pause()
-      }
-      const offset = Math.max(0, atTime - activeCache.startTime)
-      if (activeVid) {
-        activeVid.currentTime = offset
-      }
     } else {
-      // Cache miss / seek: load active segment into current slot
-      playingSlot = currentSlot
-      activeVid = currentVid
-      if (activeVid) {
-        state.slotCachePaths[currentSlot] = activeFileUrl
-        if (activeVid.src !== activeFileUrl && !activeVid.src.endsWith(activeFileUrl)) {
-          activeVid.src = activeFileUrl
-          activeVid.load()
-        }
-      }
-      if (otherVid && !otherVid.paused) {
-        otherVid.pause()
+      // Cache miss / seek. What is on screen stays there until the new segment has a picture,
+      // so it loads into the slot that is not showing; with nothing showing, into the current one.
+      // (Scrubbing shows no cache layer, so there is nothing on screen to protect.)
+      playingSlot = state.hasActiveCache && mode === 'playback' ? otherSlot : currentSlot
+      const loading = videoOf(playingSlot)
+      state.slotCachePaths[playingSlot] = activeFileUrl
+      if (loading && loading.src !== activeFileUrl && !loading.src.endsWith(activeFileUrl)) {
+        loading.src = activeFileUrl
+        loading.load()
       }
     }
+    const activeVid = videoOf(playingSlot)
 
     if (activeVid) {
       applyPlaybackResolution(activeVid, playbackResolution)
       const offset = Math.max(0, atTime - activeCache.startTime)
       if (mode === 'playback') {
-        if (Math.abs(activeVid.currentTime - offset) > 0.25) {
+        // Starting, the picture is put exactly where the playhead is; once running, it is left
+        // alone unless it drifts a long way.
+        if (Math.abs(activeVid.currentTime - offset) > (activeVid.paused ? 0.04 : 0.25)) {
           activeVid.currentTime = offset
         }
         if (activeVid.paused) {
@@ -93,6 +89,23 @@ export function syncCachePlayback(
         if (Math.abs(activeVid.currentTime - offset) > 0.04) {
           activeVid.currentTime = offset
         }
+      }
+    }
+
+    // Show the segment only once it has a picture to show. It sits over the live layers, so a
+    // video that is still loading covers them with black: the flash at the start of a
+    // transition, which is what these segments are for.
+    const showing = state.hasActiveCache && state.activeSlot === playingSlot
+    if (!showing && activeVid && activeVid.readyState >= 2 && !activeVid.seeking) {
+      if (state.activeSlot !== playingSlot) {
+        const previous = videoOf(state.activeSlot)
+        state.activeSlot = playingSlot
+        onSlotChange?.(playingSlot)
+        if (previous && !previous.paused) previous.pause()
+      }
+      if (!state.hasActiveCache) {
+        state.hasActiveCache = true
+        onActiveCacheChange?.(true)
       }
     }
 
@@ -120,6 +133,14 @@ export function syncCachePlayback(
     }
   } else {
     if (state.hasActiveCache) {
+      const started = state.holdSince ?? now()
+      if (mode === 'playback' && liveReady && !liveReady() && now() - started < MAX_HOLD_MS) {
+        state.holding = true
+        state.holdSince = started
+        return
+      }
+      state.holding = false
+      state.holdSince = undefined
       state.hasActiveCache = false
       onActiveCacheChange?.(false)
     }
@@ -128,6 +149,32 @@ export function syncCachePlayback(
     }
     if (cachedVideoB && !cachedVideoB.paused) {
       cachedVideoB.pause()
+    }
+
+    // A segment starting soon is loaded while the live picture still plays, so that reaching it
+    // finds it ready. Preloading only from inside a neighbouring segment left every segment
+    // that follows a stretch of ordinary playback to load on the spot.
+    if (mode === 'playback') {
+      const upcoming = cachedSegments
+        .filter(s => s.ready && s.cachePath && s.startTime >= atTime && s.startTime - atTime <= PRELOAD_THRESHOLD_SECONDS)
+        .sort((a, b) => a.startTime - b.startTime)[0]
+      if (upcoming && upcoming.cachePath) {
+        const upcomingUrl = pathToFileUrl(upcoming.cachePath)
+        if (state.slotCachePaths[0] !== upcomingUrl && state.slotCachePaths[1] !== upcomingUrl) {
+          const slot = state.activeSlot
+          const vid = slot === 0 ? cachedVideoA : cachedVideoB
+          if (vid) {
+            state.slotCachePaths[slot] = upcomingUrl
+            if (vid.src !== upcomingUrl && !vid.src.endsWith(upcomingUrl)) {
+              vid.src = upcomingUrl
+              vid.load()
+            }
+            vid.currentTime = 0
+            applyPlaybackResolution(vid, playbackResolution)
+            if (!vid.paused) vid.pause()
+          }
+        }
+      }
     }
   }
 }

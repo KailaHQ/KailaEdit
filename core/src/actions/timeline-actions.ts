@@ -1,3 +1,4 @@
+import { refitTextAnimations } from '../text-animations'
 import type { SetStateAction } from 'react'
 import type {
   Timeline,
@@ -35,10 +36,17 @@ import {
 } from './action-helpers'
 import type { AddMarkerParams } from './types'
 
+/** The frame's width over its height, when the timeline records one. */
+export function frameAspectOf(timeline: Pick<Timeline, 'width' | 'height'>): number | undefined {
+  return timeline.width && timeline.height ? timeline.width / timeline.height : undefined
+}
+
 export function replaceActiveTimeline(state: EditorState, updater: (timeline: Timeline) => Timeline): EditorState {
   const active = selectActiveTimeline(state)
   if (!active) return state
-  const updated = updater(active)
+  const drafted = updater(active)
+  const refitted = refitTextAnimations(drafted.clips, frameAspectOf(drafted))
+  const updated = refitted === drafted.clips ? drafted : { ...drafted, clips: refitted }
   if (!state.transaction) {
     const validation = validateTimeline(updated, active)
     if (!validation.valid) {

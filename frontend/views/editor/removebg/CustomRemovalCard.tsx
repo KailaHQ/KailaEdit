@@ -69,6 +69,8 @@ export const CustomRemovalCard: React.FC<CustomRemovalCardProps> = ({ clip }) =>
       updateCustomMatte({
         appliedHash: currentHash,
       })
+      // Done painting: leave the tool so the result is what shows, not the brush overlay.
+      setCustomMatteBrushMode(null)
     }
   }
 

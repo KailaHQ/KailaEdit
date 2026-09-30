@@ -21,16 +21,18 @@ import {
   selectCurrentTime,
   selectTracks,
   selectClipById,
+  selectActiveTimeline,
 } from '../editor-selectors'
 import { makeId } from '../id-generator'
 import { createTextClipWithPreset, applyTextPreset, applyTextAnimation } from '../text-presets'
+import { setTextAnimationDuration, setTextAnimationPhase, withTextAnimation, type TextAnimationPhase } from '../text-animations'
 import { applyDuckingKeyframes } from '../audio-ducking'
 import { mainVideoTrackIndex, resolveOverlaps } from '../video-editor-utils'
 import type { AddTextClipParams } from './types'
 import {
   updateSession,
 } from './action-helpers'
-import { replaceActiveTimeline } from './timeline-actions'
+import { replaceActiveTimeline, frameAspectOf } from './timeline-actions'
 import { addTrack } from './track-actions'
 import { updateClip } from './clip-core-actions'
 import { setSelectedClipIds, setCurrentTime } from './playback-actions'
@@ -279,7 +281,29 @@ export function applyTextPresetToClip(state: EditorState, clipId: string, preset
 export function applyTextAnimationToClip(state: EditorState, clipId: string, animationId: string): EditorState {
   const clip = selectClipById(state, clipId)
   if (!clip || clip.type !== 'text') return state
-  const updated = applyTextAnimation(clip, animationId)
+  const updated = applyTextAnimation(clip, animationId, frameAspectOf(selectActiveTimeline(state) ?? {}))
+  return updateClip(state, clipId, updated)
+}
+
+/** Sets how long a text clip's entrance or exit takes. */
+export function setTextAnimationDurationOnClip(
+  state: EditorState,
+  clipId: string,
+  phase: 'in' | 'out',
+  seconds: number,
+): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip || clip.type !== 'text') return state
+  const aspect = frameAspectOf(selectActiveTimeline(state) ?? {})
+  return updateClip(state, clipId, setTextAnimationDuration(clip, phase, seconds, aspect))
+}
+
+/** Takes one phase's animation off a text clip, or all of them when no phase is given. */
+export function clearTextAnimationFromClip(state: EditorState, clipId: string, phase?: TextAnimationPhase): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip || clip.type !== 'text') return state
+  const aspect = frameAspectOf(selectActiveTimeline(state) ?? {})
+  const updated = phase ? setTextAnimationPhase(clip, phase, undefined, aspect) : withTextAnimation(clip, {}, aspect)
   return updateClip(state, clipId, updated)
 }
 

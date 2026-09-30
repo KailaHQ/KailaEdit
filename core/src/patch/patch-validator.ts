@@ -57,7 +57,7 @@ export function validateEditPatch(state: EditorState, rawPatch: unknown): PatchV
       if (activeClips.length > 0 && op.startTime <= 0.05 && op.endTime >= timelineDuration - 0.05) {
         return {
           valid: false,
-          error: `Operation #${i + 1} (cut_range): Khoảng thời gian cắt [${op.startTime}, ${op.endTime}] bao trùm toàn bộ timeline (${timelineDuration.toFixed(2)}s). Thao tác này sẽ xoá sạch toàn bộ video và bị từ chối vì lý do an toàn.`,
+          error: `Operation #${i + 1} (cut_range): Cut range [${op.startTime}, ${op.endTime}] covers the entire timeline (${timelineDuration.toFixed(2)}s). This operation would wipe out the entire video and was rejected for safety.`,
         }
       }
     }

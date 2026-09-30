@@ -52,11 +52,11 @@ export function resolveCut(
   const leftClip = timeline.clips.find(clip => clip.id === leftClipId)
   const rightClip = timeline.clips.find(clip => clip.id === rightClipId)
 
-  if (!leftClip) return { ok: false, reason: `Không tìm thấy clip "${leftClipId}".` }
-  if (!rightClip) return { ok: false, reason: `Không tìm thấy clip "${rightClipId}".` }
-  if (leftClip.id === rightClip.id) return { ok: false, reason: 'Hai clip phải khác nhau.' }
+  if (!leftClip) return { ok: false, reason: `Clip "${leftClipId}" not found.` }
+  if (!rightClip) return { ok: false, reason: `Clip "${rightClipId}" not found.` }
+  if (leftClip.id === rightClip.id) return { ok: false, reason: 'The two clips must be different.' }
   if (leftClip.trackIndex !== rightClip.trackIndex) {
-    return { ok: false, reason: 'Transition chỉ đặt được giữa hai clip trên cùng một track.' }
+    return { ok: false, reason: 'Transitions can only be placed between two clips on the same track.' }
   }
 
   const gap = rightClip.startTime - (leftClip.startTime + leftClip.duration)
@@ -64,13 +64,13 @@ export function resolveCut(
     return {
       ok: false,
       reason: gap > 0
-        ? 'Hai clip còn cách nhau một khoảng trống — dồn sát rồi mới đặt được transition.'
-        : 'Hai clip đang chồng lên nhau.',
+        ? 'There is a gap between the two clips — snap them together before placing a transition.'
+        : 'The two clips are overlapping.',
     }
   }
 
   if (maxTransitionDuration(leftClip.duration, rightClip.duration) < MIN_TRANSITION_DURATION) {
-    return { ok: false, reason: 'Hai clip quá ngắn để chèn transition.' }
+    return { ok: false, reason: 'The clips are too short to insert a transition.' }
   }
 
   return { ok: true, placement: { leftClip, rightClip } }
@@ -182,7 +182,7 @@ export function setTransitionAtCut(
   options: SetTransitionOptions = {},
 ): TransitionMutation {
   if (!getTransitionDefinition(type)) {
-    return { ok: false, reason: `Không có transition tên "${type}".` }
+    return { ok: false, reason: `Unknown transition "${type}".` }
   }
 
   const existing = findTransitionAtCut(timeline, leftClipId, rightClipId)
@@ -196,7 +196,7 @@ export function setTransitionAtCut(
 
   const { leftClip, rightClip } = cut.placement
   const duration = clampTransitionDuration(requestedDuration, leftClip.duration, rightClip.duration)
-  if (duration <= 0) return { ok: false, reason: 'Hai clip quá ngắn để chèn transition.' }
+  if (duration <= 0) return { ok: false, reason: 'The clips are too short to insert a transition.' }
 
   const borrow = planBorrow(leftClip, rightClip, duration)
 

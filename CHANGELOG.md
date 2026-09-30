@@ -12,6 +12,12 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-09-30
+
+### Fixed
+- **Localized UI Labels in Cover Studio & Program Monitor.** Tooltips, status indicators, preset grids, and modal dialogs across Cover Studio, the Program Monitor, and Font Picker now faithfully respect the active app language with proper English and Vietnamese translations.
+- **Agent CoEdit Protocol Consistency.** Standardized MCP tools, automated patch descriptions, ensuring deterministic and reliable agent operation across all workflows.
+
 ## [1.0.9] - 2026-09-29
 
 ### Added

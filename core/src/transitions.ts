@@ -33,29 +33,29 @@ export interface TransitionDefinition {
 }
 
 export const TRANSITION_DEFINITIONS: TransitionDefinition[] = [
-  { id: 'dissolve',      label: 'Hoà tan',        category: 'basic',  xfade: 'fade',        preview: 'opacity' },
-  { id: 'fade-to-black', label: 'Mờ qua đen',     category: 'basic',  xfade: 'fadeblack',   preview: 'colour' },
-  { id: 'fade-to-white', label: 'Mờ qua trắng',   category: 'basic',  xfade: 'fadewhite',   preview: 'colour' },
+  { id: 'dissolve',      label: 'Dissolve',        category: 'basic',  xfade: 'fade',        preview: 'opacity' },
+  { id: 'fade-to-black', label: 'Fade to Black',   category: 'basic',  xfade: 'fadeblack',   preview: 'colour' },
+  { id: 'fade-to-white', label: 'Fade to White',   category: 'basic',  xfade: 'fadewhite',   preview: 'colour' },
 
-  { id: 'wipe-left',     label: 'Gạt sang trái',  category: 'wipe',   xfade: 'wipeleft',    preview: 'wipe' },
-  { id: 'wipe-right',    label: 'Gạt sang phải',  category: 'wipe',   xfade: 'wiperight',   preview: 'wipe' },
-  { id: 'wipe-up',       label: 'Gạt lên',        category: 'wipe',   xfade: 'wipeup',      preview: 'wipe' },
-  { id: 'wipe-down',     label: 'Gạt xuống',      category: 'wipe',   xfade: 'wipedown',    preview: 'wipe' },
+  { id: 'wipe-left',     label: 'Wipe Left',       category: 'wipe',   xfade: 'wipeleft',    preview: 'wipe' },
+  { id: 'wipe-right',    label: 'Wipe Right',      category: 'wipe',   xfade: 'wiperight',   preview: 'wipe' },
+  { id: 'wipe-up',       label: 'Wipe Up',         category: 'wipe',   xfade: 'wipeup',      preview: 'wipe' },
+  { id: 'wipe-down',     label: 'Wipe Down',       category: 'wipe',   xfade: 'wipedown',    preview: 'wipe' },
 
-  { id: 'slide-left',    label: 'Đẩy sang trái',  category: 'slide',  xfade: 'slideleft',   preview: 'slide' },
-  { id: 'slide-right',   label: 'Đẩy sang phải',  category: 'slide',  xfade: 'slideright',  preview: 'slide' },
-  { id: 'slide-up',      label: 'Đẩy lên',        category: 'slide',  xfade: 'slideup',     preview: 'slide' },
-  { id: 'slide-down',    label: 'Đẩy xuống',      category: 'slide',  xfade: 'slidedown',   preview: 'slide' },
+  { id: 'slide-left',    label: 'Slide Left',      category: 'slide',  xfade: 'slideleft',   preview: 'slide' },
+  { id: 'slide-right',   label: 'Slide Right',     category: 'slide',  xfade: 'slideright',  preview: 'slide' },
+  { id: 'slide-up',      label: 'Slide Up',        category: 'slide',  xfade: 'slideup',     preview: 'slide' },
+  { id: 'slide-down',    label: 'Slide Down',      category: 'slide',  xfade: 'slidedown',   preview: 'slide' },
 
-  { id: 'circle-open',   label: 'Mở vòng tròn',   category: 'shape',  xfade: 'circleopen',  preview: 'shape' },
-  { id: 'circle-close',  label: 'Khép vòng tròn', category: 'shape',  xfade: 'circleclose', preview: 'shape' },
-  { id: 'rect-crop',     label: 'Mở khung chữ nhật', category: 'shape', xfade: 'rectcrop',  preview: 'shape' },
+  { id: 'circle-open',   label: 'Circle Open',     category: 'shape',  xfade: 'circleopen',  preview: 'shape' },
+  { id: 'circle-close',  label: 'Circle Close',    category: 'shape',  xfade: 'circleclose', preview: 'shape' },
+  { id: 'rect-crop',     label: 'Rectangle Crop',  category: 'shape',  xfade: 'rectcrop',    preview: 'shape' },
 
-  { id: 'zoom-in',       label: 'Phóng to',       category: 'motion', xfade: 'zoomin',      preview: 'scale' },
-  { id: 'squeeze-h',     label: 'Bóp ngang',      category: 'motion', xfade: 'squeezeh',    preview: 'squeeze' },
-  { id: 'squeeze-v',     label: 'Bóp dọc',        category: 'motion', xfade: 'squeezev',    preview: 'squeeze' },
+  { id: 'zoom-in',       label: 'Zoom In',         category: 'motion', xfade: 'zoomin',      preview: 'scale' },
+  { id: 'squeeze-h',     label: 'Squeeze Horizontal', category: 'motion', xfade: 'squeezeh', preview: 'squeeze' },
+  { id: 'squeeze-v',     label: 'Squeeze Vertical', category: 'motion', xfade: 'squeezev',   preview: 'squeeze' },
 
-  { id: 'blur-dissolve', label: 'Hoà tan mờ',     category: 'motion', xfade: 'hblur',       preview: 'blur' },
+  { id: 'blur-dissolve', label: 'Blur Dissolve',   category: 'motion', xfade: 'hblur',       preview: 'blur' },
 ]
 
 export const TRANSITION_IDS = TRANSITION_DEFINITIONS.map(definition => definition.id)

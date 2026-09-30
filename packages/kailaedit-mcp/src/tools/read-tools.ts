@@ -533,7 +533,7 @@ export async function handleReadTool(
 
       const resultIntervals = intervals.map(item => ({
         ...item,
-        ...(isEntirelySilent ? { isEntireFile: true, warning: 'Toàn bộ file media đều là khoảng lặng (không có âm thanh).' } : {}),
+        ...(isEntirelySilent ? { isEntireFile: true, warning: 'Entire media file is silent (no audio detected).' } : {}),
       }))
 
       return {

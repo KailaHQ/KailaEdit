@@ -18,9 +18,9 @@ export interface CoverTemplate {
 }
 
 export const COVER_CATEGORIES: { id: CoverCategory; labelKey: string; fallbackLabel: string }[] = [
-  { id: 'all', labelKey: 'cover.catAll', fallbackLabel: 'Tất cả' },
-  { id: 'custom', labelKey: 'cover.catCustom', fallbackLabel: '⭐ Của tôi' },
-  { id: 'recommended', labelKey: 'cover.catRecommended', fallbackLabel: 'Đề xuất' },
+  { id: 'all', labelKey: 'cover.catAll', fallbackLabel: 'All' },
+  { id: 'custom', labelKey: 'cover.catCustom', fallbackLabel: '⭐ My Templates' },
+  { id: 'recommended', labelKey: 'cover.catRecommended', fallbackLabel: 'Recommended' },
   { id: 'vlog', labelKey: 'cover.catVlog', fallbackLabel: 'Vlog' },
   { id: 'travel', labelKey: 'cover.catTravel', fallbackLabel: 'Travel' },
   { id: 'fashion', labelKey: 'cover.catFashion', fallbackLabel: 'Fashion' },

@@ -379,6 +379,11 @@ export const en = {
     registerMcpFailed: 'Failed to register MCP: {output}',
     registerMcpTooltip: 'Register KailaEdit MCP for {label}, and grant permission {permission} so background runs are not rejected. This CLI manages MCP via its own commands rather than per-run flags, so both must be written to your CLI configuration.',
   },
+  textAnimation: {
+    in: 'Entrance animation',
+    out: 'Exit animation',
+    loop: 'Looping animation',
+  },
   replaceClip: {
     dropHint: 'Hold Alt to replace',
     dropArmed: 'Drop to replace',
@@ -444,6 +449,7 @@ export const en = {
   monitor: {
     source: 'Source',
     closePreview: 'Close preview (Esc)',
+    dropVideoPrompt: 'Drop video to add to timeline at {time}',
   },
   library: {
     tabs: {
@@ -928,10 +934,11 @@ export const en = {
       title: 'Custom removal',
       desc: 'Brush or erase background removal matte areas manually',
       tools: 'Brush tools',
-      regionBrush: 'Fill region',
-      regionBrushHint: 'Smart region fill: tap or brush over the area to keep',
-      regionEraser: 'Erase region',
-      regionEraserHint: 'Smart region erase: tap or brush over the area to remove',
+      regionBrush: 'Smart brush',
+      regionBrushHint: 'Tap or paint a few points on an object — the whole object is selected to keep',
+      regionEraser: 'Smart eraser',
+      regionEraserHint: 'Tap or paint a few points on an object — the whole object is selected to remove',
+      selecting: 'Selecting…',
       brush: 'Brush',
       brushHint: 'Manual brush: paint to add subject area',
       eraser: 'Eraser',
@@ -972,6 +979,11 @@ export const en = {
     videoCover: 'Video cover',
     uploadImage: 'Choose local image (PNG, JPG, WEBP)',
     catRecommended: 'Recommended',
+    catAll: 'All',
+    catCustom: '⭐ My Templates',
+    remove: 'Remove cover image',
+    removeBg: 'Remove background',
+    deleteImage: 'Delete this image',
     catVlog: 'Vlog',
     catTravel: 'Travel',
     catFashion: 'Fashion',
@@ -979,6 +991,17 @@ export const en = {
     catCinema: 'Cinema',
     copied: 'Copied {count} object(s) — close the studio and press Ctrl+V to paste them at the playhead',
     copyFailed: 'Nothing could be copied',
+    saveTemplateTitle: 'Save as Custom Template',
+    reusableTitle: 'Reusable Template',
+    reusableDesc: 'This template will save all text styles, shapes, and layouts so you can reuse them in other videos.',
+    templateName: 'Template Name',
+    templateNamePlaceholder: 'Enter template name (e.g., Vlog Daily, Review...)',
+    saving: 'Saving...',
+    saveTemplateBtn: 'Save Template',
+  },
+  font: {
+    favorite: 'Favorite (Star)',
+    unfavorite: 'Unfavorite',
   },
 }
 

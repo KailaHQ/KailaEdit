@@ -16,9 +16,9 @@ export const RemoveBgTab: React.FC<RemoveBgTabProps> = ({ clip }) => {
   }
 
   // Stroke outlines the subject that background removal cut out, so it only means
-  // anything while that is on — same as CapCut, where Stroke lives inside Auto removal.
+  // anything while that is on, where Stroke lives inside Auto removal.
   // Chroma key is a separate way of getting transparency and does not carry a stroke yet;
-  // see the "còn nợ" note in KE-1404.
+  // see the debt note in KE-1404.
   const isAutoRemovalEnabled = Boolean(clip.autoMatte?.enabled)
 
   return (

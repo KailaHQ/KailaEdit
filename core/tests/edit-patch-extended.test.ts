@@ -549,8 +549,8 @@ KomfyEdit Offline Editor`
       }
       const desc = describePatch(state, patch)
       expect(desc).toContain('add 2 stickers')
-      expect(desc).toContain('Ngôi sao vàng')
-      expect(desc).toContain('Ngọn lửa hot')
+      expect(desc).toContain('Gold Star')
+      expect(desc).toContain('Hot Fire')
     })
 
     it('applies add_sticker patch, adds image clip on overlay track, and supports undo', () => {

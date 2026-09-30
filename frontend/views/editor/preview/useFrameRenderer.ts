@@ -4,6 +4,8 @@ import { pathToFileUrl } from '../../../lib/file-url'
 import { transitionLayerStyles } from '@core/transition-styles'
 import { getClipEffectStyles, getTransitionBgColor, formatTime, resolveEffectiveClipFilter, type TimecodeDisplayFormat } from '../video-editor-utils'
 import type { LutCanvasRef } from './LutCanvas'
+import { useEditorStore } from '../editor-store'
+import { selectCustomMatteBrushMode } from '@core/editor-selectors'
 import {
   type MonitorRenderMode,
   type FrameOverlayState,
@@ -127,8 +129,10 @@ export function useFrameRenderer(
     getNextVideoClipRef,
   } = deps
 
+  const customMatteBrushMode = useEditorStore(selectCustomMatteBrushMode)
   const fallbackLastFrameRequestRef = React.useRef<{ state: FrameRenderState; mode: MonitorRenderMode } | null>(null)
   const lastFrameRequestRef = poolLastFrameRequestRef || fallbackLastFrameRequestRef
+  const applyFrameVisualsRef = React.useRef<(state: FrameRenderState, mode: MonitorRenderMode) => void>(() => {})
   const [hasActiveCache, setHasActiveCache] = React.useState(false)
   const [activeCacheSlot, setActiveCacheSlot] = React.useState<0 | 1>(0)
   const cacheSlotStateRef = React.useRef<CacheSlotState>({
@@ -232,12 +236,41 @@ export function useFrameRenderer(
       if (clipPath) {
         const video = ensurePoolVideo(clipPath)
         const contributorSyncState = ensureContributorSyncState(activeVideoContributor)
+        // A freshly created element has no picture and no duration, so the sync below can
+        // only bail out; nothing else re-renders when the file finishes loading, which left
+        // the monitor black after a restart until an unrelated state change repainted it.
+        if (video.readyState < 2 && !(video as { __loadRepaintHooked?: boolean }).__loadRepaintHooked) {
+          ;(video as { __loadRepaintHooked?: boolean }).__loadRepaintHooked = true
+          const onReady = () => {
+            video.removeEventListener('loadeddata', onReady)
+            ;(video as { __loadRepaintHooked?: boolean }).__loadRepaintHooked = false
+            const last = lastFrameRequestRef.current
+            if (!last || videoPoolRef.current.get(clipPath) !== video) return
+            const active = last.state.activeVideoContributors.find(c => c.target === 'active')
+            if (active) ensureContributorSyncState(active).pendingHardSync = true
+            applyFrameVisualsRef.current(last.state, last.mode)
+          }
+          video.addEventListener('loadeddata', onReady)
+        }
         const isNewClip = activePoolClipIdRef.current !== activeVideoContributor.clip.id
         const previousPoolPath = activePoolPathRef.current
         const hasPlaybackJump = mode === 'playback' &&
           contributorSyncState.lastAtTime !== null &&
           Math.abs(atTime - contributorSyncState.lastAtTime) > 0.5
-        const shouldForceSyncActive = mode === 'scrub' || isNewClip || hasPlaybackJump
+        // A clip cut in two plays on through the cut: the second half starts exactly where the
+        // first ended, in the same file. Seeking there anyway flushes the decoder, and the
+        // picture goes black until the new frame lands — the flash at every cut. So while the
+        // element is already playing at the right place the cut needs no seek at all.
+        let isSeamlessCut = false
+        if (
+          isNewClip && clipPath === previousPoolPath && mode === 'playback' &&
+          !activeVideoContributor.clip.reversed && !video.paused && !video.seeking &&
+          video.duration && !Number.isNaN(video.duration)
+        ) {
+          const continuedTime = getClipTargetTime(activeVideoContributor.clip, video.duration, atTime)
+          isSeamlessCut = Math.abs(video.currentTime - continuedTime) <= 0.3
+        }
+        const shouldForceSyncActive = mode === 'scrub' || (isNewClip && !isSeamlessCut) || hasPlaybackJump
         if (poolContainer && !video.parentElement) poolContainer.appendChild(video)
 
         for (const [poolPath, pooledVideo] of pool) {
@@ -261,7 +294,7 @@ export function useFrameRenderer(
           preSeekDoneRef.current = null
         }
 
-        const isReusedMediaNewCut = isNewClip && clipPath === previousPoolPath
+        const isReusedMediaNewCut = isNewClip && clipPath === previousPoolPath && !isSeamlessCut
         let needsSeekHide = false
         if (isReusedMediaNewCut && video.duration && !Number.isNaN(video.duration)) {
           const targetTime = getClipTargetTime(activeVideoContributor.clip, video.duration, atTime)
@@ -357,8 +390,11 @@ export function useFrameRenderer(
     const canvasReady = (canvas: LutCanvasRef | null | undefined) => canvas?.hasContent() ?? false
     const outgoingNeedsCanvas = clipNeedsAlphaCanvas(outgoingClip)
     const activeNeedsCanvas = clipNeedsAlphaCanvas(activeClip)
-    const outgoingIsCutOut = outgoingNeedsCanvas && (Boolean(outgoingClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
-    const activeIsCutOut = activeNeedsCanvas && (Boolean(activeClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
+    // While a brush tool is picked the whole picture stays visible: with the rest cut away
+    // there would be nothing to see where to paint. The result shows once the tool is left.
+    const paintingCutout = customMatteBrushMode !== null && Boolean(activeClip?.customMatte?.enabled)
+    const outgoingIsCutOut = !paintingCutout && outgoingNeedsCanvas && (Boolean(outgoingClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
+    const activeIsCutOut = !paintingCutout && activeNeedsCanvas && (Boolean(activeClip?.autoMatte?.enabled) || canvasReady(lutCanvasRef.current))
     // Anything less than this and the branch below CLEARS the canvas every frame, which
     // is the other half of why background removal did not show in the preview: the
     // cut-out was drawn and then wiped, and the clip's transform and opacity never
@@ -377,8 +413,12 @@ export function useFrameRenderer(
         keyframes: clip.keyframes?.filter(track => !track.property.startsWith('transform.')),
       }
     }
+    // The active clip's fade to black / white is drawn as the overlay below, not as opacity.
     const gradedStyle = (clip: TimelineClip, at: number) =>
-      getClipEffectStyles(withOverride(clip), at, { lutApproximation: !hasActiveCanvas })
+      getClipEffectStyles(withOverride(clip), at, {
+        lutApproximation: !hasActiveCanvas,
+        fadeToColourAsOverlay: clip.id === activeClip?.id,
+      })
 
     if (poolContainer) {
       if (outgoingClip?.asset?.type === 'video') {
@@ -442,32 +482,6 @@ export function useFrameRenderer(
       } else {
         clearEffectStyle(lutCanvas)
         lutCanvasRef.current?.clear()
-      }
-    }
-
-    if (blurCanvasRef.current && activeTimeline?.background?.type === 'blur') {
-      const canvas = blurCanvasRef.current
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        let sourceEl: HTMLImageElement | HTMLVideoElement | null = null
-        if (activeClip && isImageClip(activeClip)) {
-          sourceEl = activeImageRef.current
-        } else if (activeClip?.asset?.type === 'video') {
-          sourceEl = videoPoolRef.current.get(activePoolPathRef.current) ?? null
-        } else if (compositingStack.length > 0) {
-          const topLower = compositingStack[compositingStack.length - 1]
-          sourceEl = compositingMediaRefs.current.get(topLower.id) ?? null
-        }
-
-        if (sourceEl && ((sourceEl as HTMLVideoElement).readyState === undefined || (sourceEl as HTMLVideoElement).readyState >= 2)) {
-          try {
-            ctx.drawImage(sourceEl, 0, 0, canvas.width, canvas.height)
-          } catch {
-            // Source not ready yet
-          }
-        } else {
-          ctx.clearRect(0, 0, canvas.width, canvas.height)
-        }
       }
     }
 
@@ -544,7 +558,7 @@ export function useFrameRenderer(
         if (video.readyState >= 2) {
           syncVideoElement(video, incomingVideoContributor.clip, atTime, {
             forceSeek: contributorSyncState.pendingHardSync,
-            paused: true,
+            paused: mode !== 'playback' || Boolean(incomingVideoContributor.clip.reversed),
           })
           if (contributorSyncState.pendingHardSync) {
             contributorSyncState.pendingHardSync = false
@@ -716,23 +730,52 @@ export function useFrameRenderer(
       }
     }
 
-  }, [activeImageRef, activePoolClipIdRef, activePoolPathRef, activeTimeline?.background, blurCanvasRef, compLutCanvasRefs, compositingMediaRefs, compositingSlotMapRef, contributorSyncStatesRef, ensureContributorSyncState, ensurePoolVideo, getContributorKey, getNextVideoClipRef, incomingDissolveImageRef, incomingDissolveVideoRef, incomingLutCanvasRef, lutCanvasRef, preSeekDoneRef, resolveClipPathRef, stickerImageRefs, transformOverrideRef, syncPlaybackContributorVideo, syncRetainedPoolVideos, syncVideoElement, tracksRef, transitionBgRef, videoPoolContainerRef, videoPoolRef])
+  }, [customMatteBrushMode, activeImageRef, activePoolClipIdRef, activePoolPathRef, activeTimeline?.background, blurCanvasRef, compLutCanvasRefs, compositingMediaRefs, compositingSlotMapRef, contributorSyncStatesRef, ensureContributorSyncState, ensurePoolVideo, getContributorKey, getNextVideoClipRef, incomingDissolveImageRef, incomingDissolveVideoRef, incomingLutCanvasRef, lutCanvasRef, preSeekDoneRef, resolveClipPathRef, stickerImageRefs, transformOverrideRef, syncPlaybackContributorVideo, syncRetainedPoolVideos, syncVideoElement, tracksRef, transitionBgRef, videoPoolContainerRef, videoPoolRef])
+
+  applyFrameVisualsRef.current = applyFrameVisuals
 
   const renderFrame = React.useCallback((atTime: number, mode: MonitorRenderMode) => {
+    const nextState = deriveFrameRenderState(frameRenderCacheRef.current, tracksRef.current, atTime)
+    const slotState = cacheSlotStateRef.current
+
+    // The live picture under the cache is ready when the video that will show is on the right
+    // frame and not mid-seek (or hidden while it seeks).
+    const liveReady = () => nextState.activeVideoContributors.every(contributor => {
+      if (contributor.target !== 'active' || contributor.clip.asset?.type !== 'video') return true
+      const path = resolveClipPathRef(contributor.clip)
+      const video = path ? videoPoolRef.current.get(path) : undefined
+      if (!video || !video.duration || Number.isNaN(video.duration)) return false
+      const wanted = getClipTargetTime(contributor.clip, video.duration, atTime)
+      return video.readyState >= 2 && !video.seeking && video.style.opacity !== '0' && Math.abs(video.currentTime - wanted) < 0.15
+    })
+
     // 1. Sync complex segment render cache if playhead is within a ready segment
+    const wasCached = slotState.hasActiveCache
+    const wasHolding = Boolean(slotState.holding)
     syncCachePlayback(
       atTime,
       mode,
       cachedSegmentsRef.current,
       cachedVideoRefA.current,
       cachedVideoRefB.current,
-      cacheSlotStateRef.current,
+      slotState,
       playbackResolution,
       onSlotChange,
       onActiveCacheChange,
+      liveReady,
     )
 
-    if (cacheSlotStateRef.current.hasActiveCache) {
+    if ((wasCached && !slotState.hasActiveCache) || (!wasHolding && slotState.holding)) {
+      // Past the end of a cached segment. The live videos were paused underneath it and are
+      // behind the playhead by the segment's length; put each back where the playhead is
+      // instead of leaving it to catch up, which showed the picture from before the segment.
+      for (const contributor of nextState.activeVideoContributors) {
+        ensureContributorSyncState(contributor).pendingHardSync = true
+      }
+      lastFrameRequestRef.current = null
+    }
+
+    if (slotState.hasActiveCache && !slotState.holding) {
       // Pause underlying pool videos to avoid duplicate decoding during complex segment playback
       for (const [, pooledVideo] of videoPoolRef.current) {
         if (!pooledVideo.paused) pooledVideo.pause()
@@ -742,7 +785,6 @@ export function useFrameRenderer(
       }
     }
 
-    const nextState = deriveFrameRenderState(frameRenderCacheRef.current, tracksRef.current, atTime)
     const lastFrame = lastFrameRequestRef.current
 
     if (lastFrame && lastFrame.mode === mode && sameFrameRenderState(lastFrame.state, nextState)) {
@@ -754,7 +796,7 @@ export function useFrameRenderer(
     syncPlaybackTimecode(atTime)
     syncFrameScene(nextState)
     applyFrameVisuals(nextState, mode)
-  }, [applyFrameVisuals, cachedSegmentsRef, cachedVideoRefA, cachedVideoRefB, compositingMediaRefs, frameRenderCacheRef, onActiveCacheChange, onSlotChange, playbackResolution, syncFrameScene, syncPlaybackTimecode, tracksRef, videoPoolRef])
+  }, [applyFrameVisuals, cachedSegmentsRef, cachedVideoRefA, cachedVideoRefB, compositingMediaRefs, ensureContributorSyncState, frameRenderCacheRef, lastFrameRequestRef, onActiveCacheChange, onSlotChange, playbackResolution, resolveClipPathRef, syncFrameScene, syncPlaybackTimecode, tracksRef, videoPoolRef])
 
   return {
     frameScene,

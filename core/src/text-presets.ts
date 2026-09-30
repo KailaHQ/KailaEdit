@@ -1,5 +1,4 @@
 import type {
-  KeyframeTrack,
   SubtitleStyle,
   TextOverlayStyle,
   TimelineClip,
@@ -11,6 +10,19 @@ import {
   DEFAULT_TEXT_STYLE,
 } from './project-model'
 import { makeId } from './id-generator'
+import { getTextAnimation, setTextAnimationPhase } from './text-animations'
+
+export {
+  TEXT_ANIMATIONS,
+  getTextAnimation,
+  textAnimationsForPhase,
+  textAnimationSpan,
+  setTextAnimationPhase,
+  setTextAnimationDuration,
+  MIN_TEXT_ANIMATION_SECONDS,
+  type TextAnimation,
+  type TextAnimationPhase,
+} from './text-animations'
 
 export interface TextPreset {
   id: string
@@ -18,13 +30,6 @@ export interface TextPreset {
   description: string
   category: 'basic' | 'title' | 'creative' | 'subtitle'
   style: Partial<TextOverlayStyle>
-}
-
-export interface TextAnimation {
-  id: string
-  name: string
-  description: string
-  createTracks: (clipDuration: number) => KeyframeTrack[]
 }
 
 export const TEXT_PRESETS: TextPreset[] = [
@@ -447,126 +452,8 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
 ]
 
-export const TEXT_ANIMATIONS: TextAnimation[] = [
-  {
-    id: 'fly-in',
-    name: 'Fly In',
-    description: 'Text flies in smoothly from bottom to center with fade',
-    createTracks: (duration: number) => {
-      const animDur = Math.min(0.5, duration * 0.5)
-      const fadeDur = Math.min(0.3, duration * 0.3)
-      return [
-        {
-          property: 'transform.positionY',
-          points: [
-            { t: 0, value: 35, easing: 'ease-out' },
-            { t: animDur, value: 0, easing: 'linear' },
-          ],
-        },
-        {
-          property: 'opacity',
-          points: [
-            { t: 0, value: 0, easing: 'ease-out' },
-            { t: fadeDur, value: 100, easing: 'linear' },
-          ],
-        },
-      ]
-    },
-  },
-  {
-    id: 'slide-in',
-    name: 'Slide In',
-    description: 'Text slides smoothly from left into center',
-    createTracks: (duration: number) => {
-      const animDur = Math.min(0.5, duration * 0.5)
-      const fadeDur = Math.min(0.3, duration * 0.3)
-      return [
-        {
-          property: 'transform.positionX',
-          points: [
-            { t: 0, value: -40, easing: 'ease-out' },
-            { t: animDur, value: 0, easing: 'linear' },
-          ],
-        },
-        {
-          property: 'opacity',
-          points: [
-            { t: 0, value: 0, easing: 'ease-out' },
-            { t: fadeDur, value: 100, easing: 'linear' },
-          ],
-        },
-      ]
-    },
-  },
-  {
-    id: 'fade-in',
-    name: 'Fade In',
-    description: 'Smooth fade in transition',
-    createTracks: (duration: number) => {
-      const animDur = Math.min(0.6, duration * 0.6)
-      return [
-        {
-          property: 'opacity',
-          points: [
-            { t: 0, value: 0, easing: 'ease-out' },
-            { t: animDur, value: 100, easing: 'linear' },
-          ],
-        },
-      ]
-    },
-  },
-  {
-    id: 'pop',
-    name: 'Pop (Bounce In)',
-    description: 'Text pops in from center with a subtle bounce',
-    createTracks: (duration: number) => {
-      const peakDur = Math.min(0.35, duration * 0.35)
-      const settleDur = Math.min(0.5, duration * 0.5)
-      const fadeDur = Math.min(0.15, duration * 0.15)
-      return [
-        {
-          property: 'transform.scale',
-          points: [
-            { t: 0, value: 0, easing: 'ease-out' },
-            { t: peakDur, value: 120, easing: 'ease-in-out' },
-            { t: settleDur, value: 100, easing: 'linear' },
-          ],
-        },
-        {
-          property: 'opacity',
-          points: [
-            { t: 0, value: 0, easing: 'linear' },
-            { t: fadeDur, value: 100, easing: 'linear' },
-          ],
-        },
-      ]
-    },
-  },
-  {
-    id: 'typewriter',
-    name: 'Typewriter',
-    description: 'Character-by-character typewriter reveal effect',
-    createTracks: (duration: number) => {
-      const typeDur = Math.min(1.5, Math.max(0.6, duration * 0.65))
-      return [
-        {
-          property: 'text.progress',
-          points: [
-            { t: 0, value: 0, easing: 'linear' },
-            { t: typeDur, value: 100, easing: 'linear' },
-          ],
-        },
-      ]
-    },
-  },
-]
-
 export function getTextPreset(id: string): TextPreset | undefined {
   return TEXT_PRESETS.find(p => p.id === id)
-}
-
-export function getTextAnimation(id: string): TextAnimation | undefined {
-  return TEXT_ANIMATIONS.find(a => a.id === id)
 }
 
 /**
@@ -581,11 +468,17 @@ export function applyTextPreset(clip: TimelineClip, presetId: string): TimelineC
   const currentPosX = clip.textStyle?.positionX ?? DEFAULT_TEXT_STYLE.positionX
   const currentPosY = clip.textStyle?.positionY ?? DEFAULT_TEXT_STYLE.positionY
 
+  // A preset is a whole look. Layering it over the clip's old style left every property the
+  // preset does not name behind — End Card on a Bold Impact clip kept the black outline and
+  // the Impact font — so the result was neither preset. Start from the defaults instead, and
+  // keep only what belongs to the clip rather than to a look: its text, position and box width.
+  const currentMaxWidth = clip.textStyle?.maxWidth ?? DEFAULT_TEXT_STYLE.maxWidth
+
   return {
     ...clip,
     textStyle: {
       ...DEFAULT_TEXT_STYLE,
-      ...clip.textStyle,
+      maxWidth: currentMaxWidth,
       ...preset.style,
       text: currentText, // Preserve existing text!
       positionX: currentPosX, // Preserve existing position!
@@ -595,25 +488,13 @@ export function applyTextPreset(clip: TimelineClip, presetId: string): TimelineC
 }
 
 /**
- * Apply a preset animation to a clip by generating keyframes on KE-201 keyframe system.
- * Replaces existing keyframe tracks for the properties touched by this animation,
- * while preserving any other existing keyframe tracks (e.g. volume or filter).
+ * Apply an animation to a clip. It takes the slot of its own phase — entrance, exit or loop —
+ * and leaves the other two alone; the keyframes are regenerated from the clip's choices.
  */
-export function applyTextAnimation(clip: TimelineClip, animationId: string): TimelineClip {
+export function applyTextAnimation(clip: TimelineClip, animationId: string, aspect?: number): TimelineClip {
   const anim = getTextAnimation(animationId)
   if (!anim) return clip
-
-  const newTracks = anim.createTracks(clip.duration)
-  const touchedProps = new Set(newTracks.map(t => t.property))
-
-  const existingTracks = (clip.keyframes ?? []).filter(
-    t => !touchedProps.has(t.property),
-  )
-
-  return {
-    ...clip,
-    keyframes: [...existingTracks, ...newTracks],
-  }
+  return setTextAnimationPhase(clip, anim.phase, anim.id, aspect)
 }
 
 /**

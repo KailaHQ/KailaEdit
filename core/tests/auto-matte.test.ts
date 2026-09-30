@@ -514,7 +514,7 @@ describe('matteTimeForSourceTime', () => {
 
 /**
  * Added 17/09/2026 after background removal left whole slabs of background attached to the
- * subject — visibly worse than CapCut on the same shot.
+ * subject on the test shot.
  *
  * Both call sites scale the frame down before inference and then passed a fixed
  * `downsample_ratio` of 0.25 on top, which downsamples twice. The bake fed the model 960px

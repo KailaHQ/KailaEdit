@@ -440,7 +440,9 @@ function SingleClipMenu({
                     if (res && typeof res.integratedLufs === 'number' && isFinite(res.integratedLufs)) {
                       actions.normalizeClipAudio(audioClip.id, -14, res.integratedLufs)
                     }
-                  } catch {}
+                  } catch (err) {
+                    console.error('[ClipContextMenu] Loudness measurement failed:', err)
+                  }
                 }
                 close()
               }}
@@ -720,7 +722,9 @@ function MultiClipMenu({
                     if (res && typeof res.integratedLufs === 'number' && isFinite(res.integratedLufs)) {
                       actions.normalizeClipAudio(clip.id, -14, res.integratedLufs)
                     }
-                  } catch {}
+                  } catch (err) {
+                    console.error('[ClipContextMenu] Loudness measurement failed:', err)
+                  }
                 }
               }
               close()

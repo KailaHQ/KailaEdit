@@ -241,44 +241,44 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
       }
     } else if (op.op === 'set_auto_matte') {
       if (!op.autoMatte || op.autoMatte.enabled === false) {
-        autoMatteChanges.push(`gỡ tách nền tự động cho clip "${op.clipId}"`)
+        autoMatteChanges.push(`remove auto matte for clip "${op.clipId}"`)
       } else {
         const quality = op.autoMatte.quality ?? 'standard'
-        const feather = op.autoMatte.featherEdge !== undefined ? `, làm mềm biên ${op.autoMatte.featherEdge}%` : ''
-        const clean = op.autoMatte.cleanEdge !== undefined ? `, khử nhiễu ${op.autoMatte.cleanEdge}%` : ''
-        autoMatteChanges.push(`tách nền tự động (${quality}${feather}${clean}) cho clip "${op.clipId}"`)
+        const feather = op.autoMatte.featherEdge !== undefined ? `, feather ${op.autoMatte.featherEdge}%` : ''
+        const clean = op.autoMatte.cleanEdge !== undefined ? `, clean edge ${op.autoMatte.cleanEdge}%` : ''
+        autoMatteChanges.push(`auto matte (${quality}${feather}${clean}) for clip "${op.clipId}"`)
       }
     } else if (op.op === 'replace_clip') {
-      const from = op.sourceStart ? ` từ giây ${op.sourceStart}` : ''
-      replaceChanges.push(`thay media của clip "${op.clipId}" bằng "${assetName(op.assetId)}"${from}, giữ nguyên vị trí và độ dài`)
+      const from = op.sourceStart ? ` from ${op.sourceStart}s` : ''
+      replaceChanges.push(`replace media of clip "${op.clipId}" with "${assetName(op.assetId)}"${from}, keeping position and duration`)
     } else if (op.op === 'set_stabilization') {
       const stab = op.stabilization
       if (!stab) {
-        stabilizationChanges.push(`gỡ ổn định hình cho clip "${op.clipId}"`)
+        stabilizationChanges.push(`remove stabilization for clip "${op.clipId}"`)
       } else if (stab.enabled === false) {
-        stabilizationChanges.push(`tắt ổn định hình cho clip "${op.clipId}"`)
+        stabilizationChanges.push(`disable stabilization for clip "${op.clipId}"`)
       } else {
         const details = [
-          stab.smoothing !== undefined ? `độ mượt ${Math.round(stab.smoothing)}` : null,
-          stab.mode ? (stab.mode === 'tripod' ? 'chế độ chân máy' : 'chế độ theo camera') : null,
+          stab.smoothing !== undefined ? `smoothing ${Math.round(stab.smoothing)}` : null,
+          stab.mode ? (stab.mode === 'tripod' ? 'tripod mode' : 'camera mode') : null,
         ].filter(Boolean).join(', ')
-        stabilizationChanges.push(`ổn định hình${details ? ` (${details})` : ''} cho clip "${op.clipId}"`)
+        stabilizationChanges.push(`stabilization${details ? ` (${details})` : ''} for clip "${op.clipId}"`)
       }
     } else if (op.op === 'set_custom_matte') {
       if (!op.customMatte || op.customMatte.enabled === false) {
-        customMatteChanges.push(`gỡ sửa vùng tách nền thủ công cho clip "${op.clipId}"`)
+        customMatteChanges.push(`remove custom matte for clip "${op.clipId}"`)
       } else {
         const strokeCount = op.customMatte.strokes?.length ?? 0
-        customMatteChanges.push(`sửa vùng tách nền thủ công (${strokeCount} nét vẽ) cho clip "${op.clipId}"`)
+        customMatteChanges.push(`custom matte (${strokeCount} strokes) for clip "${op.clipId}"`)
       }
     } else if (op.op === 'set_stroke') {
       if (!op.stroke || op.stroke.enabled === false || op.stroke.style === 'none') {
-        strokeChanges.push(`gỡ viền cho clip "${op.clipId}"`)
+        strokeChanges.push(`remove stroke for clip "${op.clipId}"`)
       } else {
         const style = op.stroke.style
         const color = op.stroke.color ?? '#FFFFFF'
         const width = op.stroke.width ?? 10
-        strokeChanges.push(`viền ${style} màu ${color} dày ${width}% cho clip "${op.clipId}"`)
+        strokeChanges.push(`stroke ${style} color ${color} width ${width}% for clip "${op.clipId}"`)
       }
     } else if (op.op === 'set_blend_mode') {
       blendModeChanges.push(`set blend mode ${op.blendMode} for clip "${op.clipId}"`)

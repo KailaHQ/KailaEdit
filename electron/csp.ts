@@ -8,7 +8,10 @@ export function setupCSP(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const csp = [
       "default-src 'self'",
-      isDev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
+      // 'wasm-unsafe-eval' lets WebAssembly compile (and nothing else — no eval): without it
+      // onnxruntime-web cannot start, so the smart brush's Segment Anything and the preview
+      // matte both failed and the smart brush silently fell back to selecting by colour.
+      isDev ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'" : "script-src 'self' 'wasm-unsafe-eval'",
       isDev
         ? "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
         : "style-src 'self' https://fonts.googleapis.com",

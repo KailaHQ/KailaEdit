@@ -13,6 +13,7 @@ import { useEditorActions } from '../editor-store'
 import { getFilterDefinition } from '@core/filters'
 import { getAudioFadeDurations, hasKeyframesForProperty } from '@core/keyframes'
 import { TimelineKeyframeRow } from './TimelineKeyframeRow'
+import { TextAnimationMarkers } from './TextAnimationMarkers'
 import { TimelineAudioEnvelope } from './TimelineAudioEnvelope'
 import { ClipMatteProgress } from './ClipMatteProgress'
 import { ClipStabilizeProgress } from './ClipStabilizeProgress'
@@ -498,8 +499,13 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
         <ClipStabilizeProgress clipId={clip.id} clipWidthPx={clipWidthPx} />
       )}
 
+      {/* A text clip's animation is shown as arrows, not as keyframe diamonds */}
+      {clip.type === 'text' && (
+        <TextAnimationMarkers clip={clip} pixelsPerSecond={pixelsPerSecond} clipWidthPx={clipWidthPx} />
+      )}
+
       {/* Keyframe row for selected clip or clip with keyframes */}
-      {(selectedClipIds.has(clip.id) || Boolean(clip.keyframes && clip.keyframes.length > 0)) && (
+      {clip.type !== 'text' && (selectedClipIds.has(clip.id) || Boolean(clip.keyframes && clip.keyframes.length > 0)) && (
         <TimelineKeyframeRow
           clip={clip}
           pixelsPerSecond={pixelsPerSecond}

@@ -83,7 +83,6 @@ export interface MonitorCompositingStackProps {
  */
 export const MonitorCompositingStack = React.memo(function MonitorCompositingStack({
   activeTimeline,
-  effectiveDimensions,
   frameScene,
   compositingStack,
   activeClip,
@@ -92,7 +91,6 @@ export const MonitorCompositingStack = React.memo(function MonitorCompositingSta
   isPlaying,
   currentTime,
   getClipPath,
-  blurCanvasRef,
   videoPoolContainerRef,
   lutCanvasRef,
   incomingLutCanvasRef,
@@ -106,30 +104,16 @@ export const MonitorCompositingStack = React.memo(function MonitorCompositingSta
   activePoolPathRef,
   attachActiveImage,
   activeImageEl,
-  applyFrameVisuals,
-  lastFrameRequestRef,
   webCodecsFrame,
 }: MonitorCompositingStackProps) {
   return (
     <>
-      {/* Timeline Background: custom image or blur layer behind composited clips */}
+      {/* Timeline Background: a custom image behind composited clips (colour is the frame's own background) */}
       {activeTimeline?.background?.type === 'image' && activeTimeline.background.imagePath && (
         <img
           src={pathToFileUrl(activeTimeline.background.imagePath)}
           alt=""
           className="absolute inset-0 w-full h-full object-cover pointer-events-none z-[0]"
-        />
-      )}
-      {activeTimeline?.background?.type === 'blur' && (
-        <canvas
-          ref={blurCanvasRef}
-          width={Math.min(360, effectiveDimensions.width || 360)}
-          height={Math.round(Math.min(360, effectiveDimensions.width || 360) / (effectiveDimensions.aspectRatio || (16 / 9)))}
-          className="absolute inset-0 w-full h-full pointer-events-none z-[0]"
-          style={{
-            filter: `blur(${Math.max(2, Math.round((activeTimeline.background.blur ?? 40) * 0.35))}px)`,
-            transform: 'scale(1.15)',
-          }}
         />
       )}
 
@@ -234,10 +218,6 @@ export const MonitorCompositingStack = React.memo(function MonitorCompositingSta
           alt=""
           onLoad={() => {
             lutCanvasRef.current?.renderNow()
-            if (blurCanvasRef.current && activeTimeline?.background?.type === 'blur') {
-              const last = lastFrameRequestRef.current
-              if (last) applyFrameVisuals(last.state, last.mode)
-            }
           }}
           className="absolute inset-0 w-full h-full object-contain z-[2]"
         />

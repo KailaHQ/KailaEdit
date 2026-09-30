@@ -216,7 +216,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
                   type="button"
                   onClick={() => setLocalImageUrl(null)}
                   className="absolute top-2.5 right-2.5 p-1 rounded-full bg-black/70 hover:bg-red-600 text-zinc-300 hover:text-white border border-zinc-700/80 transition-colors shadow-md cursor-pointer"
-                  title="Xoá ảnh này"
+                  title={t('cover.deleteImage') || 'Delete image'}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

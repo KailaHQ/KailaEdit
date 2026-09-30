@@ -68,7 +68,7 @@ export const TimelineCoverButton: React.FC<TimelineCoverButtonProps> = ({
             onRemoveCover()
           }}
           className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-900 hover:bg-red-600 border border-zinc-600 hover:border-red-500 text-zinc-300 hover:text-white flex items-center justify-center shadow-lg transition-all opacity-0 group-hover/cover-btn:opacity-100 z-20 cursor-pointer"
-          title={t('cover.remove') || 'Xoá ảnh cover'}
+          title={t('cover.remove') || 'Remove cover image'}
         >
           <X className="w-2.5 h-2.5" />
         </button>

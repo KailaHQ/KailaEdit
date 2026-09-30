@@ -410,7 +410,7 @@ export const EDIT_TOOLS: Tool[] = [
         },
         actions: {
           type: 'array',
-          description: 'Buttons to offer. Defaults to Xác nhận / Huỷ. The chosen id comes back to you.',
+          description: 'Buttons to offer. Defaults to Confirm / Cancel. The chosen id comes back to you.',
           items: {
             type: 'object',
             properties: {

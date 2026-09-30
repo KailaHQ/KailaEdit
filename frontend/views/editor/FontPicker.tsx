@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, Search, Check, Star } from 'lucide-react'
 import { useSystemFonts, type FontOption } from '@/hooks/useSystemFonts'
+import { useTranslation } from '../../i18n/I18nContext'
 
 export interface FontPickerProps {
   value: string
@@ -63,6 +64,7 @@ export const FontPicker: React.FC<FontPickerProps> = ({
   buttonClassName = '',
   dropdownAlign = 'left',
 }) => {
+  const { t } = useTranslation()
   const { fonts } = useSystemFonts()
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -242,7 +244,7 @@ export const FontPicker: React.FC<FontPickerProps> = ({
                 ? 'text-amber-400'
                 : 'text-zinc-600 hover:text-amber-300 opacity-40 group-hover:opacity-100'
             }`}
-            title={isStarred ? 'Bỏ yêu thích' : 'Yêu thích (Star)'}
+            title={isStarred ? (t('font.unfavorite') || 'Unfavorite') : (t('font.favorite') || 'Favorite (Star)')}
           >
             <Star
               className={`h-3.5 w-3.5 ${

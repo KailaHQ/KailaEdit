@@ -4,6 +4,7 @@ import { observeLoudness, observeSilence } from '../media-analyzer'
 import { proxyManager } from '../export/proxy-manager'
 import { renderCacheManager } from '../export/render-cache-manager'
 import { matteService } from '../matte/matte-service'
+import { trackMatteMotion } from '../matte/motion-track'
 import { stabilizeService } from '../stabilize/stabilize-service'
 import { getAllowedRoots } from '../config'
 import { validatePath } from '../path-validation'
@@ -22,6 +23,11 @@ export function registerVideoProcessingHandlers(): void {
   handle('measureLoudness', async ({ filePath, startTime, duration }) => {
     const normalizedPath = validatePath(filePath, getAllowedRoots())
     return observeLoudness(normalizedPath, { startTime, duration })
+  })
+
+  handle('trackMatteMotion', async ({ filePath, startTime, duration }) => {
+    const normalizedPath = validatePath(filePath, getAllowedRoots())
+    return trackMatteMotion({ filePath: normalizedPath, startTime, duration })
   })
 
   handle('detectSilence', async ({ filePath, noiseDb, minDurationSec, startTime, duration }) => {

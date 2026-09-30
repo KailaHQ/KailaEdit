@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { syncCachePlayback, type CacheSlotState } from '../cache-video-manager'
+import { MAX_HOLD_MS, syncCachePlayback, type CacheSlotState } from '../cache-video-manager'
 import type { CachedSegmentInfo } from '../../render-cache-store'
 
 describe('syncCachePlayback - Double-buffered cache preload (KE-1505)', () => {
@@ -8,6 +8,8 @@ describe('syncCachePlayback - Double-buffered cache preload (KE-1505)', () => {
       src: '',
       currentTime: 0,
       paused: true,
+      readyState: 4,
+      seeking: false,
       play: vi.fn(),
       pause: vi.fn(),
       load: vi.fn(),
@@ -207,5 +209,91 @@ describe('syncCachePlayback - Double-buffered cache preload (KE-1505)', () => {
     expect(env.onActiveCacheChange).toHaveBeenCalledWith(false)
     expect(env.videoA.pause).toHaveBeenCalled()
     expect(env.videoB.pause).toHaveBeenCalled()
+  })
+
+  it('keeps the live picture on screen until the segment has a picture to show', () => {
+    const env = setupTest()
+    ;(env.videoA as any).readyState = 0 // still loading
+
+    syncCachePlayback(5, 'playback', env.segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    // Loading has begun, but the layer over the live picture is not raised: it would be black.
+    expect(env.videoA.load).toHaveBeenCalled()
+    expect(env.state.hasActiveCache).toBe(false)
+    expect(env.onActiveCacheChange).not.toHaveBeenCalled()
+
+    ;(env.videoA as any).readyState = 4
+    syncCachePlayback(5.02, 'playback', env.segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.state.hasActiveCache).toBe(true)
+  })
+
+  it('does not swap to a preloaded slot until it has a picture, and leaves the old one showing', () => {
+    const env = setupTest()
+    syncCachePlayback(29, 'playback', env.segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    ;(env.videoB as any).readyState = 1
+
+    syncCachePlayback(30.05, 'playback', env.segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.state.activeSlot).toBe(0)
+
+    ;(env.videoB as any).readyState = 4
+    syncCachePlayback(30.1, 'playback', env.segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.state.activeSlot).toBe(1)
+  })
+
+  it('loads a segment that starts soon while ordinary playback is still going on before it', () => {
+    const env = setupTest()
+    // A stretch with no cache, then one that starts at 100s.
+    const segments: CachedSegmentInfo[] = [{
+      id: 'seg-far', startTime: 100, endTime: 104, duration: 4, hash: 'h', ready: true, rendering: false,
+      reasons: ['transition'], cachePath: 'C:\cache\seg-far.mp4',
+    }]
+    syncCachePlayback(90, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.videoA.src).toBe('')
+
+    syncCachePlayback(98.5, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.videoA.src).toContain('seg-far.mp4')
+    expect(env.videoA.paused).toBe(true)
+    expect(env.state.hasActiveCache).toBe(false)
+
+    // Reaching it finds it ready and shows it at once.
+    syncCachePlayback(100.02, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.state.hasActiveCache).toBe(true)
+    expect(env.videoA.play).toHaveBeenCalled()
+  })
+
+  it('keeps the last frame of a segment up until the live picture is ready, then lets go', () => {
+    const env = setupTest()
+    const segments = [env.segments[0]] // 0..30, nothing after
+    syncCachePlayback(20, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    expect(env.state.hasActiveCache).toBe(true)
+    env.onActiveCacheChange.mockClear()
+
+    let ready = false
+    let t = 1000
+    const call = (at: number) => syncCachePlayback(at, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange, () => ready, () => t)
+
+    call(30.02)
+    expect(env.state.hasActiveCache).toBe(true) // still covering the live layers
+    expect(env.state.holding).toBe(true)
+    expect(env.onActiveCacheChange).not.toHaveBeenCalled()
+
+    ready = true
+    t += 50
+    call(30.06)
+    expect(env.state.hasActiveCache).toBe(false)
+    expect(env.state.holding).toBe(false)
+    expect(env.onActiveCacheChange).toHaveBeenCalledWith(false)
+  })
+
+  it('does not hold on forever for a live picture that never gets ready', () => {
+    const env = setupTest()
+    const segments = [env.segments[0]]
+    syncCachePlayback(20, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange)
+    let t = 1000
+    const call = (at: number) => syncCachePlayback(at, 'playback', segments, env.videoA, env.videoB, env.state, 0.5, env.onSlotChange, env.onActiveCacheChange, () => false, () => t)
+    call(30.02)
+    expect(env.state.holding).toBe(true)
+    t += MAX_HOLD_MS + 10
+    call(30.5)
+    expect(env.state.hasActiveCache).toBe(false)
   })
 })

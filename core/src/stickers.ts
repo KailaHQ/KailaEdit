@@ -14,7 +14,7 @@ export interface StickerDefinition {
 export const STICKER_DEFINITIONS: StickerDefinition[] = [
   {
     id: 'star',
-    name: 'Ngôi sao vàng',
+    name: 'Gold Star',
     category: 'badge',
     filename: 'star.png',
     keywords: ['star', 'sao', 'rating', 'favorite', 'gold'],
@@ -23,7 +23,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'heart',
-    name: 'Trái tim yêu',
+    name: 'Red Heart',
     category: 'emoji',
     filename: 'heart.png',
     keywords: ['heart', 'love', 'tim', 'thích', 'red'],
@@ -32,7 +32,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'fire',
-    name: 'Ngọn lửa hot',
+    name: 'Hot Fire',
     category: 'emoji',
     filename: 'fire.png',
     keywords: ['fire', 'hot', 'lửa', 'cháy', 'trending', 'flame'],
@@ -41,7 +41,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'sparkles',
-    name: 'Lấp lánh thần kỳ',
+    name: 'Magic Sparkles',
     category: 'badge',
     filename: 'sparkles.png',
     keywords: ['sparkles', 'magic', 'shine', 'lấp lánh', 'glow'],
@@ -50,7 +50,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'thumbs-up',
-    name: 'Thích (Like)',
+    name: 'Thumbs Up',
     category: 'emoji',
     filename: 'thumbs-up.png',
     keywords: ['like', 'thumbs up', 'thích', 'tuyệt', 'agree'],
@@ -59,7 +59,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'check-badge',
-    name: 'Tích xanh xác minh',
+    name: 'Verified Badge',
     category: 'badge',
     filename: 'check-badge.png',
     keywords: ['check', 'verified', 'xác minh', 'tick', 'blue'],
@@ -68,7 +68,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'party-popper',
-    name: 'Pháo hoa chúc mừng',
+    name: 'Party Popper',
     category: 'badge',
     filename: 'party-popper.png',
     keywords: ['party', 'celebrate', 'pháo', 'chúc mừng', 'confetti'],
@@ -77,7 +77,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'warning',
-    name: 'Biển báo cảnh báo',
+    name: 'Warning Sign',
     category: 'icon',
     filename: 'warning.png',
     keywords: ['warning', 'alert', 'cảnh báo', 'chú ý', 'danger'],
@@ -86,7 +86,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'smile',
-    name: 'Mặt cười tươi',
+    name: 'Grinning Face',
     category: 'emoji',
     filename: 'smile.png',
     keywords: ['smile', 'happy', 'cười', 'vui', 'cute'],
@@ -95,7 +95,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'cool-sunglasses',
-    name: 'Mặt ngầu đeo kính',
+    name: 'Cool Sunglasses',
     category: 'emoji',
     filename: 'cool-sunglasses.png',
     keywords: ['cool', 'sunglasses', 'ngầu', 'kính râm'],
@@ -104,7 +104,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'laugh-tears',
-    name: 'Cười ra nước mắt',
+    name: 'Tears of Joy',
     category: 'emoji',
     filename: 'laugh-tears.png',
     keywords: ['laugh', 'lol', 'hài hước', 'cười vỡ bụng', 'tears'],
@@ -113,7 +113,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'arrow-neon',
-    name: 'Mũi tên Neon',
+    name: 'Neon Arrow',
     category: 'arrow',
     filename: 'arrow-neon.png',
     keywords: ['arrow', 'pointer', 'mũi tên', 'chỉ hướng', 'neon'],
@@ -122,7 +122,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'badge-sale',
-    name: 'Huy hiệu Giảm giá (SALE)',
+    name: 'SALE Badge',
     category: 'badge',
     filename: 'badge-sale.png',
     keywords: ['sale', 'discount', 'giảm giá', 'khuyến mãi', 'red'],
@@ -131,7 +131,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'badge-new',
-    name: 'Huy hiệu Mới (NEW)',
+    name: 'NEW Badge',
     category: 'badge',
     filename: 'badge-new.png',
     keywords: ['new', 'mới', 'badge', 'hot', 'blue'],
@@ -140,7 +140,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'trophy',
-    name: 'Cúp vàng vinh quang',
+    name: 'Golden Trophy',
     category: 'icon',
     filename: 'trophy.png',
     keywords: ['trophy', 'winner', 'cúp', 'vô địch', 'champion'],
@@ -149,7 +149,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'lightning',
-    name: 'Tia sét năng lượng',
+    name: 'Lightning Bolt',
     category: 'icon',
     filename: 'lightning.png',
     keywords: ['lightning', 'bolt', 'sét', 'nhanh', 'power'],
@@ -159,7 +159,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   // ── Animated Stickers (Google Noto Emoji - Apache 2.0) ──
   {
     id: 'anim-laugh-tears',
-    name: 'Cười ra nước mắt',
+    name: 'Tears of Joy',
     category: 'emoji',
     filename: 'anim-laugh-tears.gif',
     keywords: ['laugh', 'lol', 'cười', 'hài hước', 'vui', 'tears', 'động', 'anim'],
@@ -169,7 +169,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-rofl',
-    name: 'Cười lăn lộn',
+    name: 'Rolling on the Floor Laughing',
     category: 'emoji',
     filename: 'anim-rofl.gif',
     keywords: ['rofl', 'laugh', 'cười', 'lăn lộn', 'haha', 'động', 'anim'],
@@ -179,7 +179,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-heart-eyes',
-    name: 'Mắt trái tim',
+    name: 'Heart Eyes',
     category: 'emoji',
     filename: 'anim-heart-eyes.gif',
     keywords: ['heart', 'love', 'mắt tim', 'yêu', 'mê', 'động', 'anim'],
@@ -189,7 +189,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-smiling-hearts',
-    name: 'Nụ cười hạnh phúc',
+    name: 'Smiling with Hearts',
     category: 'emoji',
     filename: 'anim-smiling-hearts.gif',
     keywords: ['smile', 'hearts', 'hạnh phúc', 'ngọt ngào', 'love', 'động', 'anim'],
@@ -199,7 +199,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-cool-sunglasses',
-    name: 'Mặt ngầu kính râm',
+    name: 'Cool Sunglasses',
     category: 'emoji',
     filename: 'anim-cool-sunglasses.gif',
     keywords: ['cool', 'sunglasses', 'ngầu', 'kính râm', 'bảnh', 'động', 'anim'],
@@ -209,7 +209,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-partying-face',
-    name: 'Mặt tiệc tùng ăn mừng',
+    name: 'Partying Face',
     category: 'emoji',
     filename: 'anim-partying-face.gif',
     keywords: ['party', 'celebrate', 'tiệc', 'ăn mừng', 'vui vẻ', 'động', 'anim'],
@@ -219,7 +219,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-thinking',
-    name: 'Đăm chiêu suy nghĩ',
+    name: 'Thinking Face',
     category: 'emoji',
     filename: 'anim-thinking.gif',
     keywords: ['thinking', 'suy nghĩ', 'ngẫm', 'hỏi', 'tư duy', 'động', 'anim'],
@@ -229,7 +229,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-exploding-head',
-    name: 'Nổ tung não (Mind blown)',
+    name: 'Mind Blown',
     category: 'emoji',
     filename: 'anim-exploding-head.gif',
     keywords: ['mind blown', 'shock', 'nổ não', 'bất ngờ', 'sốc', 'động', 'anim'],
@@ -239,7 +239,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-crying',
-    name: 'Khóc nức nở',
+    name: 'Crying Face',
     category: 'emoji',
     filename: 'anim-crying.gif',
     keywords: ['cry', 'sad', 'khóc', 'buồn', 'nước mắt', 'động', 'anim'],
@@ -249,7 +249,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-screaming',
-    name: 'Hét hoảng hốt',
+    name: 'Screaming in Fear',
     category: 'emoji',
     filename: 'anim-screaming.gif',
     keywords: ['scream', 'fear', 'hét', 'sợ', 'kinh ngạc', 'hoảng', 'động', 'anim'],
@@ -259,7 +259,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-eyes',
-    name: 'Đôi mắt liếc',
+    name: 'Looking Eyes',
     category: 'emoji',
     filename: 'anim-eyes.gif',
     keywords: ['eyes', 'look', 'mắt', 'liếc', 'nhìn', 'hóng', 'động', 'anim'],
@@ -269,7 +269,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-thumbs-up',
-    name: 'Thích (Like)',
+    name: 'Thumbs Up',
     category: 'emoji',
     filename: 'anim-thumbs-up.gif',
     keywords: ['like', 'thumbs up', 'thích', 'tuyệt', 'đồng ý', 'động', 'anim'],
@@ -279,7 +279,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-thumbs-down',
-    name: 'Không thích (Dislike)',
+    name: 'Thumbs Down',
     category: 'emoji',
     filename: 'anim-thumbs-down.gif',
     keywords: ['dislike', 'không thích', 'chê', 'tệ', 'động', 'anim'],
@@ -289,7 +289,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-clapping',
-    name: 'Vỗ tay tán thưởng',
+    name: 'Clapping Hands',
     category: 'emoji',
     filename: 'anim-clapping.gif',
     keywords: ['clap', 'applause', 'vỗ tay', 'khen', 'tuyệt vời', 'động', 'anim'],
@@ -299,7 +299,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-raised-hands',
-    name: 'Hoan hô hai tay',
+    name: 'Raising Hands',
     category: 'emoji',
     filename: 'anim-raised-hands.gif',
     keywords: ['celebrate', 'hoan hô', 'ăn mừng', 'yay', 'động', 'anim'],
@@ -309,7 +309,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-folded-hands',
-    name: 'Cảm ơn / Chắp tay',
+    name: 'Folded Hands',
     category: 'emoji',
     filename: 'anim-folded-hands.gif',
     keywords: ['thank you', 'pray', 'cảm ơn', 'chắp tay', 'biết ơn', 'động', 'anim'],
@@ -319,7 +319,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-red-heart',
-    name: 'Trái tim đỏ rung đập',
+    name: 'Beating Red Heart',
     category: 'emoji',
     filename: 'anim-red-heart.gif',
     keywords: ['heart', 'love', 'tim', 'yêu', 'đỏ', 'động', 'anim'],
@@ -329,7 +329,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-sparkling-heart',
-    name: 'Trái tim lấp lánh',
+    name: 'Sparkling Heart',
     category: 'emoji',
     filename: 'anim-sparkling-heart.gif',
     keywords: ['sparkling heart', 'tim lấp lánh', 'yêu thích', 'động', 'anim'],
@@ -339,7 +339,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-broken-heart',
-    name: 'Trái tim tan vỡ',
+    name: 'Broken Heart',
     category: 'emoji',
     filename: 'anim-broken-heart.gif',
     keywords: ['broken heart', 'tan vỡ', 'chia tay', 'đau lòng', 'động', 'anim'],
@@ -349,7 +349,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-fire',
-    name: 'Ngọn lửa hot cháy',
+    name: 'Burning Fire',
     category: 'badge',
     filename: 'anim-fire.gif',
     keywords: ['fire', 'hot', 'cháy', 'lửa', 'trending', 'động', 'anim'],
@@ -359,7 +359,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-sparkles',
-    name: 'Ánh sáng lấp lánh',
+    name: 'Magic Sparkles',
     category: 'badge',
     filename: 'anim-sparkles.gif',
     keywords: ['sparkles', 'magic', 'lấp lánh', 'sáng', 'thần kỳ', 'động', 'anim'],
@@ -369,7 +369,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-glowing-star',
-    name: 'Ngôi sao tỏa sáng',
+    name: 'Glowing Star',
     category: 'badge',
     filename: 'anim-glowing-star.gif',
     keywords: ['star', 'glowing', 'sao', 'tỏa sáng', 'ngôi sao', 'động', 'anim'],
@@ -379,7 +379,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-lightning',
-    name: 'Tia sét năng lượng',
+    name: 'Lightning Bolt',
     category: 'icon',
     filename: 'anim-lightning.gif',
     keywords: ['lightning', 'bolt', 'sét', 'năng lượng', 'nhanh', 'động', 'anim'],
@@ -389,7 +389,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-collision',
-    name: 'Vụ nổ va chạm (Boom)',
+    name: 'Collision Boom',
     category: 'badge',
     filename: 'anim-collision.gif',
     keywords: ['boom', 'collision', 'nổ', 'va chạm', 'vfx', 'động', 'anim'],
@@ -399,7 +399,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-bomb',
-    name: 'Bom đếm ngược nổ',
+    name: 'Ticking Bomb',
     category: 'icon',
     filename: 'anim-bomb.gif',
     keywords: ['bomb', 'bom', 'nổ', 'nguy hiểm', 'động', 'anim'],
@@ -409,7 +409,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-party-popper',
-    name: 'Pháo hoa giấy chúc mừng',
+    name: 'Party Popper',
     category: 'badge',
     filename: 'anim-party-popper.gif',
     keywords: ['party', 'confetti', 'pháo hoa', 'chúc mừng', 'động', 'anim'],
@@ -419,7 +419,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-bell',
-    name: 'Chuông thông báo',
+    name: 'Notification Bell',
     category: 'icon',
     filename: 'anim-bell.gif',
     keywords: ['bell', 'subscribe', 'chuông', 'thông báo', 'nhắc nhở', 'động', 'anim'],
@@ -429,7 +429,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-megaphone',
-    name: 'Loa phóng thanh / CTA',
+    name: 'Megaphone',
     category: 'icon',
     filename: 'anim-megaphone.gif',
     keywords: ['megaphone', 'loa', 'thông báo', 'cta', 'kêu gọi', 'động', 'anim'],
@@ -439,7 +439,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-speech-balloon',
-    name: 'Bong bóng chat',
+    name: 'Speech Balloon',
     category: 'icon',
     filename: 'anim-speech-balloon.gif',
     keywords: ['chat', 'comment', 'bình luận', 'tin nhắn', 'nói', 'động', 'anim'],
@@ -449,7 +449,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-rocket',
-    name: 'Tên lửa bay vút',
+    name: 'Rocket Launch',
     category: 'icon',
     filename: 'anim-rocket.gif',
     keywords: ['rocket', 'tên lửa', 'bay', 'tăng trưởng', 'launch', 'động', 'anim'],
@@ -459,7 +459,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-target',
-    name: 'Hồng tâm trúng đích',
+    name: 'Bullseye Target',
     category: 'icon',
     filename: 'anim-target.gif',
     keywords: ['target', 'bullseye', 'mục tiêu', 'trúng đích', 'động', 'anim'],
@@ -469,7 +469,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-hundred',
-    name: 'Điểm 100 tuyệt đối',
+    name: '100 Points',
     category: 'badge',
     filename: 'anim-hundred.gif',
     keywords: ['100', 'hundred', 'hoàn hảo', 'tuyệt đối', 'động', 'anim'],
@@ -479,7 +479,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-crown',
-    name: 'Vương miện hoàng gia',
+    name: 'Royal Crown',
     category: 'badge',
     filename: 'anim-crown.gif',
     keywords: ['crown', 'vương miện', 'vua', 'hoàng gia', 'top 1', 'động', 'anim'],
@@ -489,7 +489,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-trophy',
-    name: 'Cúp vàng vô địch',
+    name: 'Championship Trophy',
     category: 'icon',
     filename: 'anim-trophy.gif',
     keywords: ['trophy', 'cúp', 'chiến thắng', 'vô địch', 'động', 'anim'],
@@ -499,7 +499,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-medal-1st',
-    name: 'Huy chương vàng số 1',
+    name: '1st Place Gold Medal',
     category: 'badge',
     filename: 'anim-medal-1st.gif',
     keywords: ['medal', 'huy chương', 'vàng', 'nhất', 'động', 'anim'],
@@ -509,7 +509,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-diamond',
-    name: 'Kim cương quý giá',
+    name: 'Precious Diamond',
     category: 'badge',
     filename: 'anim-diamond.gif',
     keywords: ['diamond', 'kim cương', 'quý giá', 'vip', 'động', 'anim'],
@@ -519,7 +519,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-money-wings',
-    name: 'Tiền bay',
+    name: 'Money with Wings',
     category: 'icon',
     filename: 'anim-money-wings.gif',
     keywords: ['money', 'tiền', 'đô la', 'thu nhập', 'lợi nhuận', 'động', 'anim'],
@@ -529,7 +529,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-check-mark',
-    name: 'Tích xanh hoàn thành',
+    name: 'Check Mark',
     category: 'badge',
     filename: 'anim-check-mark.gif',
     keywords: ['check', 'done', 'tích xanh', 'hoàn thành', 'xong', 'động', 'anim'],
@@ -539,7 +539,7 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
   },
   {
     id: 'anim-warning',
-    name: 'Biển báo nguy hiểm',
+    name: 'Warning Sign',
     category: 'icon',
     filename: 'anim-warning.gif',
     keywords: ['warning', 'cảnh báo', 'chú ý', 'nguy hiểm', 'động', 'anim'],
@@ -550,13 +550,13 @@ export const STICKER_DEFINITIONS: StickerDefinition[] = [
 ]
 
 export const STICKER_CATEGORIES: { id: StickerCategory | 'all' | 'custom' | 'animated'; label: string }[] = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'animated', label: 'Ảnh động' },
+  { id: 'all', label: 'All' },
+  { id: 'animated', label: 'Animated' },
   { id: 'emoji', label: 'Emoji' },
-  { id: 'badge', label: 'Huy hiệu' },
-  { id: 'arrow', label: 'Mũi tên' },
-  { id: 'icon', label: 'Biểu tượng' },
-  { id: 'custom', label: 'Đã nhập' },
+  { id: 'badge', label: 'Badges' },
+  { id: 'arrow', label: 'Arrows' },
+  { id: 'icon', label: 'Icons' },
+  { id: 'custom', label: 'Imported' },
 ]
 
 export const DEFAULT_STICKER_DURATION = 1.0

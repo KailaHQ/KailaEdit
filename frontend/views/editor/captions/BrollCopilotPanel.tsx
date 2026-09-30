@@ -74,7 +74,7 @@ export function BrollCopilotPanel({ importFiles }: {
    * show is a judgement about what is being said, and that goes to the CLI
    * configured in EditPilot. Counting word frequency used to stand in for the
    * second half, which is why a spot about 3D model quality came back labelled
-   * "#độ #chỉ #tạo": the words were in the sentence, but they were not a
+   * "#quality #only #mesh": the words were in the sentence, but they were not a
    * suggestion. Nothing is shown now unless a model actually wrote it.
    */
   const handleScan = async () => {

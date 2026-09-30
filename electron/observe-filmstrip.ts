@@ -158,7 +158,7 @@ export async function observeFilmstrip(options: FilmstripOptions): Promise<Films
     totalDuration = 10.0 // Default fallback duration
   }
 
-  // Clamping requirement: "Khoảng thời gian vượt quá timeline được kẹp, không lỗi"
+  // Clamping requirement: "Time range exceeding timeline is clamped without error"
   let startTime = options.startTime ?? 0
   let endTime = options.endTime ?? totalDuration
 

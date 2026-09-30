@@ -36,7 +36,7 @@ export function registerEditPilotHandlers(): void {
     if (!projectId || !projectId.trim()) {
       return {
         success: false as const,
-        error: 'Chưa có project nào đang mở. Vui lòng mở một project trước khi dùng EditPilot.',
+        error: 'No project is currently open. Please open a project before using EditPilot.',
       }
     }
     const resolvedProjectsDir = projectsDir?.trim() || getProjectsDir()

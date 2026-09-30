@@ -89,7 +89,7 @@ describe('FontPicker', () => {
     const robotoBtn = buttons.find(b => b.textContent?.includes('Roboto'))
     expect(robotoBtn).toBeDefined()
 
-    const starBtn = robotoBtn?.querySelector('[title*="Star"], [title*="yêu thích"]') as HTMLElement
+    const starBtn = robotoBtn?.querySelector('[title*="Star"]') as HTMLElement
     expect(starBtn).not.toBeNull()
 
     // Click the star button to star "Roboto"

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { TextOverlayStyle } from '../../../types/project-model'
+import { DEFAULT_TEXT_STYLE, type TextOverlayStyle } from '../../../types/project-model'
 
 /**
  * The look-only presets in the text panel's "Preset style" grid: colour, outline, box and
@@ -85,20 +85,53 @@ export function isTextLook(style: TextOverlayStyle, look: TextLook): boolean {
   })
 }
 
-/** The CSS that draws a look on a preset tile — the same way the monitor draws text. */
-export function textLookCss(look: TextLook, scale = 0.35): CSSProperties {
-  const hasShadow = look.shadowBlur > 0 || look.shadowOffsetX !== 0 || look.shadowOffsetY !== 0
+/** Font size of the "Aa" sample on a preset tile, in CSS px. */
+export const TEXT_TILE_FONT_PX = 15
+
+/**
+ * The CSS that draws a text style on a preset tile — the way the monitor draws it, shrunk.
+ *
+ * Every length in a text style (stroke, shadow, padding, corners, letter spacing) is
+ * measured against the style's own font size, so a tile with a 15px sample must scale them
+ * by 15 / fontSize. Using the raw numbers made a 3px outline on a 72px font into a 3px
+ * outline on a 15px one — five times too heavy — which is why tiles such as Bold Impact and
+ * Retro Sunset looked nothing like what applying them produced.
+ */
+export function textStyleTileCss(
+  style: Partial<TextOverlayStyle>,
+  tileFontPx = TEXT_TILE_FONT_PX,
+): CSSProperties {
+  const fontSize = style.fontSize && style.fontSize > 0 ? style.fontSize : DEFAULT_TEXT_STYLE.fontSize
+  const k = tileFontPx / fontSize
+  const strokeWidth = style.strokeWidth ?? 0
+  const strokeColor = style.strokeColor ?? 'transparent'
+  const shadowBlur = style.shadowBlur ?? 0
+  const shadowX = style.shadowOffsetX ?? 0
+  const shadowY = style.shadowOffsetY ?? 0
+  const hasShadow = shadowBlur > 0 || shadowX !== 0 || shadowY !== 0
+  const background = style.backgroundColor
   return {
-    color: look.color,
-    backgroundColor: look.backgroundColor === 'transparent' ? undefined : look.backgroundColor,
-    padding: look.padding > 0 ? '0 3px' : undefined,
-    borderRadius: look.borderRadius > 0 ? 3 : undefined,
-    WebkitTextStroke: look.strokeWidth > 0 && look.strokeColor !== 'transparent'
-      ? `${Math.max(1, look.strokeWidth * scale)}px ${look.strokeColor}`
+    fontFamily: style.fontFamily,
+    fontWeight: style.fontWeight,
+    fontStyle: style.fontStyle,
+    fontSize: tileFontPx,
+    lineHeight: 1,
+    color: style.color,
+    backgroundColor: background && background !== 'transparent' ? background : undefined,
+    padding: style.padding && style.padding > 0 ? style.padding * k : undefined,
+    borderRadius: style.borderRadius && style.borderRadius > 0 ? style.borderRadius * k : undefined,
+    letterSpacing: style.letterSpacing ? style.letterSpacing * k : undefined,
+    WebkitTextStroke: strokeWidth > 0 && strokeColor !== 'transparent'
+      ? `${strokeWidth * k}px ${strokeColor}`
       : undefined,
     paintOrder: 'stroke fill',
     textShadow: hasShadow
-      ? `${look.shadowOffsetX * scale}px ${look.shadowOffsetY * scale}px ${look.shadowBlur * scale}px ${look.shadowColor}`
+      ? `${shadowX * k}px ${shadowY * k}px ${shadowBlur * k}px ${style.shadowColor ?? 'black'}`
       : undefined,
   }
+}
+
+/** A look preset's tile: the look on the default font size, as the panel applies it. */
+export function textLookCss(look: TextLook): CSSProperties {
+  return textStyleTileCss({ ...look, fontSize: DEFAULT_TEXT_STYLE.fontSize })
 }

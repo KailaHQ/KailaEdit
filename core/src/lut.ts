@@ -49,18 +49,18 @@ export function parseCubeLut(content: string): CubeLut {
     if (upper.startsWith('LUT_3D_SIZE')) {
       const parts = rawLine.split(/\s+/)
       if (parts.length < 2) {
-        throw new LutParseError(`Dòng ${i + 1}: LUT_3D_SIZE thiếu tham số kích thước.`)
+        throw new LutParseError(`Line ${i + 1}: LUT_3D_SIZE missing size parameter.`)
       }
       const parsedSize = parseInt(parts[1], 10)
       if (isNaN(parsedSize) || parsedSize < 2 || parsedSize > 256) {
-        throw new LutParseError(`Dòng ${i + 1}: LUT_3D_SIZE '${parts[1]}' không hợp lệ (phải từ 2 đến 256).`)
+        throw new LutParseError(`Line ${i + 1}: LUT_3D_SIZE '${parts[1]}' is invalid (must be between 2 and 256).`)
       }
       size = parsedSize
       continue
     }
 
     if (upper.startsWith('LUT_1D_SIZE')) {
-      throw new LutParseError(`Dòng ${i + 1}: KomfyEdit chỉ hỗ trợ 3D LUT (.cube với LUT_3D_SIZE), không hỗ trợ 1D LUT.`)
+      throw new LutParseError(`Line ${i + 1}: Only 3D LUTs (.cube with LUT_3D_SIZE) are supported, 1D LUT is not supported.`)
     }
 
     if (upper.startsWith('DOMAIN_MIN')) {
@@ -87,7 +87,7 @@ export function parseCubeLut(content: string): CubeLut {
       const b = parseFloat(parts[2])
 
       if (isNaN(r) || isNaN(g) || isNaN(b)) {
-        throw new LutParseError(`Dòng ${i + 1}: Giá trị RGB không hợp lệ '${rawLine}'.`)
+        throw new LutParseError(`Line ${i + 1}: Invalid RGB value '${rawLine}'.`)
       }
 
       rawValues.push(r, g, b)
@@ -95,14 +95,14 @@ export function parseCubeLut(content: string): CubeLut {
   }
 
   if (size === 0) {
-    throw new LutParseError('File .cube thiếu chỉ thị LUT_3D_SIZE bắt buộc.')
+    throw new LutParseError('The .cube file is missing the required LUT_3D_SIZE directive.')
   }
 
   const expectedEntries = size * size * size
   const expectedValues = expectedEntries * 3
   if (rawValues.length !== expectedValues) {
     throw new LutParseError(
-      `File .cube không đủ dữ liệu: kỳ vọng ${expectedEntries} điểm màu (${expectedValues} giá trị), thực tế có ${rawValues.length / 3} điểm màu.`,
+      `The .cube file has insufficient data: expected ${expectedEntries} points (${expectedValues} values), but found ${rawValues.length / 3} points.`,
     )
   }
 

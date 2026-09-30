@@ -12,6 +12,11 @@ used by KailaEdit.
   License: GNU General Public License v3.0 (GPL-3.0)
   https://github.com/PeterL1n/RobustVideoMatting
 
+- **MobileSAM** (image encoder + Segment Anything mask decoder, ONNX export)
+  Copyright (c) 2023 Chaoning Zhang et al.; Segment Anything Copyright (c) Meta Platforms, Inc.
+  License: Apache License 2.0 (weights and code); ONNX export by Acly, MIT License
+  https://github.com/ChaoningZhang/MobileSAM — https://huggingface.co/Acly/MobileSAM
+
 ---
 
 ## Node.js Dependencies

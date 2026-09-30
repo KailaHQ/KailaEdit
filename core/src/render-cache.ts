@@ -246,6 +246,10 @@ export function computeSegmentContentHash(
         enabled: c.customMatte.enabled,
         strokesCount: c.customMatte.strokes?.length ?? 0,
         appliedHash: c.customMatte.appliedHash ?? null,
+        // The matte follows the camera; a re-tracked shot is a different picture.
+        motion: c.customMatte.motion
+          ? fastHash64(`${c.customMatte.motion.t0}:${c.customMatte.motion.step}:${c.customMatte.motion.m.map(v => v.toFixed(3)).join(',')}`)
+          : null,
       } : null,
       stroke: c.stroke ? {
         enabled: c.stroke.enabled,

@@ -8,7 +8,7 @@ export interface InstructionEvaluation {
  * Evaluates whether an editing instruction is actionable or ambiguously vague
  * (e.g. "làm cho nó hay hơn", "make it better").
  *
- * Enforces the core agent principle: "Không đoán thay người dùng. Ticket nào mơ hồ thì hỏi, đừng tự chọn."
+ * Enforces the core agent principle: "Never guess for the user. Ask clarifying questions if the request is ambiguous."
  */
 export function evaluateEditingInstruction(instruction: string): InstructionEvaluation {
   const trimmed = instruction.trim().toLowerCase()
@@ -16,7 +16,7 @@ export function evaluateEditingInstruction(instruction: string): InstructionEval
     return {
       action: 'clarify',
       reason: 'EMPTY_INSTRUCTION',
-      clarificationQuestion: 'Vui lòng cung cấp yêu cầu chỉnh sửa cụ thể.',
+      clarificationQuestion: 'Please provide specific editing instructions.',
     }
   }
 
@@ -35,7 +35,7 @@ export function evaluateEditingInstruction(instruction: string): InstructionEval
         action: 'clarify',
         reason: 'AMBIGUOUS_OR_SUBJECTIVE',
         clarificationQuestion:
-          'Yêu cầu chưa rõ ràng: Bạn muốn thực hiện thao tác nào? (Ví dụ: cắt khoảng lặng, ghép thêm clip, hay nhập phụ đề từ SRT?)',
+          'Request is ambiguous: What action would you like to perform? (For example: cut silences, add B-roll clips, or import subtitles from SRT?)',
       }
     }
   }

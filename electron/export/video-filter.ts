@@ -1,3 +1,4 @@
+import { effectiveTimelineBackground } from '../../core/src/project-model'
 import type { TimelineBackground, ClipMask, ChromaKey } from '../../core/src/project-model'
 import type { ExportClip } from './timeline'
 import { autoMatteBakeOffset, autoMattePlaybackRate } from '../../core/src/auto-matte'
@@ -292,7 +293,9 @@ export function buildVideoFilterGraph(
     transitions?: ExportTransition[];
   },
 ): { inputs: string[]; filterScript: string } {
-  const { width, height, fps, totalDuration, background, letterbox, subtitles } = opts
+  const { width, height, fps, totalDuration, letterbox, subtitles } = opts
+  // A `blur` background is not drawn any more; see effectiveTimelineBackground.
+  const background = effectiveTimelineBackground(opts.background)
   const inputs: string[] = []
   const filterParts: string[] = []
 

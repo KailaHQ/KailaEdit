@@ -171,7 +171,7 @@ describe('Edit Patch: replace_clip', () => {
   it('validates, describes, applies and undoes', () => {
     const p = patch({ clipId: 'c', assetId: 'long', sourceStart: 12 })
     expect(validateEditPatch(state(), p).valid).toBe(true)
-    expect(describePatch(state(), p)).toContain('thay media của clip "c" bằng "long.mp4" từ giây 12, giữ nguyên vị trí và độ dài')
+    expect(describePatch(state(), p)).toContain('replace media of clip "c" with "long.mp4" from 12s, keeping position and duration')
     const applied = applyPatch(state(), p)
     if (!applied.success) throw new Error(applied.error)
     expect(selectClipById(applied.state, 'c')).toMatchObject({ assetId: 'long', trimStart: 12, startTime: 5, duration: 4 })

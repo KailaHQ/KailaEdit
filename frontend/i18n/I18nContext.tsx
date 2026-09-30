@@ -98,7 +98,28 @@ export function I18nProvider({
 export function useTranslation() {
   const ctx = useContext(I18nContext)
   if (!ctx) {
-    throw new Error('useTranslation must be used within an I18nProvider')
+    return {
+      language: 'en' as AppLanguage,
+      setLanguage: () => {},
+      t: (path: string, params?: Record<string, string | number>): string => {
+        let current: any = dictionaries.en
+        const keys = path.split('.')
+        for (const key of keys) {
+          if (current && typeof current === 'object' && key in current) {
+            current = current[key]
+          } else {
+            current = undefined
+            break
+          }
+        }
+        if (typeof current === 'string' && params) {
+          return current.replace(/\{(\w+)\}/g, (_, k) => (k in params ? String(params[k]) : `{${k}}`))
+        }
+        return typeof current === 'string' ? current : path
+      },
+    }
   }
   return ctx
 }
+
+export const useI18n = useTranslation

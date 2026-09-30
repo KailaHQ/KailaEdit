@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { hasMediaFiles, isExternalFileDrag } from './external-file-drop'
 import { ClipContextMenu } from './ClipContextMenu'
 import { ReplaceClipModal } from './ReplaceClipModal'
-import { replaceClipRefusal, replacementSlack, replacementSourceSpan } from '@core/clip-replace'
 import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
 import {
   packMainVideoTrack,
@@ -10,32 +9,7 @@ import {
   type ToolType,
 } from './video-editor-utils'
 import { applyStateAction } from './editor-actions'
-import { CUT_TOLERANCE, findCutPoints, findJunctionNear, findJunctions, nearestCut } from '@core/timeline-cuts'
-import { trackRowHeight } from '@core/timeline-rows'
-import { planBorrow } from '@core/timeline-transitions'
-import {
-  DEFAULT_TRANSITION_DURATION,
-  MIN_TRANSITION_DURATION,
-  maxTransitionDuration,
-} from '@core/transitions'
 import { useTranslation } from '../../i18n/I18nContext'
-import type { TimelineTransition } from '../../types/project-model'
-
-/** Stable empty array so the cut memo does not rerun on every render. */
-const EMPTY_TRANSITIONS: TimelineTransition[] = []
-
-/**
- * How wide a gap between two clips may *look* on screen and still be closed by
- * dropping a transition on it. Pixels, not seconds, because the judgement being
- * made is "those two look like they meet" — which is a matter of zoom.
- */
-const TRANSITION_GAP_SNAP_PX = 48
-
-/**
- * ...but zoomed far enough out, 48px is half a minute, and closing that would
- * throw the rest of the track forward by more than the user could have meant.
- */
-const TRANSITION_GAP_SNAP_MAX_SECONDS = 1
 import {
   selectActiveTimeline,
   selectAssets,
@@ -70,12 +44,10 @@ import { TimelineRuler } from './timeline/TimelineRuler'
 import { TimelineTrackHeaders } from './timeline/TimelineTrackHeaders'
 import { TimelineCoverGutter } from './timeline/TimelineCoverGutter'
 import { TimelineTracksView } from './timeline/TimelineTracksView'
-import { CoverPickerModal } from './cover/CoverPickerModal'
-import { CoverDesignModal } from './cover/CoverDesignModal'
-import { coverElementsToOverlays } from './cover/cover-to-overlay'
-import type { CoverElement } from './cover/types'
-import { addVisualAssetToProject } from '../../lib/asset-copy'
-import type { TimelineCover } from '@core/project-model'
+import { TimelineCoverModals } from './timeline/TimelineCoverModals'
+import { useTimelineTrackLayout } from './timeline/useTimelineTrackLayout'
+import { useTimelineClipReplace } from './timeline/useTimelineClipReplace'
+import { useTimelineTransitions, EMPTY_TRANSITIONS } from './timeline/useTimelineTransitions'
 import { useTimelinePlayheadSync } from './timeline/useTimelinePlayheadSync'
 import { useTimelineContextMenu } from './timeline/useTimelineContextMenu'
 import { useSettings } from '../../contexts/SettingsContext'
@@ -213,78 +185,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
   // Cover modal states
   const [isCoverPickerOpen, setIsCoverPickerOpen] = useState(false)
-  /** The clip whose media the Replace clip picker is swapping, while it is open. */
-  const [replaceClipId, setReplaceClipId] = useState<string | null>(null)
-  /** Media dropped onto a clip that needs its start chosen: the picker opens on that step. */
-  const [replaceSegmentAsset, setReplaceSegmentAsset] = useState<Asset | null>(null)
-  const [isCoverDesignOpen, setIsCoverDesignOpen] = useState(false)
-  const [coverFrameUrl, setCoverFrameUrl] = useState('')
-  const [coverSelectedTime, setCoverSelectedTime] = useState(0)
-  const [coverIsLocal, setCoverIsLocal] = useState(false)
 
   const handleOpenCoverPicker = useCallback(() => {
     setIsCoverPickerOpen(true)
   }, [])
 
-  const handleOpenCoverDesign = useCallback((initialFrameDataUrl: string, selectedTime: number, isLocalImage: boolean) => {
-    const finalUrl =
-      initialFrameDataUrl ||
-      activeTimeline?.cover?.customImagePath ||
-      activeTimeline?.cover?.thumbnailDataUrl ||
-      ''
-    setCoverFrameUrl(finalUrl)
-    setCoverSelectedTime(selectedTime)
-    setCoverIsLocal(isLocalImage)
-    setIsCoverPickerOpen(false)
-    setIsCoverDesignOpen(true)
-  }, [activeTimeline?.cover])
-
-  const handleSaveCover = useCallback((cover: TimelineCover) => {
-    actions.setTimelineCover(cover)
-  }, [actions])
-
   const handleRemoveCover = useCallback(() => {
     actions.setTimelineCover(undefined)
   }, [actions])
-
-  /**
-   * Ctrl+C in the cover studio: the picked elements go on the editor's clipboard, where
-   * the next Ctrl+V lays them onto the timeline. An image is written to a file first —
-   * the cover holds it as a data URL, which the export cannot read.
-   */
-  const handleCopyCoverElements = useCallback(async (elements: CoverElement[]): Promise<number> => {
-    const items = await coverElementsToOverlays(elements, async ({ dataUrl, width, height, name }) => {
-      const asset: Asset = {
-        id: `asset-cover-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        type: 'image',
-        path: dataUrl,
-        prompt: name,
-        resolution: `${width}x${height}`,
-        width,
-        height,
-        createdAt: Date.now(),
-      }
-      const api = window.electronAPI
-      // The renderer on its own (no Electron) can still show a data URL.
-      if (!api?.saveTempShapeImage) return asset
-      const saved = await api.saveTempShapeImage({ clipId: 'cover', data: dataUrl.slice(dataUrl.indexOf(',') + 1) })
-      if (!saved.success) throw new Error(saved.error)
-      if (!currentProjectId) return { ...asset, path: saved.path }
-      const copied = await addVisualAssetToProject(saved.path, currentProjectId, 'image')
-      return copied
-        ? {
-          ...asset,
-          path: copied.path,
-          bigThumbnailPath: copied.bigThumbnailPath,
-          smallThumbnailPath: copied.smallThumbnailPath,
-          width: copied.width || width,
-          height: copied.height || height,
-        }
-        : { ...asset, path: saved.path }
-    })
-    if (items.length > 0) actions.copyOverlays(items)
-    return items.length
-  }, [actions, currentProjectId])
 
   const handleCopy = useCallback(() => { actions.copySelection() }, [actions])
   const handleCut = useCallback(() => { actions.cutSelection() }, [actions])
@@ -445,94 +353,19 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     if (rulerScrollRefBridge) rulerScrollRefBridge.current = rulerScrollRef.current
   })
 
-  const orderedTracks: { track: Track; realIndex: number; displayRow: number }[] = useMemo(() => {
-    const videoTracks: { track: Track; realIndex: number }[] = []
-    const audioTracks: { track: Track; realIndex: number }[] = []
-    const subtitleTracks: { track: Track; realIndex: number }[] = []
+  const {
+    orderedTracks,
+    rowHeights,
+    getTrackHeight,
+    trackTopPx,
+  } = useTimelineTrackLayout({
+    tracks,
+    videoTrackHeight,
+    audioTrackHeight,
+    subtitleTrackHeight,
+    stickerTrackHeight,
+  })
 
-    tracks.forEach((track: Track, i: number) => {
-      if (track.type === 'subtitle') subtitleTracks.push({ track, realIndex: i })
-      else if (track.kind === 'audio') audioTracks.push({ track, realIndex: i })
-      else videoTracks.push({ track, realIndex: i })
-    })
-
-    videoTracks.reverse()
-    const ordered = [...subtitleTracks, ...videoTracks, ...audioTracks]
-    return ordered.map((entry, displayRow) => ({ ...entry, displayRow }))
-  }, [tracks])
-
-  const trackDisplayRow = useMemo(() => {
-    const map = new Map<number, number>()
-    orderedTracks.forEach(entry => map.set(entry.realIndex, entry.displayRow))
-    return map
-  }, [orderedTracks])
-
-  const rowHeights = useMemo(() => ({
-    video: videoTrackHeight,
-    audio: audioTrackHeight,
-    subtitle: subtitleTrackHeight,
-    sticker: stickerTrackHeight,
-  }), [videoTrackHeight, audioTrackHeight, subtitleTrackHeight, stickerTrackHeight])
-
-  const getTrackHeight = useCallback((trackIndex: number): number =>
-    trackRowHeight(tracks[trackIndex], rowHeights), [tracks, rowHeights])
-
-  const trackTopPx = useCallback((realTrackIndex: number, padding = 0): number => {
-    const displayRow = trackDisplayRow.get(realTrackIndex) ?? realTrackIndex
-    let top = 0
-    for (let r = 0; r < displayRow; r++) {
-      const entry = orderedTracks[r]
-      if (entry) {
-        top += trackRowHeight(entry.track, rowHeights)
-      }
-    }
-    return top + padding
-  }, [trackDisplayRow, orderedTracks, videoTrackHeight, audioTrackHeight, subtitleTrackHeight, stickerTrackHeight])
-
-  // Cut detection lives in core because the transitions library needs the same
-  // answer to work out which junction a click should land on.
-  const timelineTransitions = useEditorStore(state => selectActiveTimeline(state)?.transitions ?? EMPTY_TRANSITIONS)
-  const cutPoints = useMemo(
-    () => findCutPoints(clips, timelineTransitions),
-    [clips, timelineTransitions],
-  )
-
-  /** How wide a gap may be and still be closed by a transition drop, in seconds. */
-  const transitionGapLimit = useMemo(
-    () => Math.min(TRANSITION_GAP_SNAP_PX / pixelsPerSecond, TRANSITION_GAP_SNAP_MAX_SECONDS),
-    [pixelsPerSecond],
-  )
-
-  /**
-   * The markers a dragged transition can be dropped on: every real cut, plus the
-   * junctions that are only *nearly* cuts.
-   *
-   * Without the second half, an overlay track offers nothing to aim at — no
-   * marker lights up between two clips that do not quite touch, so the drop
-   * looks refused before it is even attempted. The drop itself closes the gap.
-   */
-  const transitionDropTargets = useMemo(() => {
-    const nearlyCuts = findJunctions(clips, transitionGapLimit)
-      .filter(junction => junction.gap >= CUT_TOLERANCE)
-      .map(junction => ({
-        leftClip: junction.leftClip,
-        rightClip: junction.rightClip,
-        trackIndex: junction.trackIndex,
-        time: junction.time,
-        overlapStart: junction.time,
-        overlapEnd: junction.time,
-        transition: null,
-      }))
-    return nearlyCuts.length > 0 ? [...cutPoints, ...nearlyCuts] : cutPoints
-  }, [clips, cutPoints, transitionGapLimit])
-
-  /**
-   * A refusal the user needs to see.
-   *
-   * A dropped transition that quietly does nothing is indistinguishable from a
-   * broken feature — which is exactly how the overlay-track case was reported.
-   * Every path that declines to place one says why instead.
-   */
   const [timelineNotice, setTimelineNotice] = useState<string | null>(null)
   const noticeTimerRef = useRef<number | null>(null)
   const showTimelineNotice = useCallback((message: string) => {
@@ -544,164 +377,37 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current)
   }, [])
 
-  const replaceTarget = replaceClipId ? clips.find(clip => clip.id === replaceClipId) ?? null : null
-  /**
-   * Swap the picked media into the clip being replaced. A refusal — media too short, a
-   * locked track — is said out loud rather than leaving the click looking dead.
-   */
-  /**
-   * Says why `asset` cannot go into `clip`, and returns false — or returns true when it
-   * can. A refusal is spoken rather than leaving a click or a drop looking dead.
-   */
-  const acceptReplacement = useCallback((clip: TimelineClip, asset: Asset): boolean => {
-    const refusal = replaceClipRefusal(clip, asset, tracks)
-    if (refusal === 'too-short') {
-      showTimelineNotice(t('replaceClip.tooShort', {
-        media: `${(asset.duration ?? 0).toFixed(1)}s`,
-        clip: `${replacementSourceSpan(clip).toFixed(1)}s`,
-      }))
-      return false
-    }
-    if (refusal === 'locked') { showTimelineNotice(t('replaceClip.locked')); return false }
-    if (refusal === 'not-replaceable' || refusal === 'unsupported-media') {
-      showTimelineNotice(t('replaceClip.notReplaceable'))
-      return false
-    }
-    return refusal !== 'same-media'
-  }, [showTimelineNotice, t, tracks])
+  const timelineTransitions = useEditorStore(state => selectActiveTimeline(state)?.transitions ?? EMPTY_TRANSITIONS)
+  const {
+    transitionDropTargets,
+    applyTransitionAtPoint,
+  } = useTimelineTransitions({
+    clips,
+    timelineTransitions,
+    pixelsPerSecond,
+    defaultTransitionDuration: settings.defaultTransitionDuration,
+    focusCut,
+    showTimelineNotice,
+    setTimelineTransition: actions.setTimelineTransition,
+    t,
+  })
 
-  const closeReplace = useCallback(() => {
-    setReplaceClipId(null)
-    setReplaceSegmentAsset(null)
-  }, [])
-
-  const replaceWith = useCallback((asset: Asset, sourceStart = 0) => {
-    const clip = replaceClipId ? clips.find(c => c.id === replaceClipId) : undefined
-    if (!clip) { closeReplace(); return }
-    const refusal = replaceClipRefusal(clip, asset, tracks)
-    if (refusal === 'same-media') { closeReplace(); return }
-    if (!acceptReplacement(clip, asset)) return
-    actions.replaceClipMedia(clip.id, asset.id, sourceStart)
-    showTimelineNotice(t('replaceClip.replaced'))
-    closeReplace()
-  }, [acceptReplacement, actions, clips, closeReplace, replaceClipId, showTimelineNotice, t, tracks])
-
-  /**
-   * Media Alt-dropped onto a clip. A still, or a video that fits exactly, goes straight
-   * in; a longer video opens the picker on its "choose the part" step; files from the
-   * system are imported into the library first.
-   */
-  const handleDropReplace = useCallback(async (clipId: string, payload: { assetId?: string; files?: FileList }) => {
-    const clip = clips.find(c => c.id === clipId)
-    if (!clip) return
-    let asset: Asset | undefined
-    if (payload.assetId) {
-      asset = assets.find(a => a.id === payload.assetId)
-    } else if (payload.files && payload.files.length > 0) {
-      try {
-        const imported = await importFiles(payload.files)
-        asset = imported.find(a => a.type === 'video' || a.type === 'image')
-      } catch {
-        asset = undefined
-      }
-      if (!asset) { showTimelineNotice(t('replaceClip.importFailed')); return }
-    }
-    if (!asset || !acceptReplacement(clip, asset)) return
-    if (replacementSlack(clip, asset) > 0.05) {
-      setReplaceSegmentAsset(asset)
-      setReplaceClipId(clipId)
-      return
-    }
-    actions.replaceClipMedia(clipId, asset.id, 0)
-    showTimelineNotice(t('replaceClip.replaced'))
-  }, [acceptReplacement, actions, assets, clips, importFiles, showTimelineNotice, t])
-
-  /**
-   * The overlap is normally paid for out of media both clips are already
-   * trimming away, which is why they hold still while it is re-timed. Footage
-   * with nothing spare cannot do that, and the clips close up instead — a
-   * visible jump, so it gets said rather than left to puzzle.
-   */
-  const shiftWarnedRef = useRef(false)
-  const warnIfClipsWillShift = useCallback((
-    leftClip: TimelineClip,
-    rightClip: TimelineClip,
-    duration: number,
-  ) => {
-    if (planBorrow(leftClip, rightClip, duration).shortfall <= 0) return
-    // Untrimmed footage has no spare frames at all, so this would otherwise
-    // fire on every single transition. Once per session is a fact worth
-    // knowing; on every drop it is noise the user learns to click past.
-    if (shiftWarnedRef.current) return
-    shiftWarnedRef.current = true
-    showTimelineNotice(t('transitions.clipsWillShift'))
-  }, [showTimelineNotice, t])
-
-  /**
-   * Where a transition dropped at (track, time) actually lands.
-   *
-   * One funnel for every drop target — the clip body, the track lane, the cut
-   * marker — because they used to disagree: each searched `cutPoints` on its
-   * own, and a cut only exists where two clips touch exactly. That holds on the
-   * magnetic main track and essentially never on an overlay track, so dropping
-   * a transition on V2 did nothing at all. When no cut is found, the nearby
-   * junction is closed first (see `SetTransitionOptions.closeGapUpTo`).
-   *
-   * Returns false when nothing was close enough, so a caller can tell the
-   * difference between "applied" and "aimed at empty space".
-   */
-  const applyTransitionAtPoint = useCallback((
-    trackIndex: number,
-    time: number,
-    type: string,
-    snapSeconds: number,
-  ): boolean => {
-    const trackCuts = cutPoints.filter(cut => cut.trackIndex === trackIndex)
-    const cut = nearestCut(trackCuts, time, snapSeconds)
-    if (cut) {
-      if (maxTransitionDuration(
-        cut.leftClip.duration,
-        cut.rightClip.duration,
-      ) < MIN_TRANSITION_DURATION) {
-        showTimelineNotice(t('transitions.clipsTooShort'))
-        return false
-      }
-      const duration = cut.transition?.duration ?? settings.defaultTransitionDuration ?? DEFAULT_TRANSITION_DURATION
-      actions.setTimelineTransition(cut.leftClip.id, cut.rightClip.id, type, duration)
-      focusCut(cut.time)
-      warnIfClipsWillShift(cut.leftClip, cut.rightClip, duration)
-      return true
-    }
-
-    const junction = findJunctionNear(clips, trackIndex, time, snapSeconds, transitionGapLimit)
-    if (!junction) {
-      showTimelineNotice(t('transitions.noJunctionHere'))
-      return false
-    }
-
-    // Core would refuse this pair anyway; saying so beats a drop that vanishes.
-    if (maxTransitionDuration(
-      junction.leftClip.duration,
-      junction.rightClip.duration,
-    ) < MIN_TRANSITION_DURATION) {
-      showTimelineNotice(t('transitions.clipsTooShort'))
-      return false
-    }
-
-    const defaultDuration = settings.defaultTransitionDuration ?? DEFAULT_TRANSITION_DURATION
-    actions.setTimelineTransition(
-      junction.leftClip.id,
-      junction.rightClip.id,
-      type,
-      defaultDuration,
-      // Licence to close exactly the gap that was measured, and no more.
-      junction.gap,
-    )
-    focusCut(junction.leftClip.startTime + junction.leftClip.duration)
-    if (junction.gap > 0) showTimelineNotice(t('transitions.gapClosed'))
-    warnIfClipsWillShift(junction.leftClip, junction.rightClip, defaultDuration)
-    return true
-  }, [actions, clips, cutPoints, focusCut, settings.defaultTransitionDuration, showTimelineNotice, t, transitionGapLimit, warnIfClipsWillShift])
+  const {
+    setReplaceClipId,
+    replaceSegmentAsset,
+    replaceTarget,
+    closeReplace,
+    replaceWith,
+    handleDropReplace,
+  } = useTimelineClipReplace({
+    clips,
+    tracks,
+    assets,
+    importFiles,
+    replaceClipMedia: actions.replaceClipMedia,
+    showTimelineNotice,
+    t,
+  })
 
   const {
     draggingClip,
@@ -1068,31 +774,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       )}
 
       {/* Cover Picker & Design Modals */}
-      {isCoverPickerOpen && (
-        <CoverPickerModal
-          isOpen={isCoverPickerOpen}
-          onClose={() => setIsCoverPickerOpen(false)}
-          onOpenDesign={handleOpenCoverDesign}
-          onRemoveCover={handleRemoveCover}
-          activeTimeline={activeTimeline}
-          assets={assets}
-        />
-      )}
-
-      {isCoverDesignOpen && (
-        <CoverDesignModal
-          isOpen={isCoverDesignOpen}
-          onClose={() => setIsCoverDesignOpen(false)}
-          onSave={handleSaveCover}
-          onDeleteCover={handleRemoveCover}
-          initialFrameDataUrl={coverFrameUrl}
-          selectedTime={coverSelectedTime}
-          isLocalImage={coverIsLocal}
-          currentCover={activeTimeline?.cover}
-          projectName={activeTimeline?.name || 'Project'}
-          onCopyElements={handleCopyCoverElements}
-        />
-      )}
+      <TimelineCoverModals
+        isPickerOpen={isCoverPickerOpen}
+        onClosePicker={() => setIsCoverPickerOpen(false)}
+        activeTimeline={activeTimeline}
+        assets={assets}
+        currentProjectId={currentProjectId}
+        setTimelineCover={actions.setTimelineCover}
+        copyOverlays={actions.copyOverlays}
+      />
     </>
   )
 }

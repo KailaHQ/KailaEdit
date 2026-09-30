@@ -4,26 +4,26 @@ import { Resvg } from '@resvg/resvg-js'
 
 export const KOMFY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
   <defs>
-    <!-- Cyan Gradient cho chữ K: Sáng tươi, rực rỡ chuẩn bản sắc KomfyEdit -->
+    <!-- Cyan Gradient for K: Vibrant and crisp brand identity -->
     <linearGradient id="kBodyGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#00F2FE"/>
       <stop offset="50%" stop-color="#18E2DC"/>
       <stop offset="100%" stop-color="#10BFBF"/>
     </linearGradient>
 
-    <!-- Điểm nhấn trắng ngọc ở tâm -->
+    <!-- Pearl white accent at center -->
     <linearGradient id="kAccentGrad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#FFFFFF"/>
       <stop offset="100%" stop-color="#E2FBF8"/>
     </linearGradient>
   </defs>
 
-  <!-- Nền Squircle xám đen than chì phẳng trơn chuẩn desktop app (#131315) -->
+  <!-- Charcoal dark squircle background for desktop app (#131315) -->
   <rect width="1024" height="1024" rx="224" ry="224" fill="#131315"/>
 
-  <!-- Nhóm Chữ K Lớn -->
+  <!-- Large letter K group -->
   <g id="komfyedit-brand-k">
-    <!-- 1. Thân đứng bên trái: bo tròn lớn góc trên-trái và dưới-trái, rãnh cắt chevron ở mép phải -->
+    <!-- 1. Left vertical stem: rounded top-left and bottom-left, chevron notch on right edge -->
     <path d="
       M 432 186
       L 326 186
@@ -37,7 +37,7 @@ export const KOMFY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10
       Z
     " fill="url(#kBodyGrad)"/>
 
-    <!-- 2. Nhánh chéo trên: hướng lên trên-phải, bo tròn góc ngoài -->
+    <!-- 2. Upper diagonal arm: pointing up-right, rounded outer corner -->
     <path d="
       M 432 408
       L 674 186
@@ -50,7 +50,7 @@ export const KOMFY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10
       Z
     " fill="url(#kBodyGrad)"/>
 
-    <!-- 3. Nhánh chéo dưới: vát ngang đáy phẳng song song với trục dưới, bo tròn góc ngoài -->
+    <!-- 3. Lower diagonal arm: flat bottom parallel to axis, rounded outer corner -->
     <path d="
       M 432 512
       L 548 616
@@ -63,7 +63,7 @@ export const KOMFY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10
       Z
     " fill="url(#kBodyGrad)"/>
 
-    <!-- 4. Điểm nhấn Trắng Ngọc (Crisp White Accent) hình cánh cung/tam giác ở tâm rãnh cắt -->
+    <!-- 4. Pearl White Accent at chevron center notch -->
     <path d="
       M 432 408
       L 342 512

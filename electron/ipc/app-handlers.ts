@@ -3,6 +3,8 @@ import path from 'path'
 import fs from 'fs'
 import { handle } from './typed-handle'
 import { getMainWindow } from '../window'
+import { getAllowedRoots } from '../config'
+import { validatePath } from '../path-validation'
 import {
   checkForUpdatesManually,
   getUpdateState,
@@ -63,8 +65,9 @@ export function registerAppHandlers(): void {
       body,
     })
     if (filePath) {
+      const safePath = validatePath(filePath, getAllowedRoots())
       notification.on('click', () => {
-        shell.showItemInFolder(filePath)
+        shell.showItemInFolder(safePath)
       })
     }
     notification.show()

@@ -95,6 +95,16 @@ describe('KE-701: Text Presets and Animations', () => {
       expect(updated.textStyle?.text).toBe('My Custom Title Content')
     })
 
+    it('drops what an earlier look left behind when the preset does not name it', () => {
+      const bold = createTextClipWithPreset('bold-punch', undefined, 'Keep me')
+      const updated = applyTextPreset(bold, 'end-card')
+      expect(updated.textStyle?.text).toBe('Keep me')
+      expect(updated.textStyle?.strokeWidth).toBe(0)
+      expect(updated.textStyle?.strokeColor).toBe('transparent')
+      expect(updated.textStyle?.fontFamily).toBe('Inter, Arial, sans-serif')
+      expect(updated.textStyle?.color).toBe('#E4E4E7')
+    })
+
     it('preserves existing positionX and positionY even if the preset defines different positions', () => {
       const existingClip: TimelineClip = {
         id: 'clip-positioned',

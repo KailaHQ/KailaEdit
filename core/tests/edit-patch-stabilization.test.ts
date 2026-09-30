@@ -27,7 +27,7 @@ describe('Edit Patch: set_stabilization', () => {
     const patch = patchOf({ op: 'set_stabilization', clipId: 'clip-1', stabilization: { smoothing: 30, mode: 'tripod' } })
 
     expect(validateEditPatch(state, patch).valid).toBe(true)
-    expect(describePatch(state, patch)).toContain('ổn định hình (độ mượt 30, chế độ chân máy) cho clip "clip-1"')
+    expect(describePatch(state, patch)).toContain('stabilization (smoothing 30, tripod mode) for clip "clip-1"')
 
     const applied = applyPatch(state, patch)
     if (!applied.success) throw new Error(applied.error)
@@ -39,7 +39,7 @@ describe('Edit Patch: set_stabilization', () => {
   it('turns on with defaults when given no settings', () => {
     const state = makeTestState(10)
     const patch = patchOf({ op: 'set_stabilization', clipId: 'clip-1', stabilization: {} })
-    expect(describePatch(state, patch)).toContain('ổn định hình cho clip "clip-1"')
+    expect(describePatch(state, patch)).toContain('stabilization for clip "clip-1"')
     const applied = applyPatch(state, patch)
     if (!applied.success) throw new Error(applied.error)
     expect(selectClips(applied.state)[0].stabilization).toEqual(DEFAULT_CLIP_STABILIZATION)
@@ -50,13 +50,13 @@ describe('Edit Patch: set_stabilization', () => {
     if (!on.success) throw new Error(on.error)
 
     const off = patchOf({ op: 'set_stabilization', clipId: 'clip-1', stabilization: { enabled: false } })
-    expect(describePatch(on.state, off)).toContain('tắt ổn định hình cho clip "clip-1"')
+    expect(describePatch(on.state, off)).toContain('disable stabilization for clip "clip-1"')
     const offApplied = applyPatch(on.state, off)
     if (!offApplied.success) throw new Error(offApplied.error)
     expect(selectClips(offApplied.state)[0].stabilization?.enabled).toBe(false)
 
     const remove = patchOf({ op: 'set_stabilization', clipId: 'clip-1', stabilization: null })
-    expect(describePatch(on.state, remove)).toContain('gỡ ổn định hình cho clip "clip-1"')
+    expect(describePatch(on.state, remove)).toContain('remove stabilization for clip "clip-1"')
     const removed = applyPatch(on.state, remove)
     if (!removed.success) throw new Error(removed.error)
     expect(selectClips(removed.state)[0].stabilization).toBeUndefined()

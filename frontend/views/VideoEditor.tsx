@@ -54,6 +54,7 @@ import { useProxyManager } from './editor/useProxyManager'
 import { useRenderCache } from './editor/useRenderCache'
 import { useMatteBakeAudit } from '../hooks/useMatteBake'
 import { StabilizeBakeKeeper } from './editor/StabilizeBakeKeeper'
+import { MatteMotionKeeper } from './editor/MatteMotionKeeper'
 import {
   createEditorStore,
   EditorStoreProvider,
@@ -679,6 +680,7 @@ function VideoEditorWithStore({ currentProject, saveProject }: VideoEditorProps)
       {showProjectSettingsModal && <ProjectSettingsModal />}
 
       <StabilizeBakeKeeper projectId={currentProjectId} />
+      <MatteMotionKeeper />
 
       {/* Says why an edit was refused, instead of the control looking dead. */}
       <RejectedEditNotice />

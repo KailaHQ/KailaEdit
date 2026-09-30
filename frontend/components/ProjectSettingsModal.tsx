@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
-import { X, Check, Monitor, Smartphone, Square, Sliders, Palette, Image as ImageIcon, Sparkles, FolderOpen } from 'lucide-react'
+import { X, Check, Monitor, Smartphone, Square, Sliders, Palette, Image as ImageIcon, FolderOpen } from 'lucide-react'
 import { useEditorActions, useEditorStore } from '../views/editor/editor-store'
 import { selectActiveTimeline, selectAssets } from '../views/editor/editor-selectors'
 import { useTranslation } from '../i18n/I18nContext'
 import type { TimelineBackground } from '@core/project-model'
-import { DEFAULT_TIMELINE_BACKGROUND } from '@core/project-model'
+import { DEFAULT_TIMELINE_BACKGROUND, effectiveTimelineBackground } from '@core/project-model'
 import { useProjects } from '../contexts/ProjectContext'
 import { persistProjectToDisk } from '../lib/project-storage'
 import { updatedProject } from '@core/editor-project-bridging'
@@ -40,7 +40,7 @@ export function ProjectSettingsModal() {
   const [height, setHeight] = useState(effectiveDims.height)
   const [fps, setFps] = useState(effectiveDims.fps)
   const [background, setBackground] = useState<TimelineBackground>(
-    activeTimeline?.background ?? DEFAULT_TIMELINE_BACKGROUND,
+    effectiveTimelineBackground(activeTimeline?.background) ?? DEFAULT_TIMELINE_BACKGROUND,
   )
 
   const handlePickImage = async () => {
@@ -273,7 +273,7 @@ export function ProjectSettingsModal() {
             </div>
 
             {/* Mode selection tabs */}
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/80 border border-zinc-800 rounded-xl">
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950/80 border border-zinc-800 rounded-xl">
               <button
                 type="button"
                 onClick={() => setBackground(prev => ({ type: 'color', color: prev.type === 'color' ? prev.color : '#000000' }))}
@@ -285,18 +285,6 @@ export function ProjectSettingsModal() {
               >
                 <Palette className="h-3.5 w-3.5" />
                 {t('projectSettings.bgModes.color')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setBackground(prev => ({ type: 'blur', blur: prev.type === 'blur' ? prev.blur : 40 }))}
-                className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  background.type === 'blur'
-                    ? 'bg-zinc-800 text-teal-300 shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {t('projectSettings.bgModes.blur')}
               </button>
               <button
                 type="button"
@@ -356,27 +344,6 @@ export function ProjectSettingsModal() {
                     placeholder="#000000"
                   />
                 </div>
-              </div>
-            )}
-
-            {background.type === 'blur' && (
-              <div className="p-3 bg-zinc-950/60 border border-zinc-800/80 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-300">{t('projectSettings.blurStrength')}</span>
-                  <span className="text-xs font-mono text-teal-400">{background.blur ?? 40}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={10}
-                  max={100}
-                  step={5}
-                  value={background.blur ?? 40}
-                  onChange={e => setBackground({ type: 'blur', blur: parseInt(e.target.value, 10) })}
-                  className="w-full accent-teal-400 cursor-pointer h-1.5 bg-zinc-800 rounded-lg appearance-none"
-                />
-                <p className="text-[11px] text-zinc-500">
-                  {t('projectSettings.blurDesc')}
-                </p>
               </div>
             )}
 

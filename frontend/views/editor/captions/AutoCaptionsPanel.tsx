@@ -292,7 +292,7 @@ export function AutoCaptionsPanel() {
           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-teal-500 cursor-pointer disabled:opacity-50"
         >
           <option value="">{t('settings.speech.languageAuto')}</option>
-          <option value="vi">Tiếng Việt (vi)</option>
+          <option value="vi">Vietnamese (vi)</option>
           <option value="en">English (en)</option>
           <option value="zh">Chinese (zh)</option>
           <option value="ja">Japanese (ja)</option>

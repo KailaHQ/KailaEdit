@@ -1,20 +1,22 @@
 import { fastHash64 } from './render-cache'
 import { computeEuclideanDistanceTransform } from './stroke-style'
 import type { BrushStroke } from './project-model'
+import { decodeRegionMask, sampleRegionMask } from './smart-select'
+import { affineScale, applyAffine, invertAffine, type Affine } from './global-motion'
 
 /**
  * Computes a deterministic SHA-256 / 64-bit fast hash from the list of brush strokes.
  * If two stroke lists have identical hash, rebaking is unnecessary.
  */
-export function computeStrokesHash(strokes: BrushStroke[]): string {
+export function computeStrokesHash(strokes: BrushStroke[], motionKey = ''): string {
   if (!strokes || strokes.length === 0) return ''
   const canonical = strokes
     .map((s) => {
       const pts = s.points.map(([x, y]) => `${x.toFixed(4)},${y.toFixed(4)}`).join(';')
-      return `${s.mode}:${s.size.toFixed(2)}:${s.paintedAt.toFixed(2)}:[${pts}]`
+      return `${s.mode}:${s.size.toFixed(2)}:${s.paintedAt.toFixed(2)}:[${pts}]${s.region ? `:${s.region.width}x${s.region.height}:${s.region.rle}` : ''}`
     })
     .join('|')
-  return fastHash64(canonical)
+  return fastHash64(motionKey ? `${canonical}#${motionKey}` : canonical)
 }
 
 /**
@@ -43,6 +45,25 @@ function distToSegmentSquared(
   return dx * dx + dy * dy
 }
 
+/**
+ * How much a stored selection's edge is steepened when it is laid onto the picture.
+ *
+ * A selection is kept at a fraction of the picture's size and read back bilinearly, so a hard
+ * outline arrives as a ramp several pixels wide. One selection alone hides that. Two that meet
+ * do not: a smart eraser taken over the hair and a smart brush taken over the hair after it
+ * never share an outline exactly, and where the eraser's ramp reaches past the brush's, the
+ * strip between them is left half erased — a translucent seam of the picture's own colour
+ * (the "smear" and the "gap"). Steepening the ramp around its midpoint keeps the outline
+ * where the model put it and shrinks that strip to about a pixel.
+ */
+const REGION_EDGE_GAIN = 5
+/**
+ * Where a smart eraser's edge sits on that ramp. Slightly inside the model's outline (0.5), so
+ * an eraser never takes a sliver of what lies beside the object it was taken over; the brush
+ * keeps the outline itself, or it would pull the wall in with the object.
+ */
+const REGION_ERASER_EDGE = 0.6
+
 export interface RasterizeOptions {
   /**
    * Filter strokes by mode category.
@@ -51,6 +72,12 @@ export interface RasterizeOptions {
    * 'all': all strokes (default)
    */
   filter?: 'all' | 'regular' | 'region'
+  /**
+   * For a video whose picture moves: maps the picture as it was when a stroke was painted onto
+   * the reference picture the masks are kept in. Null (or no function) leaves a stroke where
+   * it was painted. See matte-motion.
+   */
+  toReference?: (paintedAt: number) => Affine | null
 }
 
 /**
@@ -90,12 +117,37 @@ export function rasterizeStrokes(
     const isAdditive = stroke.mode === 'brush' || stroke.mode === 'region-brush'
     const targetMask = isAdditive ? brushMask : eraserMask
     const oppMask = isAdditive ? eraserMask : brushMask
+    const toRef = options?.toReference?.(stroke.paintedAt) ?? null
 
-    const strokeRadius = Math.max(0.5, (shortEdge * (stroke.size / 100)) / 2)
+    if (stroke.region) {
+      // A smart stroke is the object it selected, stored as a small mask of the picture.
+      const region = decodeRegionMask(stroke.region)
+      // Where a reference pixel lies on the picture the stroke was painted on.
+      const fromRef = toRef ? invertAffine(toRef) : null
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let u = (x + 0.5) / width
+          let v = (y + 0.5) / height
+          if (fromRef) {
+            ;[u, v] = applyAffine(fromRef, u, v)
+            if (u < 0 || v < 0 || u > 1 || v > 1) continue
+          }
+          const soft = sampleRegionMask(region, stroke.region.width, stroke.region.height, u, v) / 255
+          const alpha = Math.round(255 * Math.max(0, Math.min(1, (soft - (isAdditive ? 0.5 : REGION_ERASER_EDGE)) * REGION_EDGE_GAIN + 0.5)))
+          if (alpha <= 0) continue
+          const idx = y * width + x
+          if (alpha > targetMask[idx]) targetMask[idx] = alpha
+          if (alpha === 255) oppMask[idx] = 0
+        }
+      }
+      continue
+    }
+
+    const strokeRadius = Math.max(0.5, (shortEdge * (stroke.size / 100) * (toRef ? affineScale(toRef) : 1)) / 2)
     const strokeRadiusSq = strokeRadius * strokeRadius
     const pad = Math.ceil(strokeRadius + 1)
 
-    const pts = stroke.points
+    const pts = toRef ? stroke.points.map(([px, py]) => applyAffine(toRef, px, py)) : stroke.points
     if (pts.length === 0) continue
 
     if (pts.length === 1) {
@@ -330,10 +382,25 @@ export function growRegion(
 }
 
 /**
+ * Whether the custom matte starts from nothing rather than from the whole picture.
+ *
+ * With no automatic matte underneath, a clip is fully visible, so painting more of it "in"
+ * changes nothing — which is how the brush looked broken: strokes were recorded, Apply was
+ * pressed, and the picture stayed exactly as it was. A brush over a clip with no base matte
+ * is a cutout: what is painted is kept and the rest goes; the eraser then takes parts of that
+ * away. Only erasing (no brush stroke at all) starts from the whole picture.
+ */
+export function customMatteStartsEmpty(strokes: ReadonlyArray<BrushStroke> | undefined, hasBaseMatte: boolean): boolean {
+  if (hasBaseMatte) return false
+  return Boolean(strokes?.some(stroke => stroke.mode === 'brush' || stroke.mode === 'region-brush'))
+}
+
+/**
  * Combines base alpha with custom brush and eraser masks:
  * alpha_final = clamp(baseAlpha + brushMask - eraserMask, 0, 255)
  *
- * If baseAlpha is null/undefined, assumes full opacity (255) as base.
+ * If baseAlpha is null/undefined, the base is full opacity (255) — or nothing (0) when
+ * `startEmpty` is set; see customMatteStartsEmpty.
  */
 export function blendCustomMatte(
   baseAlpha: Uint8Array | null | undefined,
@@ -341,12 +408,13 @@ export function blendCustomMatte(
   eraserMask: Uint8Array,
   width: number,
   height: number,
+  startEmpty = false,
 ): Uint8Array {
   const size = width * height
   const out = new Uint8Array(size)
 
   for (let i = 0; i < size; i++) {
-    const base = baseAlpha ? baseAlpha[i] : 255
+    const base = baseAlpha ? baseAlpha[i] : (startEmpty ? 0 : 255)
     const b = brushMask ? brushMask[i] : 0
     const e = eraserMask ? eraserMask[i] : 0
     const val = base + b - e
@@ -354,4 +422,43 @@ export function blendCustomMatte(
   }
 
   return out
+}
+
+/**
+ * A mask of the reference picture, laid onto the picture as it stands in another frame.
+ * `frameToRef` maps a point of that frame to the same point of the reference picture; what
+ * falls outside the reference is nothing.
+ */
+export function warpMask(mask: Uint8Array, width: number, height: number, frameToRef: Affine, out?: Uint8Array): Uint8Array {
+  const result = out ?? new Uint8Array(width * height)
+  const [m0, m1, m2, m3, m4, m5] = frameToRef
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width
+      const ru = (m0 * u + m1 * v + m2) * width - 0.5
+      const rv = (m3 * u + m4 * v + m5) * height - 0.5
+      let value = 0
+      if (ru > -1 && rv > -1 && ru < width && rv < height) {
+        const x0 = Math.floor(ru)
+        const y0 = Math.floor(rv)
+        const fx = ru - x0
+        const fy = rv - y0
+        const xa = Math.max(0, x0)
+        const xb = Math.min(width - 1, x0 + 1)
+        const ya = Math.max(0, y0)
+        const yb = Math.min(height - 1, y0 + 1)
+        const wxa = x0 < 0 ? 0 : 1 - fx
+        const wxb = x0 + 1 > width - 1 ? 0 : fx
+        const wya = y0 < 0 ? 0 : 1 - fy
+        const wyb = y0 + 1 > height - 1 ? 0 : fy
+        value = Math.round(
+          mask[ya * width + xa] * wxa * wya + mask[ya * width + xb] * wxb * wya
+          + mask[yb * width + xa] * wxa * wyb + mask[yb * width + xb] * wxb * wyb,
+        )
+      }
+      result[y * width + x] = value
+    }
+  }
+  return result
 }

@@ -261,7 +261,7 @@ export async function handleEditTool(
       } else {
         // Silently returning success here is how an apply could report
         // done while nothing on disk changed.
-        throw new Error('Không biết ghi project vào đâu: chưa mở project từ file. Gọi project_open trước.')
+        throw new Error('Nowhere to write project: no project file is open. Call project_open first.')
       }
 
       ctx.setActiveProject(updatedProject, entry.projectPath)
