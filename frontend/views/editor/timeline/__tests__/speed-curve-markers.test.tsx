@@ -42,7 +42,7 @@ describe('SpeedCurveMarkers', () => {
     clip.speedCurve!.points.forEach((point, index) => {
       if (index === 0 || index === clip.speedCurve!.points.length - 1) return
       const expected = (clipTimeAtSourceOffset(clip, point.x * span) / clip.duration) * width
-      const centre = Number(bars[index].getAttribute('x')) + 1.5
+      const centre = Number(bars[index].getAttribute('x')) + 2
       expect(centre).toBeCloseTo(expected, 1)
     })
     await act(async () => { root.unmount() })
@@ -50,7 +50,7 @@ describe('SpeedCurveMarkers', () => {
 
   it('spreads the arrows out where the clip plays slow', async () => {
     const { host, root } = await mount(clipWith('bullet'), 800)
-    const xs = [...host.querySelectorAll('polyline')]
+    const xs = [...host.querySelectorAll('[data-speed-curve-arrow]')]
       .map(p => Number(p.getAttribute('points')!.split(' ')[1].split(',')[0]))
       .sort((a, b) => a - b)
     const gaps = xs.slice(1).map((x, i) => ({ at: xs[i], gap: x - xs[i] }))

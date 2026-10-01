@@ -105,6 +105,9 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
   applyTransitionAtPoint,
   onDropReplace,
 }) => {
+  // A clip with a speed curve carries a strip along its top edge, so what is
+  // drawn inside it is pushed down and shrunk to fit beneath that strip.
+  const hasCurve = clipHasSpeedCurve(clip)
   const drawnStart = displayStartTime ?? clip.startTime
   const drawnDuration = displayDuration ?? clip.duration
   const liveAsset = clip.assetId ? assets.find(a => a.id === clip.assetId) : null
@@ -346,7 +349,7 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
         <GripVertical className="h-3 w-3" />
       </div>
 
-      <div className="h-full flex items-center pl-5 pr-2 gap-2">
+      <div className={`h-full flex items-center pl-5 pr-2 gap-2 ${hasCurve ? 'pt-4' : ''}`}>
         {clip.type === 'adjustment' ? (
           <div className="h-8 w-8 flex-shrink-0 rounded bg-blue-800/30 border border-blue-600/30 flex items-center justify-center">
             <Layers className="h-4 w-4 text-blue-400" />
@@ -382,10 +385,10 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
               // happens to start on the thumbnail becomes an image drag whose
               // drop looks like an OS file drop and imports a phantom asset.
               draggable={false}
-              className="h-8 aspect-video object-cover rounded"
+              className={`${hasCurve ? 'h-5' : 'h-8'} aspect-video object-cover rounded`}
             />
           ) : (
-            <div className="h-8 aspect-video rounded" />
+            <div className={`${hasCurve ? 'h-5' : 'h-8'} aspect-video rounded`} />
           )
         })()}
         <div className={`flex-1 min-w-0 ${clip.type === 'audio' ? 'relative z-10' : ''}`}>
@@ -405,7 +408,7 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
               if (!resInfo) return null
               return <span style={{ color: resInfo.color }} className="font-semibold">{resInfo.displayName}</span>
             })()}
-            {clipHasSpeedCurve(clip) ? (
+            {hasCurve ? (
               <span className="text-amber-400 font-semibold bg-amber-500/20 px-1 py-0.2 rounded border border-amber-500/30">
                 CURVE
               </span>
@@ -502,7 +505,7 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
       )}
 
       {/* A speed curve's points, where their footage falls on the clip */}
-      {clipHasSpeedCurve(clip) && <SpeedCurveMarkers clip={clip} clipWidthPx={clipWidthPx} />}
+      {hasCurve && <SpeedCurveMarkers clip={clip} clipWidthPx={clipWidthPx} />}
 
       {/* A text clip's animation is shown as arrows, not as keyframe diamonds */}
       {clip.type === 'text' && (

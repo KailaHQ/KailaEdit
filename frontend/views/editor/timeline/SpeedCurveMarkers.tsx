@@ -13,14 +13,19 @@ export interface SpeedCurveMarkersProps {
   clipWidthPx: number
 }
 
-const INK = 'rgba(255, 255, 255, 0.92)'
-const BAND_HEIGHT = 14
+const INK = '#ffffff'
+/** The strip along the clip's top edge; bars are a little taller than it. */
+const BAND_HEIGHT = 16
 const LINE_Y = BAND_HEIGHT / 2
 /** Arrows closer than this would read as a solid line. */
-const MIN_ARROW_GAP_PX = 6
+const MIN_ARROW_GAP_PX = 9
 /** Roughly how far apart arrows sit while the clip plays at its mean speed. */
-const TARGET_ARROW_GAP_PX = 16
-const HEAD = 2.25
+const TARGET_ARROW_GAP_PX = 18
+/** Arrows and dots keep this far from a bar. */
+const BAR_CLEARANCE_PX = 7
+const ARROW_HALF_HEIGHT = 2.75
+const ARROW_HALF_WIDTH = 2.25
+const DOT_RADIUS = 1.6
 
 interface Marker {
   x: number
@@ -59,11 +64,20 @@ export function SpeedCurveMarkers({ clip, clipWidthPx }: SpeedCurveMarkersProps)
     for (let i = 1; i < steps; i++) {
       const x = toPx((span * (i - 0.5)) / steps)
       if (x - last < MIN_ARROW_GAP_PX) continue
-      if (markers.some(m => Math.abs(m.x - x) < 5)) continue
+      if (markers.some(m => Math.abs(m.x - x) < BAR_CLEARANCE_PX + 2)) continue
       arrows.push(x)
       last = x
     }
-    return { markers, arrows }
+    // A dot sits just inside each bar, on the side that faces the stretch of
+    // arrows it borders, like the editor this mirrors.
+    const dots: number[] = []
+    markers.forEach((marker, index) => {
+      const prev = markers[index - 1]
+      const next = markers[index + 1]
+      if (next && next.x - marker.x > BAR_CLEARANCE_PX * 3) dots.push(marker.x + BAR_CLEARANCE_PX)
+      if (prev && marker.x - prev.x > BAR_CLEARANCE_PX * 3) dots.push(marker.x - BAR_CLEARANCE_PX)
+    })
+    return { markers, arrows, dots }
     // `clip` as a whole is not a dependency: only what the geometry reads is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curve, clip.duration, clip.speed, clipWidthPx])
@@ -76,19 +90,27 @@ export function SpeedCurveMarkers({ clip, clipWidthPx }: SpeedCurveMarkersProps)
       className="absolute left-0 top-0 z-10 pointer-events-none overflow-visible"
       style={{ width: `${clipWidthPx}px`, height: `${BAND_HEIGHT}px` }}
     >
-      <line x1={0} x2={clipWidthPx} y1={LINE_Y} y2={LINE_Y} stroke={INK} strokeWidth={1} opacity={0.55} />
-      <g fill="none" stroke={INK} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round">
+      <rect x={0} y={0} width={clipWidthPx} height={BAND_HEIGHT} fill="#0d4651" opacity={0.96} />
+      <g fill={INK}>
+        {geometry.dots.map((x, index) => (
+          <circle key={`d${index}`} cx={x} cy={LINE_Y} r={DOT_RADIUS} opacity={0.9} />
+        ))}
         {geometry.arrows.map(x => (
-          <polyline key={x} points={`${x - HEAD},${LINE_Y - HEAD} ${x + HEAD * 0.6},${LINE_Y} ${x - HEAD},${LINE_Y + HEAD}`} />
+          <polygon
+            key={x}
+            data-speed-curve-arrow
+            points={`${x - ARROW_HALF_WIDTH},${LINE_Y - ARROW_HALF_HEIGHT} ${x + ARROW_HALF_WIDTH},${LINE_Y} ${x - ARROW_HALF_WIDTH},${LINE_Y + ARROW_HALF_HEIGHT}`}
+            opacity={0.95}
+          />
         ))}
       </g>
       {geometry.markers.map((marker, index) => {
         // End bars sit inside the clip's edge so they are not clipped by it.
-        const x = marker.isEnd ? Math.min(clipWidthPx - 1.5, Math.max(1.5, marker.x)) : marker.x
+        const x = marker.isEnd ? Math.min(clipWidthPx - 2, Math.max(2, marker.x)) : marker.x
         return (
           <g key={index} data-speed-curve-marker={index}>
             <title>{formatClipSpeed(marker.v)}</title>
-            <rect x={x - 1.5} y={0.5} width={3} height={BAND_HEIGHT - 1} rx={1.5} fill="#ffffff" stroke="rgba(0,0,0,0.45)" strokeWidth={0.75} />
+            <rect x={x - 2} y={1} width={4} height={BAND_HEIGHT - 2} rx={2} fill={INK} />
           </g>
         )
       })}
