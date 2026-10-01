@@ -589,7 +589,8 @@ export function setClipSpeed(
  * the magnetic track is re-packed around the new length, as `setClipSpeed`
  * does. `speed` is set to the curve's mean rate, which keeps every conversion
  * that uses `duration × speed` reading the right amount of source. Removing
- * the curve leaves the clip at that mean rate with its duration unchanged.
+ * the curve puts the clip back at the constant speed it had before, and so back
+ * at its earlier length.
  *
  * Linked clips (the audio of a video) get the same curve so they stay in sync.
  */
@@ -607,16 +608,28 @@ export function setClipSpeedCurve(
   const linkedIds = new Set(targetClip.linkedClipIds || [])
 
   const retime = (clip: TimelineClip): TimelineClip => {
+    // The speed to return to: the one the clip had before its first curve, kept
+    // through every later edit of the curve.
+    const baseSpeed = clip.speedCurve?.baseSpeed ?? (clipHasSpeedCurve(clip) ? undefined : clampClipSpeed(clip.speed ?? 1))
     if (!normalized) {
       if (!clipHasSpeedCurve(clip)) return clip
-      return { ...clip, speedCurve: undefined }
+      if (baseSpeed === undefined) return { ...clip, speedCurve: undefined }
+      // Same footage at the old constant speed, so the clip is as long as it
+      // was before the curve.
+      return {
+        ...clip,
+        speedCurve: undefined,
+        speed: baseSpeed,
+        duration: Math.max(0.1, clipSourceSpan(clip) / baseSpeed),
+      }
     }
     const span = clipSourceSpan(clip)
+    const next = { ...normalized, ...(baseSpeed !== undefined ? { baseSpeed } : {}) }
     return {
       ...clip,
-      speedCurve: normalized,
-      speed: curveMeanSpeed(normalized),
-      duration: Math.max(0.1, durationForSpeedCurve(span, normalized)),
+      speedCurve: next,
+      speed: curveMeanSpeed(next),
+      duration: Math.max(0.1, durationForSpeedCurve(span, next)),
     }
   }
 

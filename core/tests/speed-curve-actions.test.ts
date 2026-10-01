@@ -82,13 +82,43 @@ describe('setClipSpeedCurve', () => {
     expect(a.duration).toBeCloseTo(v.duration, 9)
   })
 
-  it('removing the curve keeps the duration at the mean speed', () => {
-    const curved = setClipSpeedCurve(stateWith(clip('c1', 0, 6)), 'c1', speedCurveForPreset('montage'))
-    const [before] = clipsOf(curved)
-    const [after] = clipsOf(setClipSpeedCurve(curved, 'c1', null))
-    expect(after.speedCurve).toBeUndefined()
-    expect(after.duration).toBeCloseTo(before.duration, 9)
-    expect(clipSourceSpan(after)).toBeCloseTo(6, 6)
+  it('removing the curve restores the clip to its length and speed before it', () => {
+    const state = stateWith(clip('c1', 0, 6), clip('c2', 6, 4))
+    const curved = setClipSpeedCurve(state, 'c1', speedCurveForPreset('bullet'))
+    expect(clipsOf(curved)[0].duration).toBeGreaterThan(6)
+
+    const after = clipsOf(setClipSpeedCurve(curved, 'c1', null))
+    expect(after[0].speedCurve).toBeUndefined()
+    expect(after[0].speed).toBe(1)
+    expect(after[0].duration).toBeCloseTo(6, 9)
+    // The clip after it follows back to where it was.
+    expect(after[1].startTime).toBeCloseTo(6, 9)
+  })
+
+  it('returns to the earlier constant speed, not to 1x, however often the curve is changed', () => {
+    const sped = clip('c1', 0, 3, { speed: 2 } as Partial<TimelineClip>) // 6s of footage at 2x
+    let state = setClipSpeedCurve(stateWith(sped), 'c1', speedCurveForPreset('hero'))
+    state = setClipSpeedCurve(state, 'c1', speedCurveForPreset('bullet'))
+    state = setClipSpeedCurve(state, 'c1', speedCurveForPreset('jump-cut'))
+    const [back] = clipsOf(setClipSpeedCurve(state, 'c1', null))
+    expect(back.speed).toBe(2)
+    expect(back.duration).toBeCloseTo(3, 9)
+  })
+
+  it('restores the linked audio clip too', () => {
+    const video = clip('v', 0, 6, { linkedClipIds: ['a'] })
+    const audio = clip('a', 0, 6, { type: 'audio', trackIndex: 1, linkedClipIds: ['v'] } as Partial<TimelineClip>)
+    const curved = setClipSpeedCurve(stateWith(video, audio), 'v', speedCurveForPreset('bullet'))
+    const [v, a] = clipsOf(setClipSpeedCurve(curved, 'v', null))
+    expect(v.duration).toBeCloseTo(6, 9)
+    expect(a.duration).toBeCloseTo(6, 9)
+  })
+
+  it('a cut keeps the way back: both halves return to the original speed', () => {
+    const curved = setClipSpeedCurve(stateWith(clip('c1', 0, 6)), 'c1', speedCurveForPreset('bullet'))
+    const cut = clipsOf(curved)[0].duration * 0.5
+    const halves = clipsOf(splitClipsAtTime(curved, ['c1'], cut))
+    expect(halves.every(h => h.speedCurve?.baseSpeed === 1)).toBe(true)
   })
 
   it('a constant speed from the Standard tab replaces the curve', () => {

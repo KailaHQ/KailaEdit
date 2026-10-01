@@ -473,6 +473,12 @@ export type SpeedCurvePoint = z.infer<typeof speedCurvePointSchema>
 export const speedCurveSchema = z.object({
   preset: z.enum(speedCurvePresetValues).default('custom'),
   points: z.array(speedCurvePointSchema).min(2),
+  /**
+   * The constant speed the clip had before the curve was applied. Turning the
+   * curve off returns to it, and with it the clip's original length. Absent
+   * on curves with no earlier speed to return to (converted from old keyframes).
+   */
+  baseSpeed: z.number().positive().optional(),
   /** Reserved for frame blending / optical flow on export. Not used yet. */
   smoothSlowMo: z.enum(['off', 'blend', 'optical-flow']).optional(),
 })
