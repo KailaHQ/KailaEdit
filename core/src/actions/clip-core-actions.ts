@@ -1,4 +1,5 @@
 import type {
+  SpeedCurve,
   TimelineClip,
 } from '../project-model'
 import {
@@ -23,7 +24,15 @@ import {
   pruneEmptyTracks,
   liftCollidingClipsToNewTracks,
 } from '../video-editor-utils'
-import { clampClipSpeed, mediaSecondsForTimelineSeconds } from '../clip-speed'
+import { clampClipSpeed } from '../clip-speed'
+import {
+  clipHasSpeedCurve,
+  clipSourceSpan,
+  curveMeanSpeed,
+  durationForSpeedCurve,
+  normalizeSpeedCurve,
+  splitClipTimingAt,
+} from '../speed-curve'
 import { makeId } from '../id-generator'
 import type {
   InsertAssetsToTimelineParams,
@@ -329,17 +338,16 @@ export function splitClipsAtTime(state: EditorState, clipIds: string[], time: nu
         .map(linkedId => newClips.find(candidate => candidate.id === linkedId))
         .filter((linkedClip): linkedClip is TimelineClip => linkedClip != null)
 
+      const [firstTiming, secondTiming] = splitClipTimingAt(clip, splitPoint)
       const firstHalf: TimelineClip = {
         ...clip,
-        duration: splitPoint,
-        trimEnd: clip.trimEnd + mediaSecondsForTimelineSeconds(clip.duration - splitPoint, clip.speed),
+        ...firstTiming,
       }
       const secondHalf: TimelineClip = {
         ...clip,
+        ...secondTiming,
         id: secondHalfId,
         startTime: clip.startTime + splitPoint,
-        duration: clip.duration - splitPoint,
-        trimStart: clip.trimStart + mediaSecondsForTimelineSeconds(splitPoint, clip.speed),
       }
 
       newClips = newClips.map(candidate => candidate.id === splitId ? firstHalf : candidate).concat(secondHalf)
@@ -360,18 +368,17 @@ export function splitClipsAtTime(state: EditorState, clipIds: string[], time: nu
         firstHalfLinkedIds.push(linkedClip.id)
         secondHalfLinkedIds.push(linkedSecondId)
 
+        const [linkedFirstTiming, linkedSecondTiming] = splitClipTimingAt(linkedClip, linkedSplitPoint)
         const linkedFirstHalf: TimelineClip = {
           ...linkedClip,
-          duration: linkedSplitPoint,
-          trimEnd: linkedClip.trimEnd + mediaSecondsForTimelineSeconds(linkedClip.duration - linkedSplitPoint, linkedClip.speed),
+          ...linkedFirstTiming,
           linkedClipIds: [firstHalfId],
         }
         const linkedSecondHalf: TimelineClip = {
           ...linkedClip,
+          ...linkedSecondTiming,
           id: linkedSecondId,
           startTime: linkedClip.startTime + linkedSplitPoint,
-          duration: linkedClip.duration - linkedSplitPoint,
-          trimStart: linkedClip.trimStart + mediaSecondsForTimelineSeconds(linkedSplitPoint, linkedClip.speed),
           linkedClipIds: [secondHalfId],
         }
 
@@ -549,6 +556,7 @@ export function setClipSpeed(
       return {
         ...clip,
         speed: safeSpeed,
+        speedCurve: undefined,
         ...(safeDuration !== undefined ? { duration: safeDuration } : {}),
       }
     }
@@ -556,6 +564,7 @@ export function setClipSpeed(
       return {
         ...clip,
         speed: safeSpeed,
+        speedCurve: undefined,
         ...(durationRatio !== undefined ? { duration: Math.max(0.1, clip.duration * durationRatio) } : {}),
       }
     }
@@ -567,6 +576,55 @@ export function setClipSpeed(
     clips: packMainVideoTrack(
       timeline.tracks,
       timeline.clips.map(patchTarget),
+      timeline.transitions,
+    ),
+  }))
+}
+
+/**
+ * Gives a clip a speed curve, or takes it away (`curve` null).
+ *
+ * The clip keeps playing the same stretch of source — the curve only decides
+ * how fast it moves through it — so the duration follows from the curve and
+ * the magnetic track is re-packed around the new length, as `setClipSpeed`
+ * does. `speed` is set to the curve's mean rate, which keeps every conversion
+ * that uses `duration × speed` reading the right amount of source. Removing
+ * the curve leaves the clip at that mean rate with its duration unchanged.
+ *
+ * Linked clips (the audio of a video) get the same curve so they stay in sync.
+ */
+export function setClipSpeedCurve(
+  state: EditorState,
+  clipId: string,
+  curve: SpeedCurve | null,
+): EditorState {
+  const targetClip = selectClipById(state, clipId)
+  if (!targetClip) return state
+  if (targetClip.type !== 'video' && targetClip.type !== 'audio') return state
+
+  const normalized = curve ? normalizeSpeedCurve(curve) : null
+  if (curve && !normalized) return state
+  const linkedIds = new Set(targetClip.linkedClipIds || [])
+
+  const retime = (clip: TimelineClip): TimelineClip => {
+    if (!normalized) {
+      if (!clipHasSpeedCurve(clip)) return clip
+      return { ...clip, speedCurve: undefined }
+    }
+    const span = clipSourceSpan(clip)
+    return {
+      ...clip,
+      speedCurve: normalized,
+      speed: curveMeanSpeed(normalized),
+      duration: Math.max(0.1, durationForSpeedCurve(span, normalized)),
+    }
+  }
+
+  return replaceActiveTimeline(state, timeline => ({
+    ...timeline,
+    clips: packMainVideoTrack(
+      timeline.tracks,
+      timeline.clips.map(clip => (clip.id === clipId || linkedIds.has(clip.id) ? retime(clip) : clip)),
       timeline.transitions,
     ),
   }))
@@ -614,6 +672,7 @@ export function setClipsSpeed(
           return {
             ...clip,
             speed: safeSpeed,
+            speedCurve: undefined,
             ...(durationFor ? { duration: Math.max(0.1, durationFor(clip)) } : {}),
           }
         }
@@ -627,6 +686,7 @@ export function setClipsSpeed(
           return {
             ...clip,
             speed: safeSpeed,
+            speedCurve: undefined,
             ...(ratio !== undefined ? { duration: Math.max(0.1, clip.duration * ratio) } : {}),
           }
         }

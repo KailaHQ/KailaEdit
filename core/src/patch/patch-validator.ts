@@ -129,6 +129,27 @@ export function validateEditPatch(state: EditorState, rawPatch: unknown): PatchV
         }
       }
     }
+    if ((op.op === 'set_keyframe' || op.op === 'set_keyframes') && op.property === 'speed') {
+      return {
+        valid: false,
+        error: `Operation #${i + 1} (${op.op}): Speed is no longer keyframed. Use set_speed_curve with a preset or curve points instead`,
+      }
+    }
+    if (op.op === 'set_speed_curve') {
+      const clip = clipMap.get(op.clipId)
+      if (!clip) {
+        return { valid: false, error: `Operation #${i + 1} (set_speed_curve): Clip "${op.clipId}" does not exist` }
+      }
+      if (clip.type !== 'video' && clip.type !== 'audio') {
+        return {
+          valid: false,
+          error: `Operation #${i + 1} (set_speed_curve): Clip "${op.clipId}" is a ${clip.type} clip; only video and audio clips have a speed curve`,
+        }
+      }
+      if (!op.points && !op.preset) {
+        return { valid: false, error: `Operation #${i + 1} (set_speed_curve): Give a preset or curve points` }
+      }
+    }
     if (op.op === 'set_keyframe' || op.op === 'remove_keyframe') {
       const clip = clipMap.get(op.clipId)
       if (clip && op.t > clip.duration + 0.05) {

@@ -1,4 +1,5 @@
 import React from 'react'
+import { clipSourceTimeAt } from '@core/speed-curve'
 import {
   Clipboard, Copy, Scissors, Trash2, Layers, Type, X,
   Eye, FolderOpen, RotateCcw, Volume2, VolumeX,
@@ -266,7 +267,7 @@ function SingleClipMenu({
     if (splitPoint <= 0.05 || splitPoint >= contextClip.duration - 0.05) return
 
     try {
-      const seekTime = splitPoint * (contextClip.speed || 1) + (contextClip.trimStart || 0)
+      const seekTime = clipSourceTimeAt(contextClip, splitPoint, liveAsset.duration)
       const extractRes = await window.electronAPI?.extractVideoFrame({
         videoPath: liveAsset.path,
         seekTime,

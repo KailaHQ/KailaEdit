@@ -11,9 +11,8 @@ import {
   getKeyframeTrack,
   hasKeyframesForProperty,
   buildKeyframeFfmpegExpression,
-  buildSpeedRampSetptsExpression,
-  computeClipTotalMediaDuration,
 } from '../../core/src/keyframes'
+import { buildSpeedCurveSetptsExpression, clipHasSpeedCurve, clipSourceSpan } from '../../core/src/speed-curve'
 import { ffmpegBlendModeFor } from '../../core/src/blend-modes'
 
 /**
@@ -25,6 +24,36 @@ import { ffmpegBlendModeFor } from '../../core/src/blend-modes'
  */
 function xfadeNameFor(type: string): string {
   return getTransitionDefinition(type)?.xfade ?? 'fade'
+}
+
+/**
+ * The filters that read a clip's source window and lay it out in clip time.
+ *
+ * Input: frames whose PTS start at 0 at the clip's in-point. A constant speed
+ * divides the timestamps; a speed curve maps each one through the same table
+ * the preview uses. Reversal happens before a curve and after a division: the
+ * curve is laid out in playback order, and `reverse` hands frames back with
+ * ascending timestamps, so after it a frame's PTS is how far into the reversed
+ * playback it falls.
+ */
+function retimeChain(clip: ExportClip): string {
+  if (clipHasSpeedCurve(clip)) {
+    return `${clip.reversed ? ',reverse' : ''},setpts='${buildSpeedCurveSetptsExpression(clip)}'`
+  }
+  const speed = typeof clip.speed === 'number' && Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1
+  return `${speed !== 1 ? `,setpts=PTS/${speed.toFixed(6)}` : ''}${clip.reversed ? ',reverse' : ''}`
+}
+
+/**
+ * The same for a baked matte or stroke stream, which holds source frames at the
+ * bake's own rate (1 for every bake made since bakes moved to source rate).
+ */
+function matteRetimeChain(clip: ExportClip, matteRate: number): string {
+  if (clipHasSpeedCurve(clip)) {
+    const bakeSpeed = clip.autoMatte?.bake?.speed && clip.autoMatte.bake.speed > 0 ? clip.autoMatte.bake.speed : 1
+    return `${bakeSpeed !== 1 ? `,setpts=PTS*${bakeSpeed.toFixed(6)}` : ''},setpts='${buildSpeedCurveSetptsExpression(clip)}'`
+  }
+  return matteRate !== 1 ? `,setpts=PTS/${matteRate.toFixed(6)}` : ''
 }
 
 export interface ExportSubtitle {
@@ -352,23 +381,9 @@ export function buildVideoFilterGraph(
         chain = `[${inputIdx}:v]null`
       } else {
         const { seekArg, adjustedTrimStart } = computePreInputSeek(clip.trimStart)
-        const hasSpeedKeyframes = hasKeyframesForProperty(clip as any, 'speed')
-
-        if (hasSpeedKeyframes) {
-          const totalMedia = computeClipTotalMediaDuration(clip as any)
-          const adjustedTrimEnd = adjustedTrimStart + totalMedia
-          inputs.push('-ss', seekArg, '-i', clip.path)
-          const setptsExpr = buildSpeedRampSetptsExpression(clip as any)
-          chain = `[${inputIdx}:v]trim=start=${adjustedTrimStart.toFixed(6)}:end=${adjustedTrimEnd.toFixed(6)},setpts=PTS-STARTPTS,setpts='${setptsExpr}'`
-          if (clip.reversed) chain += ',reverse'
-        } else {
-          const speed = typeof clip.speed === 'number' && Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1
-          const adjustedTrimEnd = adjustedTrimStart + clip.duration * speed
-          inputs.push('-ss', seekArg, '-i', clip.path)
-          chain = `[${inputIdx}:v]trim=start=${adjustedTrimStart.toFixed(6)}:end=${adjustedTrimEnd.toFixed(6)},setpts=PTS-STARTPTS`
-          if (speed !== 1) chain += `,setpts=PTS/${speed.toFixed(6)}`
-          if (clip.reversed) chain += ',reverse'
-        }
+        const adjustedTrimEnd = adjustedTrimStart + clipSourceSpan(clip)
+        inputs.push('-ss', seekArg, '-i', clip.path)
+        chain = `[${inputIdx}:v]trim=start=${adjustedTrimStart.toFixed(6)}:end=${adjustedTrimEnd.toFixed(6)},setpts=PTS-STARTPTS${retimeChain(clip)}`
       }
       inputIdx++
 
@@ -422,8 +437,7 @@ export function buildVideoFilterGraph(
         inputs.push('-i', clip.autoMatte.bake.path)
         const matteInputIdx = inputIdx++
 
-        let matteChain = `[${matteInputIdx}:v]setpts=PTS-STARTPTS`
-        if (matteRate !== 1) matteChain += `,setpts=PTS/${matteRate.toFixed(6)}`
+        let matteChain = `[${matteInputIdx}:v]setpts=PTS-STARTPTS${matteRetimeChain(clip, matteRate)}`
         if (hasScaleKeyframes) {
           const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
           const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')
@@ -491,8 +505,7 @@ export function buildVideoFilterGraph(
         inputs.push('-i', clip.strokeBakePath)
         const strokeInputIdx = inputIdx++
 
-        let strokeChain = `[${strokeInputIdx}:v]setpts=PTS-STARTPTS`
-        if (matteRate !== 1) strokeChain += `,setpts=PTS/${matteRate.toFixed(6)}`
+        let strokeChain = `[${strokeInputIdx}:v]setpts=PTS-STARTPTS${matteRetimeChain(clip, matteRate)}`
         if (hasScaleKeyframes) {
           const scaleTrack = getKeyframeTrack(clip as any, 'transform.scale')
           const scalePercentExpr = buildKeyframeFfmpegExpression(scaleTrack, transform?.scale ?? 100, 't')
@@ -669,12 +682,9 @@ export function buildVideoFilterGraph(
         blurChain = `[${blurInputIdx}:v]`
       } else {
         const { seekArg, adjustedTrimStart } = computePreInputSeek(primaryClip.trimStart)
-        const speed = typeof primaryClip.speed === 'number' && Number.isFinite(primaryClip.speed) && primaryClip.speed > 0 ? primaryClip.speed : 1
-        const adjustedTrimEnd = adjustedTrimStart + primaryClip.duration * speed
+        const adjustedTrimEnd = adjustedTrimStart + clipSourceSpan(primaryClip)
         inputs.push('-ss', seekArg, '-i', primaryClip.path)
-        blurChain = `[${blurInputIdx}:v]trim=start=${adjustedTrimStart.toFixed(6)}:end=${adjustedTrimEnd.toFixed(6)},setpts=PTS-STARTPTS`
-        if (speed !== 1) blurChain += `,setpts=PTS/${speed.toFixed(6)}`
-        if (primaryClip.reversed) blurChain += ',reverse'
+        blurChain = `[${blurInputIdx}:v]trim=start=${adjustedTrimStart.toFixed(6)}:end=${adjustedTrimEnd.toFixed(6)},setpts=PTS-STARTPTS${retimeChain(primaryClip)}`
       }
 
       const blurRawLabel = `b_raw_${runIdx}`

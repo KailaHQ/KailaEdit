@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   keyframeTrackSchema,
+  speedCurveSchema,
   clipMaskSchema,
   chromaKeySchema,
   autoMatteSchema,
@@ -76,6 +77,7 @@ export const exportClip = z.object({
   duration: z.number(),
   trimStart: z.number(),
   speed: z.number(),
+  speedCurve: speedCurveSchema.optional(),
   reversed: z.boolean(),
   flipH: z.boolean(),
   flipV: z.boolean(),

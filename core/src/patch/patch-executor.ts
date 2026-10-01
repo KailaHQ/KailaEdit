@@ -17,6 +17,7 @@ import {
   removeClipFilter,
   addFilterClip,
   detachAudio,
+  setClipSpeedCurve,
   setKeyframe,
   setKeyframePoints,
   removeKeyframeAt,
@@ -54,6 +55,7 @@ import {
   setTimelineCover,
 } from '../editor-actions'
 import { applySubtitlePreset } from '../text-presets'
+import { speedCurveForPreset } from '../speed-curve'
 import { makeId } from '../id-generator'
 import { DEFAULT_TRANSITION_DURATION } from '../transitions'
 import {
@@ -100,9 +102,14 @@ export function mergeClipPatch(
   const merged: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(effectivePatch)) {
     const existing = clip[key]
-    merged[key] = isPlainObject(value) && isPlainObject(existing)
+    merged[key] = isPlainObject(value) && isPlainObject(existing) && key !== 'speedCurve'
       ? { ...existing, ...value }
       : value
+  }
+  // A constant speed replaces a curve, as it does in the Speed panel; leaving
+  // the curve in place would keep driving the clip and ignore the new speed.
+  if ('speed' in effectivePatch && !('speedCurve' in effectivePatch) && clip.speedCurve) {
+    merged.speedCurve = undefined
   }
   return merged
 }
@@ -375,6 +382,15 @@ export function executePatchOperations(state: EditorState, operations: EditPatch
       }
       case 'detach_audio': {
         current = detachAudio(current, op.clipId)
+        break
+      }
+      case 'set_speed_curve': {
+        const curve = op.points
+          ? { preset: 'custom' as const, points: op.points }
+          : op.preset && op.preset !== 'none'
+            ? speedCurveForPreset(op.preset)
+            : null
+        current = setClipSpeedCurve(current, op.clipId, curve)
         break
       }
       case 'set_keyframe': {

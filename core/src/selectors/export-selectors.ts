@@ -1,6 +1,7 @@
 import type {
   ClipTransform,
   ColorCorrection,
+  SpeedCurve,
   SubtitleStyle,
   Timeline,
   TimelineClip,
@@ -33,6 +34,7 @@ export interface ExportClipData {
   duration: number
   trimStart: number
   speed: number
+  speedCurve?: SpeedCurve
   reversed: boolean
   flipH: boolean
   flipV: boolean
@@ -121,6 +123,7 @@ export function selectExportClipData(state: EditorState): ExportClipData[] {
       duration: clip.duration,
       trimStart: clip.trimStart,
       speed: clip.speed || 1,
+      speedCurve: clip.speedCurve,
       reversed: clip.reversed || false,
       flipH: clip.flipH || false,
       flipV: clip.flipV || false,

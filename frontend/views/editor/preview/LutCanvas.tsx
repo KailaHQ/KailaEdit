@@ -368,6 +368,11 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
     const sourceH = source instanceof HTMLVideoElement ? source.videoHeight : source instanceof HTMLImageElement ? source.naturalHeight : source.displayHeight
     if (!sourceW || !sourceH) return
 
+    // The source element plays at the clip's speed at this instant — which a
+    // speed curve changes every frame — so the matte follows its rate rather
+    // than the clip's mean speed.
+    const liveSpeed = source instanceof HTMLVideoElement && !source.paused ? source.playbackRate : (speed ?? 1)
+
     let currentSourceTime = source instanceof HTMLVideoElement
       ? sourceClockRef.current.get(source) ?? source.currentTime
       : isFrame ? (source as VideoFrame).timestamp / 1_000_000 : 0
@@ -456,8 +461,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
 
         const isVideoSource = isVideo || isFrame
         if (isVideoSource) {
-          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, speed)) {
-            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, speed)
+          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, liveSpeed)) {
+            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, liveSpeed)
           }
           if (seekDrift > 0.03) {
             if (!bakeVideo.seeking) {
@@ -572,8 +577,8 @@ export const LutCanvas = React.forwardRef<LutCanvasRef, LutCanvasProps>(function
 
         const isVideoSource = isVideo || isFrame
         if (isVideoSource) {
-          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, speed)) {
-            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, speed)
+          if (bakeVideo.playbackRate !== autoMattePlaybackRate(autoMatte.bake, liveSpeed)) {
+            bakeVideo.playbackRate = autoMattePlaybackRate(autoMatte.bake, liveSpeed)
           }
           if (sync.seek) {
             if (!bakeVideo.seeking) {

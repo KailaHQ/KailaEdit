@@ -49,6 +49,7 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
   let setFilterCount = 0
   let removeFilterCount = 0
   let detachAudioCount = 0
+  const speedCurveDescriptions: string[] = []
   const keyframeDescriptions: string[] = []
   let removeKeyframeCount = 0
   let clearKeyframeCount = 0
@@ -152,6 +153,14 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
       removeFilterCount++
     } else if (op.op === 'detach_audio') {
       detachAudioCount++
+    } else if (op.op === 'set_speed_curve') {
+      speedCurveDescriptions.push(
+        op.points
+          ? `set a ${op.points.length}-point speed curve`
+          : op.preset === 'none' || !op.preset
+            ? 'remove the speed curve'
+            : `apply the ${op.preset} speed curve`,
+      )
     } else if (op.op === 'set_keyframe') {
       keyframeDescriptions.push(`set keyframe for ${op.property} at ${op.t.toFixed(1)}s`)
     } else if (op.op === 'set_keyframes') {
@@ -410,6 +419,7 @@ export function describePatch(state: EditorState, patch: EditPatch): string {
   if (removeFilterCount > 0) {
     parts.push(`remove ${removeFilterCount} filters`)
   }
+  parts.push(...speedCurveDescriptions)
   if (detachAudioCount > 0) {
     parts.push(`detach audio from ${detachAudioCount} clips`)
   }

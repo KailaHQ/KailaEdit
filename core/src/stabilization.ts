@@ -1,5 +1,6 @@
 import { fastHash64 } from './render-cache'
 import { clampClipSpeed } from './clip-speed'
+import { clipTimeAtSourceOffset } from './speed-curve'
 import type {
   Asset,
   ClipStabilization,
@@ -290,7 +291,7 @@ export function isStabilizationPending(
 
 /** Where a SOURCE second lands on the timeline, or null when the clip does not show it. */
 export function timelineTimeForSourceTime(
-  clip: Pick<TimelineClip, 'startTime' | 'trimStart' | 'trimEnd' | 'duration' | 'speed' | 'reversed'>,
+  clip: Pick<TimelineClip, 'startTime' | 'trimStart' | 'trimEnd' | 'duration' | 'speed' | 'speedCurve' | 'reversed'>,
   sourceTime: number,
   mediaDuration?: number,
 ): number | null {
@@ -298,7 +299,7 @@ export function timelineTimeForSourceTime(
   const sourceEnd = range.sourceStart + range.sourceSpan
   if (sourceTime < range.sourceStart - RANGE_EPSILON || sourceTime > sourceEnd + RANGE_EPSILON) return null
   const offset = clip.reversed ? sourceEnd - sourceTime : sourceTime - range.sourceStart
-  return Number((clip.startTime + offset / clampClipSpeed(clip.speed ?? 1)).toFixed(3))
+  return Number((clip.startTime + clipTimeAtSourceOffset(clip, offset)).toFixed(3))
 }
 
 /**

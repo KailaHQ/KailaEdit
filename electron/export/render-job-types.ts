@@ -1,3 +1,4 @@
+import { clipHasSpeedCurve, sliceClipTiming } from '../../core/src/speed-curve'
 import type { FfmpegProcessHandle } from './ffmpeg-utils'
 import type { ExportMarkerParam } from './chapter-utils'
 
@@ -94,11 +95,33 @@ export function sliceClipsForPreview(
     if (trimmedDuration <= 0) continue
 
     const newStartTime = Math.max(0, overlapStart - startTime)
+    const clipPath = clip.path || clip.asset?.path || ''
+
+    // Only clips with a speed curve are re-cut through the curve, so the
+    // window plays the frames it plays in the full timeline. Other clips keep
+    // the long-standing timeline-second offset.
+    if (clip.speedCurve && clipHasSpeedCurve(clip)) {
+      const slice = sliceClipTiming(
+        { ...clip, trimStart: typeof clip.trimStart === 'number' ? clip.trimStart : 0, duration: clipDuration },
+        overlapStart - clipStart,
+        overlapEnd - clipStart,
+      )
+      sliced.push({
+        ...clip,
+        path: clipPath,
+        startTime: newStartTime,
+        duration: slice.duration,
+        trimStart: slice.trimStart,
+        trimEnd: slice.trimStart + slice.sourceSpan,
+        speed: slice.speed,
+        speedCurve: slice.speedCurve,
+      })
+      continue
+    }
+
     const trimDelta = overlapStart - clipStart
     const originalTrimStart = typeof clip.trimStart === 'number' ? clip.trimStart : 0
     const newTrimStart = originalTrimStart + trimDelta
-
-    const clipPath = clip.path || clip.asset?.path || ''
 
     sliced.push({
       ...clip,

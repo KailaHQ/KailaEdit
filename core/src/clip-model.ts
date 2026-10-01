@@ -447,6 +447,37 @@ export const keyframeTrackSchema = z.object({
 
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>
 
+export const speedCurvePresetValues = [
+  'custom',
+  'montage',
+  'hero',
+  'bullet',
+  'jump-cut',
+  'flash-in',
+  'flash-out',
+] as const
+export type SpeedCurvePreset = typeof speedCurvePresetValues[number]
+
+export const speedCurvePointSchema = z.object({
+  /** Position along the source the clip plays, 0..1, in playback order. */
+  x: z.number().min(0).max(1),
+  /** Playback speed at that position, 0.1x..10x. */
+  v: z.number().min(0.1).max(10),
+})
+export type SpeedCurvePoint = z.infer<typeof speedCurvePointSchema>
+
+/**
+ * A speed that changes smoothly along the clip. See core/src/speed-curve.ts.
+ * While a clip has one, its `speed` field holds the curve's mean rate.
+ */
+export const speedCurveSchema = z.object({
+  preset: z.enum(speedCurvePresetValues).default('custom'),
+  points: z.array(speedCurvePointSchema).min(2),
+  /** Reserved for frame blending / optical flow on export. Not used yet. */
+  smoothSlowMo: z.enum(['off', 'blend', 'optical-flow']).optional(),
+})
+export type SpeedCurve = z.infer<typeof speedCurveSchema>
+
 export const shapePropertiesSchema = z.object({
   fillColor: z.string().optional(),
   strokeColor: z.string().optional(),

@@ -14,7 +14,7 @@ import {
 import { makeId } from '../id-generator'
 import { applyTemplate, type TemplateBinding } from '../template-apply'
 import type { KomfyTemplate } from '../template-model'
-import { mediaSecondsForTimelineSeconds } from '../clip-speed'
+import { sliceClipTiming, splitClipTimingAt } from '../speed-curve'
 import type { FreezeFrameParams } from './types'
 import {
   markEditorModelDirty,
@@ -52,10 +52,10 @@ export function freezeFrame(state: EditorState, params: FreezeFrameParams): Edit
   const secondHalfId = makeId('clip')
   const freezeClipId = makeId('clip-freeze')
 
+  const [firstTiming, secondTiming] = splitClipTimingAt(targetClip, splitPoint)
   const firstHalf: TimelineClip = {
     ...targetClip,
-    duration: splitPoint,
-    trimEnd: targetClip.trimEnd + mediaSecondsForTimelineSeconds(targetClip.duration - splitPoint, targetClip.speed),
+    ...firstTiming,
   }
 
   const freezeClip: TimelineClip = {
@@ -85,9 +85,8 @@ export function freezeFrame(state: EditorState, params: FreezeFrameParams): Edit
   const secondHalf: TimelineClip = {
     ...targetClip,
     id: secondHalfId,
+    ...secondTiming,
     startTime: targetClip.startTime + splitPoint + freezeDuration,
-    duration: targetClip.duration - splitPoint,
-    trimStart: targetClip.trimStart + mediaSecondsForTimelineSeconds(splitPoint, targetClip.speed),
   }
 
   const rippleDelta = freezeDuration
@@ -167,7 +166,8 @@ export function createHighlightShort(
   if (!timeline || !sourceClip) return state
 
   const clipStart = sourceClip.startTime
-  const trimStart = sourceClip.trimStart + mediaSecondsForTimelineSeconds(params.startTime - clipStart, sourceClip.speed)
+  const slice = sliceClipTiming(sourceClip, params.startTime - clipStart, params.endTime - clipStart)
+  const trimStart = slice.trimStart
   const duration = params.endTime - params.startTime
   const dims = params.targetDimensions || { width: 1080, height: 1920 }
 
@@ -184,6 +184,8 @@ export function createHighlightShort(
     duration,
     trimStart,
     trimEnd: sourceClip.trimEnd,
+    speed: slice.speed,
+    speedCurve: slice.speedCurve,
     trackIndex: 0,
   }
 

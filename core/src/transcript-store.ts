@@ -1,3 +1,4 @@
+import { clipSourceSpan, clipTimeAtSourceOffset } from './speed-curve'
 import type { SubtitleClip, TimelineClip } from './project-model'
 
 /* ────────────────────────────────────────────────────────────────
@@ -95,14 +96,15 @@ export function toTranscriptSegments(
  */
 export function transcriptCuesForClip(
   transcript: AssetTranscript | undefined,
-  clip: Pick<TimelineClip, 'startTime' | 'duration' | 'trimStart' | 'speed'>,
+  clip: Pick<TimelineClip, 'startTime' | 'duration' | 'trimStart' | 'speed' | 'speedCurve'>,
 ): Array<{ startTime: number; endTime: number; text: string }> {
   if (!transcript) return []
 
-  const speed = clip.speed || 1
+  // A speed curve stretches some words and races through others, so the map
+  // from recording to timeline goes through the curve, not a single factor.
   const windowStart = clip.trimStart
-  const windowEnd = clip.trimStart + clip.duration * speed
-  const toTimeline = (mediaSec: number) => clip.startTime + (mediaSec - windowStart) / speed
+  const windowEnd = clip.trimStart + clipSourceSpan(clip)
+  const toTimeline = (mediaSec: number) => clip.startTime + clipTimeAtSourceOffset(clip, mediaSec - windowStart)
 
   return transcript.segments
     .filter(segment => segment.end > windowStart && segment.start < windowEnd)

@@ -1,6 +1,6 @@
 import React from 'react'
 import type { TimelineClip } from '../../../types/project-model'
-import { hasKeyframesForProperty, sampleClipAt } from '@core/keyframes'
+import { clipSpeedAtTime } from '@core/speed-curve'
 import { playbackDriveModeForSpeed } from '@core/clip-speed'
 import {
   type MonitorRenderMode,
@@ -111,9 +111,7 @@ export function useVideoPoolManager(
 
     const targetTime = getClipTargetTime(clip, video.duration, atTime)
 
-    const currentSpeed = hasKeyframesForProperty(clip, 'speed')
-      ? sampleClipAt(clip, Math.max(0, atTime - clip.startTime)).speed
-      : (clip.speed ?? 1)
+    const currentSpeed = clipSpeedAtTime(clip, Math.max(0, atTime - clip.startTime))
 
     // Past the element's rate ceiling there is no playing in real time, so the
     // clip is stepped by seeking instead. Letting it play on regardless left it

@@ -682,42 +682,53 @@ describe('S2-2: Edit Patch Format, Validation, Description, and Application', ()
       expect(clipInitialState?.keyframes).toBeUndefined()
     })
 
-    it('validates and applies speed ramp keyframes', () => {
+    it('refuses speed keyframes and points at set_speed_curve instead', () => {
       const state = makeTestState(10)
-      const clipId = 'clip-1'
-
       const speedRampPatch: EditPatch = {
         version: 1,
         operations: [
           {
             op: 'set_keyframes',
-            clipId,
+            clipId: 'clip-1',
             property: 'speed',
             points: [
               { t: 0, value: 1, easing: 'linear' },
               { t: 3, value: 0.25, easing: 'ease-in-out' },
-              { t: 7, value: 0.25, easing: 'ease-in-out' },
-              { t: 10, value: 1, easing: 'linear' },
             ],
           },
         ],
       }
 
       const validRes = validateEditPatch(state, speedRampPatch)
-      expect(validRes.valid).toBe(true)
+      expect(validRes.valid).toBe(false)
+      if (!validRes.valid) expect(validRes.error).toContain('set_speed_curve')
+    })
 
-      const desc = describePatch(state, speedRampPatch)
-      expect(desc).toContain('speed')
+    it('validates and applies a speed curve', () => {
+      const state = makeTestState(10)
+      const clipId = 'clip-1'
+      const patch: EditPatch = {
+        version: 1,
+        operations: [{ op: 'set_speed_curve', clipId, preset: 'bullet' }],
+      }
 
-      const applied = applyPatch(state, speedRampPatch)
+      expect(validateEditPatch(state, patch).valid).toBe(true)
+      expect(describePatch(state, patch)).toContain('bullet speed curve')
+
+      const applied = applyPatch(state, patch)
       expect(applied.success).toBe(true)
       if (!applied.success) throw new Error(applied.error)
+      const clip = selectClips(applied.state).find(c => c.id === clipId)!
+      expect(clip.speedCurve?.preset).toBe('bullet')
+      const before = selectClips(state).find(c => c.id === clipId)!
+      expect(clip.duration).toBeGreaterThan(before.duration)
 
-      const clip = selectClips(applied.state).find(c => c.id === clipId)
-      const speedTrack = clip?.keyframes?.find(k => k.property === 'speed')
-      expect(speedTrack).toBeDefined()
-      expect(speedTrack?.points).toHaveLength(4)
-      expect(speedTrack?.points[1].value).toBe(0.25)
+      const removed = applyPatch(applied.state, {
+        version: 1,
+        operations: [{ op: 'set_speed_curve', clipId, preset: 'none' }],
+      })
+      if (!removed.success) throw new Error(removed.error)
+      expect(selectClips(removed.state).find(c => c.id === clipId)?.speedCurve).toBeUndefined()
     })
   })
 

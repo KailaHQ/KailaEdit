@@ -109,6 +109,7 @@ export async function handleReadTool(
               duration: c.duration,
               end: c.startTime + c.duration,
               speed: c.speed,
+              ...(c.speedCurve ? { speedCurve: { preset: c.speedCurve.preset, points: c.speedCurve.points } } : {}),
               volume: c.volume,
               muted: c.muted,
               ...(c.linkedClipIds?.length ? { linkedClipIds: c.linkedClipIds } : {}),

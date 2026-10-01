@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { playbackDriveModeForSpeed } from '@core/clip-speed'
+import { clipHasSpeedCurve, clipSourceTimeAt, clipSpeedAtTime } from '@core/speed-curve'
 import type { TimelineClip } from '../../types/project-model'
 import { sampleClipAt, hasKeyframesForProperty } from '@core/keyframes'
 import { pathToFileUrl } from '../../lib/file-url'
@@ -164,17 +165,20 @@ export function usePlaybackAudioSync(params: UsePlaybackAudioSyncParams) {
 
         const computeTarget = (audioEl: AudioEl, time: number): number => {
           const assetDur = audioEl.duration || clip.duration
-          const timeInClip = time - clip.startTime
-          return clip.reversed
-            ? Math.max(0, assetDur - clip.trimEnd - timeInClip * clip.speed)
-            : Math.max(0, clip.trimStart + timeInClip * clip.speed)
+          return clipSourceTimeAt(clip, time - clip.startTime, assetDur)
         }
+
+        // A speed curve changes the rate every frame; the element follows it
+        // and, like tape, its pitch follows the speed. That is what the export
+        // renders, so the preview has to sound the same.
+        const hasCurve = clipHasSpeedCurve(clip)
+        const instantSpeed = clipSpeedAtTime(clip, Math.max(0, atTime - clip.startTime))
+        el.preservesPitch = !hasCurve
 
         // Above the element's rate ceiling there is no usable audio: the
         // element cannot play that fast, so it would drift behind the picture
-        // and play the wrong moment. Silence is the honest answer, and it
-        // matches what a speed ramp already does.
-        const drive = playbackDriveModeForSpeed(clip.speed)
+        // and play the wrong moment. Silence is the honest answer.
+        const drive = playbackDriveModeForSpeed(instantSpeed)
         const desiredRate = clip.reversed || drive.seekDriven ? 1 : drive.rate
 
         if (el.readyState >= 2) {
@@ -190,9 +194,8 @@ export function usePlaybackAudioSync(params: UsePlaybackAudioSyncParams) {
 
           const track = currentTracks[clip.trackIndex]
           const isSoloMuted = anySoloed && !track?.solo
-          const hasSpeedRamp = hasKeyframesForProperty(clip, 'speed')
-          const isHighSpeedAudio = (clip.speed ?? 1) > 4 || (clip.speed ?? 1) < 0.25
-          el.muted = clip.muted || track?.muted || isSoloMuted || hasSpeedRamp || isHighSpeedAudio || false
+          const isHighSpeedAudio = instantSpeed > 4 || instantSpeed < 0.25
+          el.muted = clip.muted || track?.muted || isSoloMuted || isHighSpeedAudio || false
           const timeInClip = Math.max(0, atTime - clip.startTime)
           const effectiveVolume = hasKeyframesForProperty(clip, 'volume')
             ? sampleClipAt(clip, timeInClip).volume
@@ -356,9 +359,7 @@ export function usePlaybackAudioSync(params: UsePlaybackAudioSyncParams) {
         continue
       }
 
-      const targetTime = clip.reversed
-        ? Math.max(0, assetDuration - clip.trimEnd - timeInClip * clip.speed)
-        : Math.max(0, clip.trimStart + timeInClip * clip.speed)
+      const targetTime = clipSourceTimeAt(clip, timeInClip, assetDuration)
 
       if (Math.abs(el.currentTime - targetTime) > 0.05) {
         el.currentTime = targetTime

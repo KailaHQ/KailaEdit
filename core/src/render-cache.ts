@@ -234,6 +234,7 @@ export function computeSegmentContentHash(
       trimStart: c.trimStart,
       trimEnd: c.trimEnd,
       speed: c.speed,
+      speedCurve: c.speedCurve,
       reversed: c.reversed,
       opacity: c.opacity,
       transform: c.transform,

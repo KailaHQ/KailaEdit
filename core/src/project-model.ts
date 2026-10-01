@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { makeId } from './id-generator'
+import { migrateLegacySpeedKeyframes } from './speed-curve-legacy'
 
 export * from './clip-model'
 import {
@@ -20,6 +21,7 @@ import {
   clipStrokeSchema,
   clipBlendModeSchema,
   shapePropertiesSchema,
+  speedCurveSchema,
 } from './clip-model'
 
 export const assetTypeValues = ['image', 'video', 'audio', 'adjustment'] as const
@@ -213,6 +215,8 @@ const baseTimelineClipSchema = z.object({
   trimStart: z.number(),
   trimEnd: z.number(),
   speed: z.number().default(1),
+  /** When set, the clip's speed follows this curve and `speed` is its mean rate. */
+  speedCurve: speedCurveSchema.optional(),
   reversed: z.boolean().default(false),
   muted: z.boolean().default(false),
   /** Linear gain, not a percentage. 1 is unity; values above it boost the clip. */
@@ -262,7 +266,8 @@ const baseTimelineClipSchema = z.object({
 
 
 
-export const timelineClipSchema = z.preprocess((val: any) => {
+export const timelineClipSchema = z.preprocess((input: any) => {
+  const val = migrateLegacySpeedKeyframes(input)
   if (val && typeof val === 'object' && Array.isArray(val.effects)) {
     const legacyLut = val.effects.find((fx: any) => typeof fx?.type === 'string' && fx.type.startsWith('lut-') && fx.enabled)
     let filter = val.filter

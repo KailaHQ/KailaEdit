@@ -3,6 +3,7 @@ import type { EditorState } from '../editor-state'
 import { komfyTemplateSchema } from '../template-model'
 import {
   keyframePropertySchema,
+  speedCurvePresetValues,
   keyframeEasingSchema,
   timelineBackgroundSchema,
   timelineCoverSchema,
@@ -180,6 +181,17 @@ export const editPatchOperationSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('detach_audio'),
     clipId: z.string().min(1, 'clipId is required'),
+  }),
+  z.object({
+    op: z.literal('set_speed_curve'),
+    clipId: z.string().min(1, 'clipId is required'),
+    /** A built-in curve, or 'none' to go back to a constant speed. Ignored when `points` is given. */
+    preset: z.enum(['none', ...speedCurvePresetValues]).optional(),
+    /** Custom curve: x is 0..1 along the source the clip plays, v the speed (0.1..10). */
+    points: z.array(z.object({
+      x: z.number().min(0).max(1),
+      v: z.number().min(0.1).max(10),
+    })).min(2, 'points must contain at least 2 curve points').optional(),
   }),
   z.object({
     op: z.literal('set_keyframe'),

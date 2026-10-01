@@ -1,6 +1,7 @@
 import type * as React from 'react'
 import type { Asset, TimelineClip, TimelineTransition, Track, SubtitleClip, ChromaKey } from '../../../types/project-model'
-import { sampleClipAt, hasKeyframesForProperty, computeMediaTimeFromTimelineTime } from '@core/keyframes'
+import { sampleClipAt } from '@core/keyframes'
+import { clipHasSpeedCurve, clipSourceTimeAt } from '@core/speed-curve'
 import { stabilizedClipPath } from '@core/stabilization'
 import { getClipEffectStyles, resolveEffectiveClipFilter } from '../video-editor-utils'
 import { pathToFileUrl } from '../../../lib/file-url'
@@ -179,11 +180,8 @@ export function getClipTargetTime(clip: TimelineClip, mediaDuration: number, atT
   const timeInClip = atTime - clip.startTime
   const usableMediaDuration = mediaDuration - clip.trimStart - clip.trimEnd
 
-  if (hasKeyframesForProperty(clip, 'speed')) {
-    const elapsedMedia = computeMediaTimeFromTimelineTime(clip, timeInClip)
-    return clip.reversed
-      ? Math.max(0, Math.min(mediaDuration, clip.trimStart + usableMediaDuration - elapsedMedia))
-      : Math.max(0, Math.min(mediaDuration, clip.trimStart + elapsedMedia))
+  if (clipHasSpeedCurve(clip)) {
+    return Math.max(0, Math.min(mediaDuration, clipSourceTimeAt(clip, timeInClip, mediaDuration)))
   }
 
   return clip.reversed
@@ -623,6 +621,7 @@ export function sameClipVisualProperties(a: TimelineClip | null, b: TimelineClip
     a.trimStart === b.trimStart &&
     a.trimEnd === b.trimEnd &&
     a.speed === b.speed &&
+    a.speedCurve === b.speedCurve &&
     a.reversed === b.reversed &&
     a.opacity === b.opacity &&
     a.autoMatte?.enabled === b.autoMatte?.enabled &&

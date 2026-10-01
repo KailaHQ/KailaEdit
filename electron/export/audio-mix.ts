@@ -10,8 +10,11 @@ import {
   getKeyframeTrack,
   hasKeyframesForProperty,
   buildKeyframeFfmpegExpression,
+  sampleKeyframeTrack,
 } from '../../core/src/keyframes'
 import type { KeyframeTrack } from '../../core/src/project-model'
+import { clipHasSpeedCurve, clipSourceSpan } from '../../core/src/speed-curve'
+import { renderVarispeed, type VarispeedClip } from '../../core/src/varispeed'
 
 const SAMPLE_RATE = 48000
 const NUM_CHANNELS = 2
@@ -86,6 +89,34 @@ interface AudioSource {
   timelineStart: number; speed: number; reversed: boolean; volume: number;
   channels: number;
   volumeTrack?: KeyframeTrack;
+  /** Set when the clip has a speed curve: its audio is resampled through it. */
+  varispeed?: VarispeedClip;
+}
+
+/**
+ * Mixes a clip with a speed curve: its source window read at 1x, resampled
+ * through the curve (pitch follows speed), then its gain applied on the
+ * timeline clock — volume keyframes are keyed to timeline time, so they must
+ * be sampled after the resample, not by ffmpeg before it.
+ */
+function mixVarispeedSource(src: AudioSource, clip: VarispeedClip, pcm: Buffer, mixBuffer: Float64Array): void {
+  // An Int16Array view needs an even byte offset; a pooled Buffer may not have one.
+  const aligned = pcm.byteOffset % 2 === 0 ? pcm : Buffer.from(pcm)
+  const samples = new Int16Array(aligned.buffer, aligned.byteOffset, Math.floor(aligned.length / BYTES_PER_SAMPLE))
+  const rendered = renderVarispeed(samples, NUM_CHANNELS, SAMPLE_RATE, clip)
+  const startSample = Math.round(src.timelineStart * SAMPLE_RATE) * NUM_CHANNELS
+  const frames = rendered.length / NUM_CHANNELS
+  for (let f = 0; f < frames; f++) {
+    const gain = src.volumeTrack
+      ? sampleKeyframeTrack(src.volumeTrack, f / SAMPLE_RATE, 1)
+      : src.volume
+    for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+      const destIdx = startSample + f * NUM_CHANNELS + ch
+      if (destIdx < 0 || destIdx >= mixBuffer.length) continue
+      mixBuffer[destIdx] += rendered[f * NUM_CHANNELS + ch] * gain
+    }
+  }
+  logger.info(`[Export] Audio varispeed: ${path.basename(src.filePath)} ${frames} frames through a speed curve`)
 }
 
 /**
@@ -122,10 +153,6 @@ export async function mixAudioToPcm(
 
   for (const c of clips) {
     if (c.muted || c.volume <= 0) continue
-    const hasSpeedKeyframes = hasKeyframesForProperty(c as any, 'speed')
-    // When a clip has dynamic speed keyframes, continuously variable atempo is not supported
-    // by ffmpeg without extreme audio distortion/clicks. As specified in KE-804, audio is muted for speed ramps.
-    if (hasSpeedKeyframes) continue
     const fp = c.path
     if (!fp || !fs.existsSync(fp)) continue
     if (c.type !== 'audio' && c.type !== 'video') continue
@@ -141,7 +168,7 @@ export async function mixAudioToPcm(
     // the amount trimmed off the tail, not an out-point, and the export schema
     // does not carry it anyway. Reading it here was dead code that would have
     // produced the wrong window had it ever been populated.
-    const trimEnd = trimStart + c.duration * speed
+    const trimEnd = trimStart + clipSourceSpan(c)
 
     const volumeTrack = getKeyframeTrack(c as any, 'volume')
     const hasVolKeyframes = hasKeyframesForProperty(c as any, 'volume')
@@ -156,6 +183,9 @@ export async function mixAudioToPcm(
       volume,
       channels: info.channels,
       volumeTrack: hasVolKeyframes ? volumeTrack : undefined,
+      varispeed: clipHasSpeedCurve(c)
+        ? { duration: c.duration, speed, speedCurve: c.speedCurve, reversed: Boolean(c.reversed) }
+        : undefined,
     })
   }
 
@@ -171,6 +201,12 @@ export async function mixAudioToPcm(
     const src = audioSources[i]
     logger.info( `[Export] Audio ${i + 1}/${audioSources.length}: ${path.basename(src.filePath)} trim=${src.trimStart.toFixed(2)}-${src.trimEnd.toFixed(2)} @${src.timelineStart.toFixed(2)}s vol=${src.volume}`)
     try {
+      if (src.varispeed) {
+        mixVarispeedSource(src, src.varispeed, await extractPcmBuffer(
+          ffmpegPath, src.filePath, src.trimStart, src.trimEnd, 1, false, src.channels,
+        ), mixBuffer)
+        continue
+      }
       const pcm = await extractPcmBuffer(ffmpegPath, src.filePath, src.trimStart, src.trimEnd, src.speed, src.reversed, src.channels, src.volumeTrack)
       const startFrame = Math.round(src.timelineStart * SAMPLE_RATE)
       const startSample = startFrame * NUM_CHANNELS

@@ -1,5 +1,5 @@
 import type { ExportClipEffect } from './effects-filter'
-import type { KeyframeTrack, ClipMask, ChromaKey, AutoMatte, ClipStroke } from '../../core/src/project-model'
+import type { KeyframeTrack, SpeedCurve, ClipMask, ChromaKey, AutoMatte, ClipStroke } from '../../core/src/project-model'
 import type { ClipBlendMode } from '../../core/src/blend-modes'
 
 export interface ExportClipTransform {
@@ -26,7 +26,7 @@ export interface ExportTextStyle {
 
 export interface ExportClip {
   path: string; type: string; startTime: number; duration: number; trimStart: number;
-  speed: number; reversed: boolean; flipH: boolean; flipV: boolean; opacity: number; trackIndex: number;
+  speed: number; speedCurve?: SpeedCurve; reversed: boolean; flipH: boolean; flipV: boolean; opacity: number; trackIndex: number;
   muted: boolean; volume: number;
   /** Ids of clips this one is A/V-linked to. */
   linkedClipIds?: string[];
