@@ -15,6 +15,7 @@ import { getAudioFadeDurations } from '@core/keyframes'
 import { clipHasSpeedCurve } from '@core/speed-curve'
 import { TimelineKeyframeRow } from './TimelineKeyframeRow'
 import { TextAnimationMarkers } from './TextAnimationMarkers'
+import { SpeedCurveMarkers } from './SpeedCurveMarkers'
 import { TimelineAudioEnvelope } from './TimelineAudioEnvelope'
 import { ClipMatteProgress } from './ClipMatteProgress'
 import { ClipStabilizeProgress } from './ClipStabilizeProgress'
@@ -499,6 +500,9 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
       {Boolean(clip.stabilization?.enabled) && (
         <ClipStabilizeProgress clipId={clip.id} clipWidthPx={clipWidthPx} />
       )}
+
+      {/* A speed curve's points, where their footage falls on the clip */}
+      {clipHasSpeedCurve(clip) && <SpeedCurveMarkers clip={clip} clipWidthPx={clipWidthPx} />}
 
       {/* A text clip's animation is shown as arrows, not as keyframe diamonds */}
       {clip.type === 'text' && (
