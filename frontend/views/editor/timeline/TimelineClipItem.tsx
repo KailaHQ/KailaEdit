@@ -11,7 +11,8 @@ import { pathToFileUrl } from '../../../lib/file-url'
 import { type ToolType, getColorLabel } from '../video-editor-utils'
 import { useEditorActions } from '../editor-store'
 import { getFilterDefinition } from '@core/filters'
-import { getAudioFadeDurations, hasKeyframesForProperty } from '@core/keyframes'
+import { getAudioFadeDurations } from '@core/keyframes'
+import { clipHasSpeedCurve } from '@core/speed-curve'
 import { TimelineKeyframeRow } from './TimelineKeyframeRow'
 import { TextAnimationMarkers } from './TextAnimationMarkers'
 import { TimelineAudioEnvelope } from './TimelineAudioEnvelope'
@@ -403,9 +404,9 @@ export const TimelineClipItem: React.FC<TimelineClipItemProps> = ({
               if (!resInfo) return null
               return <span style={{ color: resInfo.color }} className="font-semibold">{resInfo.displayName}</span>
             })()}
-            {hasKeyframesForProperty(clip, 'speed') ? (
+            {clipHasSpeedCurve(clip) ? (
               <span className="text-amber-400 font-semibold bg-amber-500/20 px-1 py-0.2 rounded border border-amber-500/30">
-                RAMP
+                CURVE
               </span>
             ) : clip.speed !== 1 ? (
               <span className="text-yellow-400">{clip.speed}x</span>

@@ -131,7 +131,8 @@ describe('editing curves', () => {
     expect(moved.points[1].v).toBe(3)
     const end = moveSpeedCurvePoint(curve, 0, 0.5, 4)
     expect(end.points[0].x).toBe(0)
-    expect(end.preset).toBe('custom')
+    // Edited presets keep their name so Reset can return to them.
+    expect(moveSpeedCurvePoint(speedCurveForPreset('bullet'), 2, 0.4, 0.5).preset).toBe('bullet')
   })
 
   it('adds and removes points, never the ends', () => {

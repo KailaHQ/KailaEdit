@@ -1,29 +1,40 @@
-import { clampClipSpeed } from '@core/clip-speed'
+import { useState } from 'react'
+import { clampClipSpeed, formatClipSpeed } from '@core/clip-speed'
+import { clipHasSpeedCurve, speedCurveForPreset } from '@core/speed-curve'
 import { mainVideoTrackIndex } from '@core/video-editor-utils'
 import { SpeedSlider } from '../SpeedSlider'
 import type { TimelineClip } from '../../../types/project-model'
-import { KeyframeDiamondButton } from '../KeyframeDiamondButton'
-import { hasKeyframesForProperty, sampleClipAt } from '@core/keyframes'
-import { selectAssets, selectCurrentTime, selectTracks } from '../editor-selectors'
+import { selectAssets, selectTracks } from '../editor-selectors'
 import { useTranslation } from '../../../i18n/I18nContext'
-import { useEditorActions, useEditorGetState, useEditorStore } from '../editor-store'
+import { useEditorActions, useEditorStore } from '../editor-store'
+import { SpeedCurveEditor, SpeedCurvePresetGrid } from './SpeedCurveEditor'
 
 export interface SpeedPropertiesTabProps {
   selectedClip: TimelineClip
 }
 
+type SpeedSubTab = 'standard' | 'curve'
+
+/**
+ * The Speed tab: a constant speed under Standard, a speed curve under Curve.
+ * A clip uses one or the other — picking a curve replaces the constant speed,
+ * and setting a speed under Standard removes the curve.
+ */
 export function SpeedPropertiesTab({ selectedClip }: SpeedPropertiesTabProps) {
+  // Remount per clip so the sub-tab opens on the mode the clip is in.
+  return <SpeedPropertiesTabInner key={selectedClip.id} selectedClip={selectedClip} />
+}
+
+function SpeedPropertiesTabInner({ selectedClip }: SpeedPropertiesTabProps) {
   const { t } = useTranslation()
-  const {
-    setClipStartTime,
-    setClipSpeed,
-    setKeyframe,
-    clearKeyframes,
-  } = useEditorActions()
-  const getEditorState = useEditorGetState()
+  const { setClipStartTime, setClipSpeed, setClipSpeedCurve } = useEditorActions()
 
   const assets = useEditorStore(selectAssets)
   const tracks = useEditorStore(selectTracks)
+
+  const hasCurve = clipHasSpeedCurve(selectedClip)
+  const [subTab, setSubTab] = useState<SpeedSubTab>(hasCurve ? 'curve' : 'standard')
+  const canCurve = selectedClip.type === 'video' || selectedClip.type === 'audio'
 
   const isOnMagneticTrack = mainVideoTrackIndex(tracks) === selectedClip.trackIndex
 
@@ -41,40 +52,9 @@ export function SpeedPropertiesTab({ selectedClip }: SpeedPropertiesTabProps) {
     return Math.max(0.5, usableMedia / clip.speed)
   }
 
-  const hasSpeedRamp = hasKeyframesForProperty(selectedClip, 'speed')
-  const curTime = selectCurrentTime(getEditorState())
-  const timeInClip = Math.max(0, Math.min(selectedClip.duration, curTime - selectedClip.startTime))
-  const currentSpeed = hasSpeedRamp
-    ? sampleClipAt(selectedClip, timeInClip).speed
-    : selectedClip.speed ?? 1
-
-  const applyRampPreset = (presetType: 'bullet-time' | 'montage-fast-slow' | 'jump-ramp') => {
-    const dur = selectedClip.duration
-    if (presetType === 'bullet-time') {
-      setKeyframe(selectedClip.id, 'speed', 0, 1, 'linear')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.3, 1, 'ease-in-out')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.4, 0.25, 'ease-in-out')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.7, 0.25, 'ease-in-out')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.8, 1, 'ease-in-out')
-      setKeyframe(selectedClip.id, 'speed', dur, 1, 'linear')
-    } else if (presetType === 'montage-fast-slow') {
-      setKeyframe(selectedClip.id, 'speed', 0, 3, 'ease-out')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.4, 1, 'linear')
-      setKeyframe(selectedClip.id, 'speed', dur, 0.5, 'ease-in-out')
-    } else if (presetType === 'jump-ramp') {
-      setKeyframe(selectedClip.id, 'speed', 0, 0.5, 'linear')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.4, 0.5, 'ease-in')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.5, 3, 'ease-out')
-      setKeyframe(selectedClip.id, 'speed', dur * 0.8, 1, 'linear')
-      setKeyframe(selectedClip.id, 'speed', dur, 1, 'linear')
-    }
-  }
+  const currentSpeed = selectedClip.speed ?? 1
 
   const applySpeed = (newSpeed: number, explicitDuration?: number) => {
-    if (hasSpeedRamp && timeInClip >= 0 && timeInClip <= selectedClip.duration) {
-      setKeyframe(selectedClip.id, 'speed', timeInClip, newSpeed)
-      return
-    }
     const oldSpeed = selectedClip.speed ?? 1
     let newDuration =
       explicitDuration !== undefined
@@ -95,134 +75,138 @@ export function SpeedPropertiesTab({ selectedClip }: SpeedPropertiesTabProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Start Time</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            value={selectedClip.startTime.toFixed(2)}
-            onChange={(e) =>
-              setClipStartTime(selectedClip.id, Math.max(0, parseFloat(e.target.value) || 0))
-            }
-            disabled={isOnMagneticTrack}
-            title={
-              isOnMagneticTrack
-                ? 'Clips on the main track are automatically packed'
-                : undefined
-            }
-            min={0}
-            step={0.1}
-            className={`w-28 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs tabular-nums focus:border-blue-500 focus:outline-none ${
-              isOnMagneticTrack ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-          />
-          <span className="text-xs text-zinc-500">s</span>
-        </div>
-      </div>
-
-      {/* Speed Slider */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-zinc-500">Speed</label>
-            <KeyframeDiamondButton
-              clip={selectedClip}
-              property="speed"
-              currentValue={currentSpeed}
-            />
-          </div>
-          <span className="text-xs text-white tabular-nums">{currentSpeed}x</span>
-        </div>
-        <SpeedSlider
-          speed={currentSpeed}
-          onChange={(newSpeed) => applySpeed(newSpeed)}
-        />
-        {/* Speed presets */}
-        <div className="flex gap-1 mt-1.5 flex-wrap">
-          {[0.25, 0.5, 1, 1.5, 2, 4].map((presetSpeed) => (
+    <div className="space-y-4" data-speed-properties>
+      {canCurve && (
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-800/80 bg-[#141416] p-1 select-none" role="tablist">
+          {([
+            ['standard', t('clipProperties.speedCurve.tabStandard')],
+            ['curve', t('clipProperties.speedCurve.tabCurve')],
+          ] as const).map(([id, label]) => (
             <button
-              key={presetSpeed}
-              onClick={() => applySpeed(presetSpeed)}
-              className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
-                Math.abs(currentSpeed - presetSpeed) < 0.01
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={subTab === id}
+              data-speed-subtab={id}
+              onClick={() => setSubTab(id)}
+              className={`flex-1 rounded-md px-2 py-1.5 text-center text-xs font-medium transition-all ${
+                subTab === id
+                  ? 'bg-[#252529] font-semibold text-white shadow-sm'
+                  : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
               }`}
             >
-              {presetSpeed}x
+              {label}
+              {id === 'curve' && hasCurve && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400 align-middle" />}
             </button>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Speed Ramp Presets */}
-      <div className="pt-2 border-t border-zinc-800/80">
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-zinc-400 font-medium">Speed Ramp Presets</label>
-          {hasSpeedRamp && (
-            <button
-              onClick={() => clearKeyframes(selectedClip.id, 'speed')}
-              className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
-            >
-              Reset Ramp
-            </button>
+      {(subTab === 'standard' || !canCurve) && (
+        <>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Start Time</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={selectedClip.startTime.toFixed(2)}
+                onChange={(e) =>
+                  setClipStartTime(selectedClip.id, Math.max(0, parseFloat(e.target.value) || 0))
+                }
+                disabled={isOnMagneticTrack}
+                title={
+                  isOnMagneticTrack
+                    ? 'Clips on the main track are automatically packed'
+                    : undefined
+                }
+                min={0}
+                step={0.1}
+                className={`w-28 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs tabular-nums focus:border-blue-500 focus:outline-none ${
+                  isOnMagneticTrack ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              />
+              <span className="text-xs text-zinc-500">s</span>
+            </div>
+          </div>
+
+          {hasCurve && (
+            <p className="rounded-md border border-amber-500/20 bg-amber-500/10 p-2 text-[11px] text-amber-300" data-speed-curve-replaced-note>
+              {t('clipProperties.speedCurve.standardReplacesCurve')}
+            </p>
           )}
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          <button
-            onClick={() => applyRampPreset('bullet-time')}
-            className="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] border border-zinc-700/60 transition-colors text-center"
-            title="Starts fast, dramatic slow-mo center, exits fast"
-          >
-            Bullet Time
-          </button>
-          <button
-            onClick={() => applyRampPreset('montage-fast-slow')}
-            className="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] border border-zinc-700/60 transition-colors text-center"
-            title="Starts hyper-fast, smoothly resolves into slow motion"
-          >
-            Montage
-          </button>
-          <button
-            onClick={() => applyRampPreset('jump-ramp')}
-            className="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] border border-zinc-700/60 transition-colors text-center"
-            title="Slow build, explosive burst, quick settle"
-          >
-            Jump Ramp
-          </button>
-        </div>
-      </div>
 
-      {/* Duration (linked to speed) */}
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Duration</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            value={Number(selectedClip.duration.toFixed(2))}
-            onChange={(e) => {
-              const targetDur = parseFloat(e.target.value)
-              if (targetDur > 0) {
-                applyDurationInSpeedTab(targetDur)
-              }
-            }}
-            min={0.1}
-            max={Number(getMaxClipDuration(selectedClip).toFixed(2))}
-            step={0.1}
-            className="w-28 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs tabular-nums focus:border-blue-500 focus:outline-none"
+          {/* Speed Slider */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-zinc-500">Speed</label>
+              <span className="text-xs text-white tabular-nums">{formatClipSpeed(currentSpeed)}</span>
+            </div>
+            <SpeedSlider
+              speed={currentSpeed}
+              onChange={(newSpeed) => applySpeed(newSpeed)}
+            />
+            {/* Speed presets */}
+            <div className="flex gap-1 mt-1.5 flex-wrap">
+              {[0.25, 0.5, 1, 1.5, 2, 4].map((presetSpeed) => (
+                <button
+                  key={presetSpeed}
+                  onClick={() => applySpeed(presetSpeed)}
+                  className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+                    !hasCurve && Math.abs(currentSpeed - presetSpeed) < 0.01
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {presetSpeed}x
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Duration (linked to speed) */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Duration</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={Number(selectedClip.duration.toFixed(2))}
+                onChange={(e) => {
+                  const targetDur = parseFloat(e.target.value)
+                  if (targetDur > 0) {
+                    applyDurationInSpeedTab(targetDur)
+                  }
+                }}
+                min={0.1}
+                max={Number(getMaxClipDuration(selectedClip).toFixed(2))}
+                step={0.1}
+                className="w-28 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-xs tabular-nums focus:border-blue-500 focus:outline-none"
+              />
+              <span className="text-xs text-zinc-500">s</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {subTab === 'curve' && canCurve && (
+        <div className="space-y-4">
+          <SpeedCurvePresetGrid
+            active={hasCurve ? selectedClip.speedCurve!.preset : null}
+            onPick={preset => setClipSpeedCurve(selectedClip.id, preset ? speedCurveForPreset(preset) : null)}
           />
-          <span className="text-xs text-zinc-500">s</span>
-        </div>
-      </div>
 
-      {/* Audio Muted Warning during speed ramp */}
-      {hasSpeedRamp && (
-        <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2.5 text-[11px] text-amber-300 space-y-1">
-          <span className="font-semibold block">⚠️ Audio muted during Speed Ramp</span>
-          <p className="text-zinc-400 leading-relaxed">
-            {t('clipProperties.speedRampAudioMuted')}
-          </p>
+          {hasCurve && selectedClip.speedCurve && (
+            <SpeedCurveEditor
+              clip={selectedClip}
+              curve={selectedClip.speedCurve}
+              onCommit={curve => setClipSpeedCurve(selectedClip.id, curve)}
+            />
+          )}
+
+          {hasCurve && (
+            <p className="text-[11px] leading-relaxed text-zinc-500">
+              {t('clipProperties.speedCurve.audioPitchNote')}
+            </p>
+          )}
         </div>
       )}
     </div>

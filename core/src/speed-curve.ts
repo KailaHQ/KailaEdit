@@ -473,7 +473,7 @@ export function insertSpeedCurvePoint(curve: SpeedCurve, x: number): SpeedCurve 
   if (tooClose) return normalized
   const points = [...normalized.points, { x: cx, v: curveSpeedAtX(normalized, cx) }]
     .sort((a, b) => a.x - b.x)
-  return { ...normalized, preset: 'custom', points }
+  return { ...normalized, points }
 }
 
 /** Removes a point. The two end points cannot be removed. */
@@ -482,13 +482,13 @@ export function removeSpeedCurvePoint(curve: SpeedCurve, index: number): SpeedCu
   if (index <= 0 || index >= normalized.points.length - 1) return normalized
   return {
     ...normalized,
-    preset: 'custom',
     points: normalized.points.filter((_, i) => i !== index),
   }
 }
 
 /**
- * Moves a point. End points keep their x; interior points stay strictly
+ * Moves a point. The curve keeps its preset name, so the panel still shows
+ * which preset it started from and Reset can return to it. End points keep their x; interior points stay strictly
  * between their neighbours so the order never changes under the user's drag.
  */
 export function moveSpeedCurvePoint(curve: SpeedCurve, index: number, x: number, v: number): SpeedCurve {
@@ -503,7 +503,7 @@ export function moveSpeedCurvePoint(curve: SpeedCurve, index: number, x: number,
     nx = lo <= hi ? Math.min(hi, Math.max(lo, x)) : pts[index].x
   }
   pts[index] = { x: nx, v: clampCurveSpeed(v) }
-  return { ...normalized, preset: 'custom', points: pts }
+  return { ...normalized, points: pts }
 }
 
 /** Whether two curves describe the same points. */
