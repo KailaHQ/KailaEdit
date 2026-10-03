@@ -1,10 +1,10 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { spawnSync } from 'child_process'
-import { findFfmpegPath } from '../export/ffmpeg-utils'
+import { findFfmpegPath, runFfmpegCapture, runFfmpegCaptureBinary } from '../export/ffmpeg-utils'
 import { getImageDimensions } from '../ipc/image-utils'
-import { onnxSessionManager, getOrt } from './onnx-session'
+import { getProviderChain, onnxSessionManager, resolveModelPath } from './onnx-session'
+import { matteSingleFrame } from './matte-worker-host'
 import { downsampleRatioForInferenceSize } from '../../core/src/auto-matte'
 import { logger } from '../logger'
 
@@ -56,7 +56,7 @@ export async function removeStillImageBackground(
     }
 
     // 2. Measure source dimensions
-    const { width: srcW, height: srcH } = getImageDimensions(inputPath)
+    const { width: srcW, height: srcH } = await getImageDimensions(inputPath)
     if (!srcW || !srcH) {
       return { success: false, error: `Unable to determine image dimensions for ${inputPath}` }
     }
@@ -84,7 +84,7 @@ export async function removeStillImageBackground(
     logger.info(`[image-matte] Processing still image: src=${srcW}x${srcH}, infer=${inferW}x${inferH}, quality=${quality}`)
 
     // 4. Extract planar RGB frame via ffmpeg
-    const extractRes = spawnSync(
+    const extractRes = await runFfmpegCaptureBinary(
       ffmpegPath,
       [
         '-hide_banner',
@@ -96,11 +96,11 @@ export async function removeStillImageBackground(
         '-f', 'rawvideo',
         '-',
       ],
-      { maxBuffer: 100 * 1024 * 1024, timeout: 20000 },
+      { maxStdoutBytes: 100 * 1024 * 1024, timeoutMs: 20000 },
     )
 
-    if (extractRes.status !== 0 || !extractRes.stdout) {
-      const err = extractRes.stderr?.toString().trim() || 'Failed to extract RGB buffer'
+    if (extractRes.status !== 0 || extractRes.stdout.length === 0) {
+      const err = extractRes.stderr.trim() || 'Failed to extract RGB buffer'
       return { success: false, error: `ffmpeg decode error: ${err}` }
     }
 
@@ -113,63 +113,23 @@ export async function removeStillImageBackground(
       }
     }
 
-    const planarData = new Float32Array(3 * totalPixels)
-    const offsetG = totalPixels
-    const offsetB = 2 * totalPixels
-    for (let i = 0; i < totalPixels; i++) {
-      planarData[i] = rawRgb[i * 3] / 255.0
-      planarData[offsetG + i] = rawRgb[i * 3 + 1] / 255.0
-      planarData[offsetB + i] = rawRgb[i * 3 + 2] / 255.0
-    }
-
-    // 5. Build ONNX tensors
-    const ort = getOrt()
-    const srcTensor = new ort.Tensor('float32', planarData, [1, 3, inferH, inferW])
-    const dsRatioVal = downsampleRatioForInferenceSize(Math.max(inferW, inferH))
-    const dsTensor = new ort.Tensor('float32', new Float32Array([dsRatioVal]), [1])
-
-    let r1: any = new ort.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1])
-    let r2: any = new ort.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1])
-    let r3: any = new ort.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1])
-    let r4: any = new ort.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1])
-
-    const session = await onnxSessionManager.getSession('rvm_mobilenetv3', 'auto')
-
-    // 6. Warmup passes (8 passes to let ConvGRU recurrent states settle completely on still image)
-    const warmupCount = 8
-    for (let w = 0; w < warmupCount; w++) {
-      const warmupFeeds: Record<string, any> = {
-        src: srcTensor,
-        r1i: r1,
-        r2i: r2,
-        r3i: r3,
-        r4i: r4,
-        downsample_ratio: dsTensor,
-      }
-      const warmRes = await session.run(warmupFeeds, ['r1o', 'r2o', 'r3o', 'r4o'])
-      r1 = warmRes.r1o
-      r2 = warmRes.r2o
-      r3 = warmRes.r3o
-      r4 = warmRes.r4o
-    }
-
-    // 7. Final inference pass to fetch alpha mask ('pha')
-    const finalFeeds: Record<string, any> = {
-      src: srcTensor,
-      r1i: r1,
-      r2i: r2,
-      r3i: r3,
-      r4i: r4,
-      downsample_ratio: dsTensor,
-    }
-    const finalRes = await session.run(finalFeeds, ['pha', 'r1o', 'r2o', 'r3o', 'r4o'])
-    const pha = finalRes.pha.data as Float32Array
-
-    // 8. Convert alpha mask to 8-bit grayscale raw buffer
-    const grayBuf = Buffer.alloc(totalPixels)
-    for (let i = 0; i < totalPixels; i++) {
-      grayBuf[i] = Math.round(Math.max(0, Math.min(1, pha[i])) * 255)
-    }
+    // 5–8. Inference runs on a worker thread. Done here, loading the model (DirectML
+    // especially) and the warmup passes blocked the main process — window and preview
+    // with it — for over a second per image.
+    const rgb = rawRgb.buffer.slice(rawRgb.byteOffset, rawRgb.byteOffset + rawRgb.byteLength) as ArrayBuffer
+    const { alpha: grayBuf, provider } = await matteSingleFrame({
+      modelPath: resolveModelPath('rvm_mobilenetv3'),
+      modelName: 'rvm_mobilenetv3',
+      device: 'auto',
+      providerChain: getProviderChain('auto'),
+      inferW,
+      inferH,
+      downsampleRatio: downsampleRatioForInferenceSize(Math.max(inferW, inferH)),
+      // Eight passes let the ConvGRU recurrent state settle on a single picture.
+      warmupFrames: 8,
+      intraOpNumThreads: Math.max(1, Math.floor((os.cpus()?.length || 4) / 2)),
+    }, rgb)
+    onnxSessionManager.setActiveProvider(provider)
 
     const tempMaskRaw = path.join(os.tmpdir(), `kaila-bgrem-mask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.raw`)
     const tempOutPng = path.join(os.tmpdir(), `kaila-bgrem-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`)
@@ -177,7 +137,7 @@ export async function removeStillImageBackground(
     fs.writeFileSync(tempMaskRaw, grayBuf)
 
     // 9. Composite alpha mask with original input at full original resolution using ffmpeg alphamerge
-    const compRes = spawnSync(
+    const compRes = await runFfmpegCapture(
       ffmpegPath,
       [
         '-hide_banner',
@@ -192,11 +152,11 @@ export async function removeStillImageBackground(
         '-c:v', 'png',
         tempOutPng,
       ],
-      { timeout: 30000 },
+      30000,
     )
 
     if (compRes.status !== 0 || !fs.existsSync(tempOutPng)) {
-      const err = compRes.stderr?.toString().trim() || 'Failed to composite transparent PNG'
+      const err = compRes.stderr.trim() || 'Failed to composite transparent PNG'
       return { success: false, error: `ffmpeg composite error: ${err}` }
     }
 

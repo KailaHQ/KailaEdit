@@ -6,6 +6,7 @@ import { getClipEffectStyles, getTransitionBgColor, formatTime, resolveEffective
 import type { LutCanvasRef } from './LutCanvas'
 import { useEditorStore } from '../editor-store'
 import { selectCustomMatteBrushMode } from '@core/editor-selectors'
+import { getEffectiveTimelineDimensions } from '@core/video-resolution'
 import {
   type MonitorRenderMode,
   type FrameOverlayState,
@@ -21,10 +22,13 @@ import {
   sameFrameOverlayState,
   sameFrameRenderState,
   getClipTargetTime,
+  upcomingVideoClips,
 } from './preview-frame-engine'
 import type { UseVideoPoolManagerResult, VideoPoolRefs } from './useVideoPoolManager'
 import type { CachedSegmentInfo } from '../render-cache-store'
 import { syncCachePlayback, type CacheSlotState } from './cache-video-manager'
+import { isAwaitingPosition, markAwaitingPosition, noteHadPicture, openGateWhenPositioned } from './video-reveal-gate'
+import { FirstFramePoster } from './first-frame-poster'
 
 /** A transform being dragged on screen, not yet committed to the clip. */
 export interface TransformOverride {
@@ -48,6 +52,8 @@ export interface FrameRendererRefs {
   playbackTimecodeRef: React.MutableRefObject<HTMLSpanElement | null>
   /** Set while the transform box is being dragged; that clip is drawn with it. */
   transformOverrideRef?: React.MutableRefObject<TransformOverride | null>
+  /** The clip whose masks are being edited; they are shown dimmed over it instead of cutting it. */
+  maskEditClipIdRef?: React.MutableRefObject<string | null>
 }
 
 export interface FrameRendererDeps {
@@ -97,6 +103,7 @@ export function useFrameRenderer(
     contributorSyncStatesRef,
     preSeekDoneRef,
     compositingMediaRefs,
+    clipsRef,
     lastFrameRequestRef: poolLastFrameRequestRef,
   } = poolRefs
 
@@ -115,6 +122,7 @@ export function useFrameRenderer(
     cachedVideoRefB,
     playbackTimecodeRef,
     transformOverrideRef,
+    maskEditClipIdRef,
   } = frameRefs
 
   const {
@@ -133,6 +141,11 @@ export function useFrameRenderer(
   const fallbackLastFrameRequestRef = React.useRef<{ state: FrameRenderState; mode: MonitorRenderMode } | null>(null)
   const lastFrameRequestRef = poolLastFrameRequestRef || fallbackLastFrameRequestRef
   const applyFrameVisualsRef = React.useRef<(state: FrameRenderState, mode: MonitorRenderMode) => void>(() => {})
+  const posterRef = React.useRef<FirstFramePoster | null>(null)
+  React.useEffect(() => () => {
+    posterRef.current?.destroy()
+    posterRef.current = null
+  }, [])
   const [hasActiveCache, setHasActiveCache] = React.useState(false)
   const [activeCacheSlot, setActiveCacheSlot] = React.useState<0 | 1>(0)
   const cacheSlotStateRef = React.useRef<CacheSlotState>({
@@ -236,6 +249,10 @@ export function useFrameRenderer(
       if (clipPath) {
         const video = ensurePoolVideo(clipPath)
         const contributorSyncState = ensureContributorSyncState(activeVideoContributor)
+        // Nothing to show yet, and the first frame it does get is not the one wanted. Only
+        // for an element that has never had a picture; see markAwaitingPosition.
+        noteHadPicture(video)
+        if (video.readyState < 2) markAwaitingPosition(video)
         // A freshly created element has no picture and no duration, so the sync below can
         // only bail out; nothing else re-renders when the file finishes loading, which left
         // the monitor black after a restart until an unrelated state change repainted it.
@@ -270,7 +287,13 @@ export function useFrameRenderer(
           const continuedTime = getClipTargetTime(activeVideoContributor.clip, video.duration, atTime)
           isSeamlessCut = Math.abs(video.currentTime - continuedTime) <= 0.3
         }
-        const shouldForceSyncActive = mode === 'scrub' || (isNewClip && !isSeamlessCut) || hasPlaybackJump
+        // A clip that was prerolled is already on its first frame. Seeking it there again drops
+        // `readyState` and, until the seek lands, leaves the element hidden: the layers under
+        // it showed for a couple of frames at the start of every overlay.
+        const alreadyOnItsFrame = mode === 'playback' && video.readyState >= 2 && !video.seeking &&
+          Number.isFinite(video.duration) &&
+          Math.abs(video.currentTime - getClipTargetTime(activeVideoContributor.clip, video.duration, atTime)) < 0.1
+        const shouldForceSyncActive = mode === 'scrub' || (isNewClip && !isSeamlessCut && !alreadyOnItsFrame) || hasPlaybackJump
         if (poolContainer && !video.parentElement) poolContainer.appendChild(video)
 
         for (const [poolPath, pooledVideo] of pool) {
@@ -310,6 +333,8 @@ export function useFrameRenderer(
             video.style.opacity = '1'
           }
           video.addEventListener('seeked', onSeeked)
+        } else if (isAwaitingPosition(video)) {
+          video.style.opacity = '0'
         } else if (!video.seeking) {
           video.style.opacity = '1'
         }
@@ -318,31 +343,37 @@ export function useFrameRenderer(
           contributorSyncState.pendingHardSync = true
         }
         syncPlaybackContributorVideo(video, activeVideoContributor, atTime, mode)
-
-        if (!crossDissolve && mode === 'playback') {
-          const nextClip = getNextVideoClipRef(activeVideoContributor.clip)
-          if (nextClip && nextClip.id !== preSeekDoneRef.current) {
-            const remainingInCurrent = (activeVideoContributor.clip.startTime + activeVideoContributor.clip.duration) - atTime
-            if (remainingInCurrent < VIDEO_POOL_PREROLL_SECONDS && remainingInCurrent > 0) {
-              const nextSrc = resolveClipPathRef(nextClip)
-              // Only preroll a DIFFERENT source; seeking the current video element while playing ruins current clip!
-              const nextVideo = (nextSrc && nextSrc !== clipPath) ? ensurePoolVideo(nextSrc) : null
-              if (nextVideo && nextVideo.readyState >= 1) {
-                const nextTargetTime = nextClip.reversed
-                  ? nextClip.trimStart + (nextVideo.duration || 0) - nextClip.trimStart - nextClip.trimEnd
-                  : nextClip.trimStart
-                if (!Number.isNaN(nextTargetTime)) {
-                  if (typeof (nextVideo as { fastSeek?: (time: number) => void }).fastSeek === 'function') {
-                    ;(nextVideo as { fastSeek: (time: number) => void }).fastSeek(nextTargetTime)
-                  } else {
-                    nextVideo.currentTime = nextTargetTime
-                  }
-                }
-                preSeekDoneRef.current = nextClip.id
-              }
+        if (isAwaitingPosition(video)) {
+          // Until the video can show the playhead's frame, the frame itself is decoded from the
+          // file and drawn in its place. Not where the picture needs a canvas (a LUT, a matte,
+          // a key), nor mid-transition or while playing: there it would show the raw frame.
+          const needsCanvas = clipNeedsAlphaCanvas(activeVideoContributor.clip) ||
+            Boolean(state.activeFilter && (state.activeFilter.intensity ?? 100) > 0)
+          if (poolContainer && mode === 'scrub' && !crossDissolve && !needsCanvas) {
+            ;(posterRef.current ??= new FirstFramePoster()).show(poolContainer, {
+              path: clipPath,
+              clip: activeVideoContributor.clip,
+              atTime,
+            })
+          }
+          const showWhenPositioned = () => {
+            // Only the element still in front is shown; one replaced meanwhile stays hidden.
+            if (video.style.zIndex === '1') video.style.opacity = '1'
+            // The poster stays up until the video has presented its own frame, so the two
+            // never leave a gap between them.
+            const hidePoster = () => posterRef.current?.hide()
+            if (typeof video.requestVideoFrameCallback === 'function') {
+              video.requestVideoFrameCallback(hidePoster)
+              setTimeout(hidePoster, 150)
+            } else {
+              hidePoster()
             }
           }
+          if (openGateWhenPositioned(video, showWhenPositioned)) showWhenPositioned()
+        } else {
+          posterRef.current?.hide()
         }
+
       }
     } else {
       const curVid = pool.get(activePoolPathRef.current)
@@ -354,6 +385,25 @@ export function useFrameRenderer(
         }
       }
       activePoolClipIdRef.current = null
+      posterRef.current?.hide()
+    }
+
+    if (mode === 'playback') {
+      // Every clip about to start is put on its first frame ahead of time, on whichever track it
+      // sits and whatever is showing now, so that reaching it shows a picture straight away. A
+      // path used by a clip that is playing now is left alone: seeking it would ruin that clip.
+      const inUse = new Set(state.activeVideoContributors.map(contributor => resolveClipPathRef(contributor.clip)))
+      const claimed = new Set<string>()
+      for (const upcoming of upcomingVideoClips(clipsRef.current, atTime, VIDEO_POOL_PREROLL_SECONDS)) {
+        const src = resolveClipPathRef(upcoming)
+        if (!src || inUse.has(src) || claimed.has(src)) continue
+        claimed.add(src)
+        const waiting = ensurePoolVideo(src) as HTMLVideoElement & { __prerolledClipId?: string }
+        if (waiting.readyState < 1 || waiting.__prerolledClipId === upcoming.id) continue
+        const firstFrame = getClipTargetTime(upcoming, waiting.duration || 0, upcoming.startTime)
+        if (!Number.isNaN(firstFrame)) waiting.currentTime = firstFrame
+        waiting.__prerolledClipId = upcoming.id
+      }
     }
 
     // The transition's own geometry, shared with the exporter's xfade choice
@@ -405,6 +455,11 @@ export function useFrameRenderer(
     // picture follows the handles instead of waiting for the release to commit it. Its
     // transform keyframes are set aside for the drag: they would otherwise win over it.
     const override = transformOverrideRef?.current ?? null
+    // Masks are laid over the picture as it is fitted in the frame, and are left off the clip
+    // whose masks are being edited (the editor draws them over it instead).
+    const maskFrameAspect = getEffectiveTimelineDimensions(activeTimeline).aspectRatio
+    const maskEditClipId = maskEditClipIdRef?.current ?? null
+    const maskOptions = (clipId: string) => ({ frameAspect: maskFrameAspect, ignoreMask: clipId === maskEditClipId })
     const withOverride = (clip: TimelineClip): TimelineClip => {
       if (!override || override.clipId !== clip.id) return clip
       return {
@@ -418,6 +473,7 @@ export function useFrameRenderer(
       getClipEffectStyles(withOverride(clip), at, {
         lutApproximation: !hasActiveCanvas,
         fadeToColourAsOverlay: clip.id === activeClip?.id,
+        ...maskOptions(clip.id),
       })
 
     if (poolContainer) {
@@ -524,7 +580,7 @@ export function useFrameRenderer(
           ? crossDissolve.incoming
           : { ...crossDissolve.incoming, filter: incomingFilter },
         incomingOffset,
-        { lutApproximation: !hasIncomingCanvas },
+        { lutApproximation: !hasIncomingCanvas, ...maskOptions(crossDissolve.incoming.id) },
       )
       const incomingOpacity = String(
         Number(layerStyles?.incoming.opacity ?? 1) * ((crossDissolve.incoming.opacity ?? 100) / 100),
@@ -671,7 +727,7 @@ export function useFrameRenderer(
       const clipStyle = getClipEffectStyles(
         inherited === clip.filter ? clip : { ...clip, filter: inherited },
         Math.max(0, atTime - clip.startTime),
-        { lutApproximation: !hasCompCanvas },
+        { lutApproximation: !hasCompCanvas, ...maskOptions(clip.id) },
       )
       applyEffectStyle(element, clipStyle)
       if (isCutOut) {

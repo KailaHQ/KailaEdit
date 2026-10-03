@@ -110,7 +110,7 @@ export async function observeSilence(
     throw new Error('ffmpeg binary not found')
   }
 
-  const audioInfo = probeAudioStream(ffmpeg, resolved)
+  const audioInfo = await probeAudioStream(ffmpeg, resolved)
   if (!audioInfo.hasAudio) {
     silenceCache.set(cacheKey, { mtimeMs: stat.mtimeMs, value: [] })
     return []
@@ -268,7 +268,7 @@ export async function observeLoudness(
     throw new Error('ffmpeg binary not found')
   }
 
-  const audioInfo = probeAudioStream(ffmpeg, resolved)
+  const audioInfo = await probeAudioStream(ffmpeg, resolved)
   if (!audioInfo.hasAudio) {
     loudnessCache.set(cacheKey, { mtimeMs: stat.mtimeMs, value: null })
     return null

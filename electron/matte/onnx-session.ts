@@ -1,20 +1,8 @@
-import os from 'os'
 import path from 'path'
 import fs from 'fs'
-import { createRequire } from 'module'
 import { logger } from '../logger'
+import { probeProvidersInWorker } from './matte-worker-host'
 import type { AutoMatteDevice } from '../../core/src/project-model'
-
-const require = createRequire(import.meta.url)
-
-let ortModule: typeof import('onnxruntime-node') | null = null
-
-export function getOrt(): typeof import('onnxruntime-node') {
-  if (!ortModule) {
-    ortModule = require('onnxruntime-node')
-  }
-  return ortModule!
-}
 
 export function resolveModelPath(modelName: string = 'rvm_mobilenetv3'): string {
   const filename = modelName.endsWith('.onnx') ? modelName : `${modelName}.onnx`
@@ -62,15 +50,18 @@ export function getProviderChain(device: AutoMatteDevice): string[] {
   }
 }
 
+/**
+ * What the app knows about ONNX execution providers.
+ *
+ * No inference session lives here any more: every model load and run happens on a matte
+ * worker thread (see matte-worker-host). On the main process they froze the window, and the
+ * preview with it, for as long as DirectML took to start.
+ */
 export class OnnxSessionManager {
   private static instance: OnnxSessionManager | null = null
-  private session: import('onnxruntime-node').InferenceSession | null = null
-  private currentModelName: string | null = null
-  private currentDevice: AutoMatteDevice | null = null
   private activeProvider: string | null = null
   private probeCache: { available: string[]; preferred: string; gpuAvailable: boolean } | null = null
-  private idleTimer: NodeJS.Timeout | null = null
-  private readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+  private probeInFlight: Promise<{ available: string[]; preferred: string; gpuAvailable: boolean }> | null = null
 
   static getInstance(): OnnxSessionManager {
     if (!OnnxSessionManager.instance) {
@@ -79,23 +70,12 @@ export class OnnxSessionManager {
     return OnnxSessionManager.instance
   }
 
-  /**
-   * Execution providers to try, in order, for a device preference.
-   *
-   * Windows ships DirectML.dll with onnxruntime-node, so 'dml' is real there. macOS gets
-   * CoreML. 'cuda' only exists in a separately installed build, so it is tried and allowed
-   * to fail rather than assumed.
-   */
-  private providerChain(device: AutoMatteDevice): string[] {
-    return getProviderChain(device)
-  }
-
-  /** Set the active provider recorded from worker execution or session initialization. */
+  /** Set the active provider recorded from worker execution. */
   setActiveProvider(provider: string | null): void {
     this.activeProvider = provider
   }
 
-  /** The provider backing the session that is loaded right now, if any. */
+  /** The provider the last matte worker ran on, if any. */
   getActiveProvider(): string | null {
     return this.activeProvider
   }
@@ -104,26 +84,26 @@ export class OnnxSessionManager {
    * Which providers this machine can actually create a session with. The answer is cached
    * after the first check: probing means loading the model on each provider, which is slow.
    */
-  async probeProviders(): Promise<{ available: string[]; preferred: string; gpuAvailable: boolean }> {
-    if (this.probeCache) return this.probeCache
+  probeProviders(): Promise<{ available: string[]; preferred: string; gpuAvailable: boolean }> {
+    if (this.probeCache) return Promise.resolve(this.probeCache)
+    if (!this.probeInFlight) {
+      this.probeInFlight = this.runProbe().finally(() => { this.probeInFlight = null })
+    }
+    return this.probeInFlight
+  }
 
-    const candidates = [...this.providerChain('auto')]
-    const available: string[] = []
+  private async runProbe(): Promise<{ available: string[]; preferred: string; gpuAvailable: boolean }> {
     const modelPath = resolveModelPath()
-
-    for (const ep of candidates) {
-      if (!fs.existsSync(modelPath)) break
+    let available: string[] = []
+    if (fs.existsSync(modelPath)) {
       try {
-        const probe = await getOrt().InferenceSession.create(modelPath, {
-          executionProviders: [ep] as never,
-          intraOpNumThreads: 1,
-        })
-        available.push(ep)
-        try {
-          if (typeof (probe as any).release === 'function') (probe as any).release()
-        } catch {}
+        const result = await probeProvidersInWorker(modelPath, getProviderChain('auto'))
+        available = result.available
+        for (const failure of result.failures) {
+          logger.info(`[onnx-session] Provider unavailable: ${failure}`)
+        }
       } catch (err) {
-        logger.info(`[onnx-session] Provider '${ep}' unavailable: ${String(err).slice(0, 160)}`)
+        logger.warn(`[onnx-session] Provider probe failed: ${String(err)}`)
       }
     }
 
@@ -132,110 +112,6 @@ export class OnnxSessionManager {
     this.probeCache = { available, preferred, gpuAvailable: preferred !== 'cpu' }
     logger.info(`[onnx-session] Providers available: ${available.join(', ')} (preferred: ${preferred})`)
     return this.probeCache
-  }
-
-  /**
-   * Acquire an ONNX inference session. Lazily initializes the session on first request.
-   * Resets the 5-minute idle disposal timer.
-   */
-  async getSession(
-    modelName: string = 'rvm_mobilenetv3',
-    device: AutoMatteDevice = 'auto',
-  ): Promise<import('onnxruntime-node').InferenceSession> {
-    this.resetIdleTimer()
-
-    if (this.session && this.currentModelName === modelName && this.currentDevice === device) {
-      return this.session
-    }
-
-    if (this.session) {
-      logger.info(`[onnx-session] Disposing existing session (model ${this.currentModelName}, device ${this.currentDevice}) to load ${modelName} on ${device}`)
-      this.disposeSession()
-    }
-
-    const modelPath = resolveModelPath(modelName)
-    if (!fs.existsSync(modelPath)) {
-      throw new Error(`[onnx-session] Model file not found at path: ${modelPath}`)
-    }
-
-    const ort = getOrt()
-    const numCpus = os.cpus()?.length || 4
-    // Cap intraOpNumThreads at roughly half of the cores so the UI / timeline does not freeze during bake
-    const intraOpNumThreads = Math.max(1, Math.floor(numCpus / 2))
-
-    const chain = this.providerChain(device)
-    let session: import('onnxruntime-node').InferenceSession | null = null
-    let used: string | null = null
-    const failures: string[] = []
-
-    for (const ep of chain) {
-      try {
-        session = await ort.InferenceSession.create(modelPath, {
-          executionProviders: [ep] as never,
-          intraOpNumThreads,
-        })
-        used = ep
-        logger.info(`[onnx-session] Created session for ${modelName} on '${ep}' (threads: ${intraOpNumThreads})`)
-        break
-      } catch (err) {
-        const msg = `${ep}: ${String(err).slice(0, 200)}`
-        failures.push(msg)
-        logger.warn(`[onnx-session] Could not create session on ${msg}`)
-      }
-    }
-
-    if (!session || !used) {
-      throw new Error(
-        device === 'gpu'
-          ? `GPU not usable for background removal (${failures.join(' | ')}). Switch the setting to Auto or CPU.`
-          : `Could not create an inference session (${failures.join(' | ')})`,
-      )
-    }
-
-    this.session = session
-    this.currentModelName = modelName
-    this.currentDevice = device
-    this.activeProvider = used
-    this.resetIdleTimer()
-
-    return this.session
-  }
-
-  touch(): void {
-    this.resetIdleTimer()
-  }
-
-  private resetIdleTimer(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
-    }
-
-    this.idleTimer = setTimeout(() => {
-      logger.info('[onnx-session] Idle timeout reached (5 minutes) - disposing ONNX session to free memory')
-      this.disposeSession()
-    }, this.IDLE_TIMEOUT_MS)
-  }
-
-  disposeSession(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
-    }
-    if (this.session) {
-      try {
-        // ort InferenceSession may have release / dispose method or just unreference
-        if (typeof (this.session as any).release === 'function') {
-          ;(this.session as any).release()
-        }
-      } catch (err) {
-        logger.warn(`[onnx-session] Error releasing session: ${String(err)}`)
-      }
-      this.session = null
-      this.currentModelName = null
-      this.currentDevice = null
-      this.activeProvider = null
-    }
   }
 }
 

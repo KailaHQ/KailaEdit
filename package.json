@@ -1,7 +1,7 @@
 {
   "name": "kailaedit",
   "productName": "KailaEdit",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "KailaEdit - Desktop Video Editor",
   "type": "module",
   "main": "dist-electron/main.js",

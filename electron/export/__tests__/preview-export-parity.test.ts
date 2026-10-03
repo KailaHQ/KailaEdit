@@ -440,7 +440,7 @@ describe('KE-206: Preview vs Export Systematic Parity Suite', () => {
       expect(previewStyle.maskImage).toContain('data:image/svg+xml')
       const decodedSvg = decodeURIComponent(previewStyle.maskImage!.replace('url("data:image/svg+xml;utf8,', '').replace('")', ''))
       expect(decodedSvg).toContain('<rect')
-      expect(decodedSvg).toContain('rotate(30 45 55)')
+      expect(decodedSvg).toContain('rotate(30 45.00 55.00)')
       expect(decodedSvg).toContain('feGaussianBlur')
       expect(decodedSvg).toContain('mask id="inv"')
 
@@ -487,7 +487,7 @@ describe('KE-206: Preview vs Export Systematic Parity Suite', () => {
       const pairLinear = makePair({ mask: linearMask })
       const prevLinear = getClipEffectStyles(pairLinear.timelineClip, 0)
       const expLinear = buildVideoFilterGraph([pairLinear.exportClip], canvasOpts)
-      expect(decodeURIComponent(prevLinear.maskImage!)).toContain('rotate(45 50 50)')
+      expect(decodeURIComponent(prevLinear.maskImage!)).toContain('rotate(45 50.00 50.00)')
       expect(expLinear.filterScript).toContain('clip(((')
     })
 

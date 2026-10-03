@@ -1,7 +1,6 @@
-import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { findFfmpegPath } from '../export/ffmpeg-utils'
+import { findFfmpegPath, runFfmpegCapture } from '../export/ffmpeg-utils'
 
 const DEFAULT_THUMBNAIL_MAX_DIMENSION = 400
 
@@ -21,21 +20,21 @@ function requireFfmpeg(): string {
   return ffmpegPath
 }
 
-export function createDownsampledThumbnail(
+export async function createDownsampledThumbnail(
   sourcePath: string,
   outputPath: string,
   maxDimension = DEFAULT_THUMBNAIL_MAX_DIMENSION,
-): void {
+): Promise<void> {
   const ffmpegPath = requireFfmpeg()
   // Fit inside a maxDimension box without upscaling, honouring any EXIF orientation.
   const scaleFilter = `scale='min(${maxDimension},iw)':'min(${maxDimension},ih)':force_original_aspect_ratio=decrease`
-  const result = spawnSync(
+  const result = await runFfmpegCapture(
     ffmpegPath,
     ['-hide_banner', '-loglevel', 'error', '-y', '-i', sourcePath, '-vf', scaleFilter, '-frames:v', '1', outputPath],
-    { encoding: 'utf8', timeout: 15000 },
+    15000,
   )
   if (result.status !== 0) {
-    const stderr = result.stderr?.toString().trim() || ''
+    const stderr = result.stderr.trim()
     throw new Error(`ffmpeg resize failed (code ${result.status}): ${stderr}`)
   }
   if (!fs.existsSync(outputPath)) {
@@ -43,14 +42,11 @@ export function createDownsampledThumbnail(
   }
 }
 
-export function getImageDimensions(sourcePath: string): { width: number; height: number } {
+export async function getImageDimensions(sourcePath: string): Promise<{ width: number; height: number }> {
   const ffmpegPath = requireFfmpeg()
-  const result = spawnSync(ffmpegPath, ['-hide_banner', '-i', sourcePath], {
-    encoding: 'utf8',
-    timeout: 10000,
-  })
+  const result = await runFfmpegCapture(ffmpegPath, ['-hide_banner', '-i', sourcePath], 10000)
   // ffmpeg with no output file exits non-zero and prints the stream info on stderr.
-  const output = `${result.stdout || ''}\n${result.stderr || ''}`
+  const output = `${result.stdout}\n${result.stderr}`
   const videoStreamLine = output.split('\n').find(line => line.includes('Video:'))
   const match = videoStreamLine?.match(/(\d{2,5})x(\d{2,5})(?:[,\s[]|$)/)
 

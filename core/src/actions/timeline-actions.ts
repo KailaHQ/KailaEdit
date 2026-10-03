@@ -44,7 +44,14 @@ export function frameAspectOf(timeline: Pick<Timeline, 'width' | 'height'>): num
 export function replaceActiveTimeline(state: EditorState, updater: (timeline: Timeline) => Timeline): EditorState {
   const active = selectActiveTimeline(state)
   if (!active) return state
-  const drafted = updater(active)
+  // Every edit passes through here, so this is the one place that can promise a transition
+  // never outlives its clips. Deleting a clip, dragging it past its neighbour, cutting it:
+  // each used to leave the record behind unless it happened to prune for itself, and a
+  // record whose clips are gone (or have swapped places) kept steering the preview and the
+  // export. Not mid-transaction: a drag there may pass through states it ends up leaving,
+  // and `commitTransaction` reconciles once at the end.
+  const written = updater(active)
+  const drafted = state.transaction ? written : pruneOrphanTransitions(written)
   const refitted = refitTextAnimations(drafted.clips, frameAspectOf(drafted))
   const updated = refitted === drafted.clips ? drafted : { ...drafted, clips: refitted }
   if (!state.transaction) {

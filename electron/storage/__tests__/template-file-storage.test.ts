@@ -46,19 +46,19 @@ describe('template file storage', () => {
      * `presetsDir` has sat in the settings schema with no reader since it was
      * added, so the empty case is the one that actually ships first.
      */
-    it('falls back to a folder of its own when no presets path is set', () => {
+    it('falls back to a folder of its own when no presets path is set', async () => {
       expect(getTemplatesDir('')).toMatch(/templates$/)
       expect(getTemplatesDir(undefined)).toMatch(/templates$/)
     })
 
-    it('puts templates under the presets path when there is one', () => {
+    it('puts templates under the presets path when there is one', async () => {
       expect(getTemplatesDir('C:/presets')).toBe(path.join('C:/presets', 'templates'))
     })
   })
 
   describe('templateFileName', () => {
     /* The name comes from a text box, so it can hold path navigation. */
-    it('strips anything a file system would read as a path', () => {
+    it('strips anything a file system would read as a path', async () => {
       const name = templateFileName({ id: 'tpl-1', name: '../../etc/passwd' })
       expect(name).not.toContain('..')
       expect(name).not.toContain('/')
@@ -66,25 +66,25 @@ describe('template file storage', () => {
       expect(path.basename(name)).toBe(name)
     })
 
-    it('keeps letters of any script, so a Vietnamese name survives', () => {
+    it('keeps letters of any script, so a Vietnamese name survives', async () => {
       expect(templateFileName({ id: 'tpl-1', name: 'Nhịp nhanh' })).toContain('Nhịp nhanh')
     })
 
-    it('still produces a usable name when everything is stripped', () => {
+    it('still produces a usable name when everything is stripped', async () => {
       expect(templateFileName({ id: 'tpl-1', name: '///' })).toContain('tpl-1')
     })
   })
 
-  it('refuses a file name that could escape the folder', () => {
+  it('refuses a file name that could escape the folder', async () => {
     expect(isSafeTemplateFileName('ok.komfytemplate')).toBe(true)
     expect(isSafeTemplateFileName('../ok.komfytemplate')).toBe(false)
     expect(isSafeTemplateFileName('sub/ok.komfytemplate')).toBe(false)
     expect(isSafeTemplateFileName('notes.txt')).toBe(false)
   })
 
-  it('writes a template and reads back exactly what went in', () => {
+  it('writes a template and reads back exactly what went in', async () => {
     const template = buildTemplateFromTimeline(timeline, { name: 'Nhịp nhanh' }).template
-    const written = writeTemplate(dir, template)
+    const written = await writeTemplate(dir, template)
     expect(written.success).toBe(true)
 
     const read = readTemplate(dir, (written as { fileName: string }).fileName)
@@ -96,14 +96,14 @@ describe('template file storage', () => {
     }
   })
 
-  it('leaves no temporary file behind after a successful write', () => {
-    writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'A' }).template)
+  it('leaves no temporary file behind after a successful write', async () => {
+    await writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'A' }).template)
     expect(fs.readdirSync(dir).some(f => f.endsWith('.tmp'))).toBe(false)
   })
 
-  it('lists templates newest first, with what a card needs', () => {
-    writeTemplate(dir, { ...buildTemplateFromTimeline(timeline, { name: 'Cũ' }).template, createdAt: 1 })
-    writeTemplate(dir, { ...buildTemplateFromTimeline(timeline, { name: 'Mới' }).template, createdAt: 2 })
+  it('lists templates newest first, with what a card needs', async () => {
+    await writeTemplate(dir, { ...buildTemplateFromTimeline(timeline, { name: 'Cũ' }).template, createdAt: 1 })
+    await writeTemplate(dir, { ...buildTemplateFromTimeline(timeline, { name: 'Mới' }).template, createdAt: 2 })
 
     const list = listTemplates(dir)
     expect(list.map(s => s.name)).toEqual(['Mới', 'Cũ'])
@@ -112,8 +112,8 @@ describe('template file storage', () => {
   })
 
   /* One corrupt file must not take the whole library down with it. */
-  it('skips a template it cannot parse instead of failing the listing', () => {
-    writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Tốt' }).template)
+  it('skips a template it cannot parse instead of failing the listing', async () => {
+    await writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Tốt' }).template)
     fs.writeFileSync(path.join(dir, 'broken.komfytemplate'), '{ not json', 'utf8')
     fs.writeFileSync(path.join(dir, 'wrong-shape.komfytemplate'), '{"format":1}', 'utf8')
 
@@ -122,17 +122,17 @@ describe('template file storage', () => {
     expect(list[0].name).toBe('Tốt')
   })
 
-  it('returns an empty list for a folder that does not exist yet', () => {
+  it('returns an empty list for a folder that does not exist yet', async () => {
     expect(listTemplates(path.join(dir, 'nope'))).toEqual([])
   })
 
-  it('refuses to write a document that is not a template', () => {
-    const result = writeTemplate(dir, { name: 'nope' } as never)
+  it('refuses to write a document that is not a template', async () => {
+    const result = await writeTemplate(dir, { name: 'nope' } as never)
     expect(result.success).toBe(false)
   })
 
-  it('deletes a template and says so when the name is unsafe', () => {
-    const written = writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Xoá' }).template)
+  it('deletes a template and says so when the name is unsafe', async () => {
+    const written = await writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Xoá' }).template)
     const fileName = (written as { fileName: string }).fileName
 
     expect(deleteTemplate(dir, '../escape.komfytemplate').success).toBe(false)
@@ -172,9 +172,9 @@ describe('template file storage', () => {
       { name: 'Có nhạc' },
     )
 
-    it('saves as a folder holding the document and the media', () => {
+    it('saves as a folder holding the document and the media', async () => {
       const { template, media } = build()
-      const written = writeTemplate(dir, template, media)
+      const written = await writeTemplate(dir, template, media)
       expect(written.success).toBe(true)
 
       const entryPath = path.join(dir, (written as { fileName: string }).fileName)
@@ -183,16 +183,16 @@ describe('template file storage', () => {
       expect(fs.readFileSync(path.join(entryPath, 'media', 'beat.mp3'), 'utf8')).toBe('FAKE-AUDIO')
     })
 
-    it('leaves no staging folder behind', () => {
+    it('leaves no staging folder behind', async () => {
       const { template, media } = build()
-      writeTemplate(dir, template, media)
+      await writeTemplate(dir, template, media)
       expect(fs.readdirSync(dir).some(f => f.endsWith('.staging'))).toBe(false)
     })
 
     /* On disk the path stays portable; in memory it has to be openable. */
-    it('reads the media back as a path on this machine', () => {
+    it('reads the media back as a path on this machine', async () => {
       const { template, media } = build()
-      const written = writeTemplate(dir, template, media)
+      const written = await writeTemplate(dir, template, media)
       const fileName = (written as { fileName: string }).fileName
 
       const onDisk = JSON.parse(
@@ -209,17 +209,17 @@ describe('template file storage', () => {
       }
     })
 
-    it('appears in the listing beside single-file templates', () => {
+    it('appears in the listing beside single-file templates', async () => {
       const { template, media } = build()
-      writeTemplate(dir, template, media)
-      writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Trơn' }).template)
+      await writeTemplate(dir, template, media)
+      await writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Trơn' }).template)
 
       expect(listTemplates(dir).map(s => s.name).sort()).toEqual(['Có nhạc', 'Trơn'])
     })
 
-    it('deletes the whole folder, media and all', () => {
+    it('deletes the whole folder, media and all', async () => {
       const { template, media } = build()
-      const written = writeTemplate(dir, template, media)
+      const written = await writeTemplate(dir, template, media)
       const fileName = (written as { fileName: string }).fileName
 
       expect(deleteTemplate(dir, fileName).success).toBe(true)
@@ -227,12 +227,23 @@ describe('template file storage', () => {
       expect(listTemplates(dir)).toEqual([])
     })
 
-    it('replaces an earlier save of the same template cleanly', () => {
+    it('replaces an earlier save of the same template cleanly', async () => {
       const { template, media } = build()
-      writeTemplate(dir, template, media)
-      const again = writeTemplate(dir, template, media)
+      await writeTemplate(dir, template, media)
+      const again = await writeTemplate(dir, template, media)
       expect(again.success).toBe(true)
       expect(listTemplates(dir)).toHaveLength(1)
+    })
+
+    it('survives two saves of the same template at once', async () => {
+      const { template, media } = build()
+      const results = await Promise.all([
+        writeTemplate(dir, template, media),
+        writeTemplate(dir, template, media),
+      ])
+      expect(results.every(r => r.success)).toBe(true)
+      expect(listTemplates(dir)).toHaveLength(1)
+      expect(fs.readdirSync(dir).some(f => f.endsWith('.staging'))).toBe(false)
     })
   })
 
@@ -245,8 +256,8 @@ describe('template file storage', () => {
    * shapes are pinned with a name that would have failed.
    */
   describe('names with Vietnamese characters', () => {
-    it('deletes a single-file template called "Xoá"', () => {
-      const written = writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Xoá' }).template)
+    it('deletes a single-file template called "Xoá"', async () => {
+      const written = await writeTemplate(dir, buildTemplateFromTimeline(timeline, { name: 'Xoá' }).template)
       const fileName = (written as { fileName: string }).fileName
       expect(fileName).toContain('Xoá')
 
@@ -254,7 +265,7 @@ describe('template file storage', () => {
       expect(fs.existsSync(path.join(dir, fileName))).toBe(false)
     })
 
-    it('deletes a folder template called "Có nhạc", media and all', () => {
+    it('deletes a folder template called "Có nhạc", media and all', async () => {
       const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'komfyedit-src-'))
       fs.writeFileSync(path.join(sourceDir, 'beat.mp3'), 'A', 'utf8')
       try {
@@ -272,7 +283,7 @@ describe('template file storage', () => {
           ],
         }, { name: 'Có nhạc' })
 
-        const written = writeTemplate(dir, template, media)
+        const written = await writeTemplate(dir, template, media)
         const fileName = (written as { fileName: string }).fileName
         expect(fileName).toContain('Có nhạc')
 
@@ -307,11 +318,11 @@ describe('template file storage', () => {
       fs.rmSync(sourceDir, { recursive: true, force: true })
     })
 
-    it('writes a cover into the template folder and points the card at it', () => {
+    it('writes a cover into the template folder and points the card at it', async () => {
       expect(fs.existsSync(videoPath)).toBe(true)
 
       const { template, media } = buildTemplateFromTimeline(timeline, { name: 'Có bìa' })
-      const written = writeTemplate(dir, template, media, { videoPath, seekTime: 1 })
+      const written = await writeTemplate(dir, template, media, { videoPath, seekTime: 1 })
       expect(written.success).toBe(true)
 
       const fileName = (written as { fileName: string }).fileName
@@ -324,16 +335,16 @@ describe('template file storage', () => {
     })
 
     /* Asking for a cover means asking for the folder shape, media or not. */
-    it('turns a template with no media of its own into a folder to hold it', () => {
+    it('turns a template with no media of its own into a folder to hold it', async () => {
       const { template } = buildTemplateFromTimeline(timeline, { name: 'Trơn có bìa' })
-      const written = writeTemplate(dir, template, [], { videoPath, seekTime: 0.5 })
+      const written = await writeTemplate(dir, template, [], { videoPath, seekTime: 0.5 })
       const entryPath = path.join(dir, (written as { fileName: string }).fileName)
       expect(fs.statSync(entryPath).isDirectory()).toBe(true)
     })
 
-    it('still saves the template when the frame cannot be grabbed', () => {
+    it('still saves the template when the frame cannot be grabbed', async () => {
       const { template } = buildTemplateFromTimeline(timeline, { name: 'Bìa hỏng' })
-      const written = writeTemplate(dir, template, [], {
+      const written = await writeTemplate(dir, template, [], {
         videoPath: path.join(sourceDir, 'khong-ton-tai.mp4'),
         seekTime: 1,
       })
@@ -344,9 +355,9 @@ describe('template file storage', () => {
       expect(summary.coverPath).toBeUndefined()
     })
 
-    it('leaves a template with no cover asked for as a single file', () => {
+    it('leaves a template with no cover asked for as a single file', async () => {
       const { template } = buildTemplateFromTimeline(timeline, { name: 'Không bìa' })
-      const written = writeTemplate(dir, template)
+      const written = await writeTemplate(dir, template)
       const entryPath = path.join(dir, (written as { fileName: string }).fileName)
       expect(fs.statSync(entryPath).isFile()).toBe(true)
       expect(listTemplates(dir)[0].coverPath).toBeUndefined()

@@ -123,9 +123,12 @@ export function useMonitorPlaybackLoop({
     renderFrame(currentTime, 'scrub')
   }, [clips, currentTime, isPlaying, renderFrame, subtitles, tracks])
 
-  // Re-sync timeline visuals when exiting video preview mode
+  // Re-sync timeline visuals when exiting video preview mode.
+  // Never while playing: then `currentTime` reaches the store every 250 ms, and each pass
+  // re-rendered the frame in 'scrub' mode, which hard-seeks the playing video to the
+  // playhead — a hitch four times a second.
   React.useEffect(() => {
-    if (!isPreviewingVideo) {
+    if (!isPreviewingVideo && !isPlaying) {
       lastFrameRequestRef.current = null
       renderFrame(currentTime, 'scrub')
       requestAnimationFrame(() => {
@@ -136,7 +139,7 @@ export function useMonitorPlaybackLoop({
         }
       })
     }
-  }, [isPreviewingVideo, currentTime, renderFrame, applyFrameVisuals, lastFrameRequestRef, lutCanvasRef])
+  }, [isPreviewingVideo, isPlaying, currentTime, renderFrame, applyFrameVisuals, lastFrameRequestRef, lutCanvasRef])
 
   // Fullscreen change listener
   React.useEffect(() => {

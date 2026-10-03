@@ -8,6 +8,7 @@ import {
   type VideoContributorSyncState,
   type FrameRenderState,
   VIDEO_POOL_PREROLL_SECONDS,
+  upcomingVideoClips,
   createMonitorVideoElement,
   applyPlaybackResolution,
   getClipTargetTime,
@@ -48,7 +49,7 @@ export interface UseVideoPoolManagerResult {
 export function useVideoPoolManager(
   refs: VideoPoolRefs,
   resolveClipPathRef: (clip: TimelineClip) => string,
-  getNextVideoClipRef: (afterClip: TimelineClip) => TimelineClip | null,
+  _getNextVideoClipRef: (afterClip: TimelineClip) => TimelineClip | null,
   playbackTimeRef: React.MutableRefObject<number>,
   playbackResolution: 1 | 0.5 | 0.25,
 ): UseVideoPoolManagerResult {
@@ -218,15 +219,13 @@ export function useVideoPoolManager(
       if (src) desiredSources.add(src)
     }
 
-    const activeVideoContributor = state.activeVideoContributors.find(contributor => contributor.target === 'active') ?? null
-    if (mode === 'playback' && activeVideoContributor) {
-      const nextClip = getNextVideoClipRef(activeVideoContributor.clip)
-      if (nextClip) {
-        const remainingInCurrent = (activeVideoContributor.clip.startTime + activeVideoContributor.clip.duration) - state.atTime
-        if (remainingInCurrent < VIDEO_POOL_PREROLL_SECONDS && remainingInCurrent > 0) {
-          const nextSrc = resolveClipPathRef(nextClip)
-          if (nextSrc) desiredSources.add(nextSrc)
-        }
+    // Every video clip about to start is kept loaded, on whichever track it is. Only the clip
+    // after the active one used to be: an overlay starting at the same moment had its element
+    // made on the spot, and the layers under it showed until it was ready.
+    if (mode === 'playback') {
+      for (const clip of upcomingVideoClips(refs.clipsRef.current, state.atTime, VIDEO_POOL_PREROLL_SECONDS)) {
+        const src = resolveClipPathRef(clip)
+        if (src) desiredSources.add(src)
       }
     }
 
@@ -237,7 +236,7 @@ export function useVideoPoolManager(
     for (const src of desiredSources) {
       ensurePoolVideo(src)
     }
-  }, [destroyPoolVideo, ensurePoolVideo, getNextVideoClipRef, resolveClipPathRef, videoPoolRef])
+  }, [destroyPoolVideo, ensurePoolVideo, refs.clipsRef, resolveClipPathRef, videoPoolRef])
 
   return {
     ensurePoolVideo,

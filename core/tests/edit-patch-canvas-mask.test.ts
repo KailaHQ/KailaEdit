@@ -8,6 +8,7 @@ import {
   selectMarkers,
   type EditPatch,
   createInitialEditorState,
+  getClipMasks,
 } from '../src'
 import { makeTestState, createMockClip, createMockTimeline } from './edit-patch-test-helpers'
 
@@ -241,18 +242,19 @@ describe('Edit Patch: Canvas, Mask, Markers, and Freeze Frame', () => {
 
       const clipsAfter = selectClips(applied.state)
       const clipAfter = clipsAfter.find(c => c.id === clipId)
-      expect(clipAfter?.mask).toBeDefined()
-      expect(clipAfter?.mask?.shape).toBe('ellipse')
-      expect(clipAfter?.mask?.x).toBe(40)
-      expect(clipAfter?.mask?.y).toBe(60)
-      expect(clipAfter?.mask?.rotation).toBe(45)
-      expect(clipAfter?.mask?.feather).toBe(20)
-      expect(clipAfter?.mask?.invert).toBe(true)
+      const maskAfter = clipAfter ? getClipMasks(clipAfter)[0] : undefined
+      expect(maskAfter).toBeDefined()
+      expect(maskAfter?.shape).toBe('ellipse')
+      expect(maskAfter?.x).toBe(40)
+      expect(maskAfter?.y).toBe(60)
+      expect(maskAfter?.rotation).toBe(45)
+      expect(maskAfter?.feather).toBe(20)
+      expect(maskAfter?.invert).toBe(true)
 
       // 4. Atomic undo restores original mask (undefined)
       const undone = undo(applied.state)
       const clipUndone = selectClips(undone).find(c => c.id === clipId)
-      expect(clipUndone?.mask).toBeUndefined()
+      expect(clipUndone ? getClipMasks(clipUndone) : []).toEqual([])
 
       // 5. Test removing mask by setting mask: null
       const removePatch: EditPatch = {
@@ -268,7 +270,7 @@ describe('Edit Patch: Canvas, Mask, Markers, and Freeze Frame', () => {
       const removed = applyPatch(applied.state, removePatch)
       expect(removed.success).toBe(true)
       const clipRemoved = selectClips(removed.state).find(c => c.id === clipId)
-      expect(clipRemoved?.mask).toBeUndefined()
+      expect(clipRemoved ? getClipMasks(clipRemoved) : []).toEqual([])
     })
   })
 

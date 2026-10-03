@@ -7,6 +7,8 @@ import React, {
 } from 'react'
 import type { ViewType } from '../types/project-model'
 import { useProjects } from './ProjectContext'
+import { useSettings } from './SettingsContext'
+import { prepareProjectFirstFrame } from '../views/editor/preview/first-frame-prefetch'
 
 interface ViewContextType {
   currentView: ViewType
@@ -22,13 +24,17 @@ export function ViewProvider({ children }: { children: React.ReactNode }) {
     activeProject,
     activateProject,
     clearActiveProject,
+    getProject,
   } = useProjects()
+  const { settings } = useSettings()
   const [currentView, setCurrentView] = useState<ViewType>('home')
 
   const openProject = useCallback((projectId: string) => {
+    // Before the editor renders: the first frame decodes while it does.
+    prepareProjectFirstFrame(getProject(projectId), settings.proxyEnabled)
     activateProject(projectId)
     setCurrentView('project')
-  }, [activateProject])
+  }, [activateProject, getProject, settings.proxyEnabled])
 
   const goHome = useCallback(() => {
     clearActiveProject()

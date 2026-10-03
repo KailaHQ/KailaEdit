@@ -1,6 +1,7 @@
 import React from 'react'
 import { Layers } from 'lucide-react'
 import type { TimelineClip, Asset } from '../../types/project-model'
+import { hasActiveMask } from '../../types/project-model'
 import { formatTime } from './video-editor-utils'
 
 import { getEffectiveTimelineDimensions } from '@core/video-resolution'
@@ -184,6 +185,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const blurCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const transitionBgRef = React.useRef<HTMLDivElement | null>(null)
   const videoPoolRef = React.useRef<Map<string, HTMLVideoElement>>(new Map())
+  const getPoolVideo = React.useCallback((path: string) => videoPoolRef.current.get(path), [])
   const compositingMediaRefs = React.useRef<Map<string, HTMLVideoElement | HTMLImageElement>>(new Map())
   const stickerImageRefs = React.useRef<Map<string, HTMLImageElement>>(new Map())
   const activePoolPathRef = React.useRef('')
@@ -278,8 +280,8 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     state => selectActiveTimeline(state)?.transitions ?? EMPTY_TRANSITIONS,
   )
   const frameRenderCache = React.useMemo(
-    () => buildFrameRenderCache(clips, subtitles, timelineTransitions),
-    [clips, subtitles, timelineTransitions],
+    () => buildFrameRenderCache(clips, subtitles, timelineTransitions, effectiveDimensions.aspectRatio),
+    [clips, subtitles, timelineTransitions, effectiveDimensions.aspectRatio],
   )
   const frameRenderCacheRef = React.useRef(frameRenderCache)
   const playbackTimecodeRef = React.useRef<HTMLSpanElement | null>(null)
@@ -343,6 +345,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
   const { destroyPoolVideo } = poolManager
 
   const transformOverrideRef = React.useRef<TransformOverride | null>(null)
+  const maskEditClipIdRef = React.useRef<string | null>(null)
   const transformPreviewRafRef = React.useRef(0)
 
   const frameRendererRefs: FrameRendererRefs = {
@@ -360,6 +363,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     cachedVideoRefB,
     playbackTimecodeRef,
     transformOverrideRef,
+    maskEditClipIdRef,
   }
 
   const frameRendererDeps: FrameRendererDeps = {
@@ -454,6 +458,16 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     if (transformPreviewRafRef.current) cancelAnimationFrame(transformPreviewRafRef.current)
   }, [])
 
+  // While a clip's masks are being edited the picture is shown whole with the hidden part blacked out
+  // (MaskBoundingBox draws that), so the mask is left off the clip itself until editing stops.
+  const maskEditClipId = maskMode && selectedClip && hasActiveMask(selectedClip) ? selectedClip.id : null
+  React.useEffect(() => {
+    maskEditClipIdRef.current = maskEditClipId
+    const last = lastFrameRequestRef.current
+    if (last) applyFrameVisuals(last.state, last.mode)
+    return () => { maskEditClipIdRef.current = null }
+  }, [maskEditClipId, applyFrameVisuals])
+
   const activeClip = frameScene.activeClip
   const compositingStack = frameScene.compositingStack
   const activeTextClips = frameScene.activeTextClips
@@ -465,6 +479,7 @@ export const ProgramMonitor = React.forwardRef<ProgramMonitorHandle, ProgramMoni
     isPlaying,
     resolveClipPath: getClipPath,
     enabled: !activeClip?.autoMatte?.enabled,
+    getMonitorVideo: getPoolVideo,
   })
 
   const selectVisualClipAtPoint = React.useCallback((event: React.MouseEvent) => {

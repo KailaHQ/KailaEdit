@@ -131,6 +131,8 @@ export interface EditorUiState {
   subtitleTrackStyleIdx: number | null
   cropMode: boolean
   maskMode: boolean
+  /** The mask of the selected clip the panel and canvas are editing; the first when unset or gone. */
+  activeMaskId?: string | null
   eyedropperMode: boolean
   customMatteBrushMode?: BrushMode | null
   customMatteBrushSize?: number
@@ -329,6 +331,7 @@ export function createInitialEditorState(
         subtitleTrackStyleIdx: null,
         cropMode: false,
         maskMode: false,
+        activeMaskId: null,
         eyedropperMode: false,
         customMatteBrushMode: null,
         customMatteBrushSize: 5,

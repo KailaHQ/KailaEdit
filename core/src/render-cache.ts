@@ -241,6 +241,7 @@ export function computeSegmentContentHash(
       colorCorrection: c.colorCorrection,
       filter: c.filter,
       mask: c.mask,
+      masks: c.masks,
       chromaKey: c.chromaKey,
       autoMatte: stableAutoMatte(c.autoMatte),
       customMatte: c.customMatte ? {

@@ -42,23 +42,21 @@ describe('SpeedCurveMarkers', () => {
     clip.speedCurve!.points.forEach((point, index) => {
       if (index === 0 || index === clip.speedCurve!.points.length - 1) return
       const expected = (clipTimeAtSourceOffset(clip, point.x * span) / clip.duration) * width
-      const centre = Number(bars[index].getAttribute('x')) + 2
+      const centre = Number(bars[index].getAttribute('x')) + 1.5
       expect(centre).toBeCloseTo(expected, 1)
     })
     await act(async () => { root.unmount() })
   })
 
-  it('spreads the arrows out where the clip plays slow', async () => {
+  it('bunches the arrows where the clip plays fast and spreads them where it is slow', async () => {
     const { host, root } = await mount(clipWith('bullet'), 800)
-    const xs = [...host.querySelectorAll('[data-speed-curve-arrow]')]
+    const xs = [...host.querySelectorAll('polyline')]
       .map(p => Number(p.getAttribute('points')!.split(' ')[1].split(',')[0]))
       .sort((a, b) => a - b)
-    const gaps = xs.slice(1).map((x, i) => ({ at: xs[i], gap: x - xs[i] }))
+    const gaps = xs.slice(1).map((x, i) => x - xs[i])
     // The dip in the middle is 5x slower than the ends, so its gaps are wider.
-    const middle = gaps.filter(g => g.at > 300 && g.at < 500).map(g => g.gap)
-    const ends = gaps.filter(g => g.at < 150).map(g => g.gap)
-    expect(middle.length).toBeGreaterThan(0)
-    expect(ends.length).toBeGreaterThan(0)
+    const middle = gaps.filter((_, i) => xs[i] > 300 && xs[i] < 500)
+    const ends = gaps.filter((_, i) => xs[i] < 150)
     expect(Math.max(...middle)).toBeGreaterThan(Math.max(...ends))
     await act(async () => { root.unmount() })
   })

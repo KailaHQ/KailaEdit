@@ -107,7 +107,7 @@ export function registerExportHandlers(): void {
         hardwareAccelerationSupported: false,
       }
     }
-    const caps = detectHardwareEncoders(ffmpegPath, forceRecheck)
+    const caps = await detectHardwareEncoders(ffmpegPath, forceRecheck)
     return {
       availableEncoders: caps.availableEncoders,
       preferredEncoder: caps.preferredEncoder,

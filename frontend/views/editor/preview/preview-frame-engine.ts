@@ -1,8 +1,10 @@
 import type * as React from 'react'
 import type { Asset, TimelineClip, TimelineTransition, Track, SubtitleClip, ChromaKey } from '../../../types/project-model'
+import { hasActiveMask } from '../../../types/project-model'
 import { sampleClipAt } from '@core/keyframes'
 import { clipHasSpeedCurve, clipSourceTimeAt } from '@core/speed-curve'
 import { stabilizedClipPath } from '@core/stabilization'
+import { transitionOverlap } from '@core/timeline-transitions'
 import { getClipEffectStyles, resolveEffectiveClipFilter } from '../video-editor-utils'
 import { pathToFileUrl } from '../../../lib/file-url'
 
@@ -86,6 +88,8 @@ export interface FrameRenderCache {
   adjustmentClips: TimelineClip[]
   audioClips: TimelineClip[]
   subtitles: SubtitleClip[]
+  /** The frame's width over its height. Without it no clip can be known to cover the frame. */
+  frameAspect?: number
 }
 
 export interface VideoContributorSyncState {
@@ -141,8 +145,10 @@ export function buildFrameRenderCache(
   clips: TimelineClip[],
   subtitles: SubtitleClip[],
   transitions: TimelineTransition[] = [],
+  frameAspect?: number,
 ): FrameRenderCache {
   return {
+    frameAspect,
     transitions,
     mediaClips: clips.filter(clip =>
       clip.type !== 'audio' && clip.type !== 'adjustment' && clip.type !== 'text' && !isStickerClip(clip)),
@@ -189,6 +195,22 @@ export function getClipTargetTime(clip: TimelineClip, mediaDuration: number, atT
     : Math.max(0, Math.min(mediaDuration, clip.trimStart + timeInClip * (clip.speed ?? 1)))
 }
 
+/**
+ * The video clips that start within `withinSeconds` after `afterTime`, soonest first.
+ *
+ * Each of these is a picture the monitor will need in a moment, whatever track it is on: the
+ * clip that follows on the main track, but equally an overlay that starts at the same instant.
+ */
+export function upcomingVideoClips(clips: TimelineClip[], afterTime: number, withinSeconds: number): TimelineClip[] {
+  return clips
+    .filter(clip =>
+      clip.asset?.type === 'video' &&
+      clip.type !== 'audio' && clip.type !== 'adjustment' && clip.type !== 'text' &&
+      clip.startTime > afterTime &&
+      clip.startTime - afterTime <= withinSeconds)
+    .sort((a, b) => a.startTime - b.startTime)
+}
+
 export function getTopVisibleClipAtTime(mediaClips: TimelineClip[], tracks: Track[], time: number): TimelineClip | null {
   let best: { clip: TimelineClip; arrayIndex: number } | null = null
 
@@ -229,9 +251,13 @@ export function getTransitionAtTime(
     if (tracks[outgoing.trackIndex]?.enabled === false) continue
     if (tracks[incoming.trackIndex]?.enabled === false) continue
 
+    // A record whose clips have swapped places (or no longer overlap) describes nothing. Taken
+    // at its word it made a 12 s stretch of the timeline one dissolve: the wrong clip in front,
+    // and every clip above it left undrawn. Projects saved that way still load this way.
+    if (transitionOverlap(outgoing, incoming) <= 0) continue
+
     const start = incoming.startTime
     const end = outgoing.startTime + outgoing.duration
-    if (end <= start) continue
     if (time < start || time >= end) continue
 
     return {
@@ -351,17 +377,106 @@ export function isNonOpaqueClip(clip: TimelineClip): boolean {
   if (clip.customMatte?.enabled) return true
   if (clip.stroke?.enabled && clip.stroke.style !== 'none' && clip.stroke.width > 0) return true
   if (clip.blendMode && clip.blendMode !== 'normal') return true
-  if (clip.mask && clip.mask.enabled !== false) return true
+  if (hasActiveMask(clip)) return true
   if (clip.trackIndex > 0) return true
   if (isImageClip(clip)) return true
   if (clip.transform && (clip.transform.scale < 100 || clip.transform.positionX !== 0 || clip.transform.positionY !== 0)) return true
   return false
 }
 
-export function getCompositingStack(mediaClips: TimelineClip[], tracks: Track[], activeClip: TimelineClip | null, time: number): TimelineClip[] {
-  if (!activeClip || !isNonOpaqueClip(activeClip)) return []
+/** Files that cannot carry transparency: a still of one of these is opaque. */
+const OPAQUE_STILL_EXTENSION = /\.(jpe?g|bmp)$/i
 
-  return mediaClips
+/** Short of this much of the frame left uncovered, a clip counts as covering it (0.5%). */
+const COVER_TOLERANCE = 0.005
+
+/**
+ * Whether a clip, as the monitor draws it at that moment, hides everything under it: opaque,
+ * and filling the whole frame.
+ *
+ * "Filling" is worked out the way the monitor draws: the picture is fitted inside the frame
+ * (`object-fit: contain`), then scaled and moved by the clip's transform. A 9:16 clip in a 9:16
+ * frame fills it; a 16:9 one leaves bars until it is scaled up past them. Anything that makes
+ * part of the picture see-through — opacity, a blend mode, a mask, a key, a cut-out, a fade, a
+ * rotation, a crop, a move that uncovers an edge — means it does not. So does anything not
+ * known: a still that may carry an alpha channel, a size that was never measured.
+ *
+ * `timeInClip` is the playhead's time inside the clip, so keyframed scale, position and opacity
+ * are taken where they stand now.
+ */
+export function clipCoversFrame(clip: TimelineClip, frameAspect: number | undefined, timeInClip: number): boolean {
+  if (!frameAspect || !Number.isFinite(frameAspect) || frameAspect <= 0) return false
+  if (clip.type === 'text' || clip.type === 'audio' || clip.type === 'adjustment') return false
+
+  const asset = clip.asset
+  const isStill = isImageClip(clip)
+  if (isStill && !OPAQUE_STILL_EXTENSION.test(asset?.path ?? '')) return false
+  // A video's size is only trusted once it has been measured the way a player shows it.
+  if (!isStill && asset?.rotationChecked !== true) return false
+  const width = asset?.width
+  const height = asset?.height
+  if (!width || !height || width <= 0 || height <= 0) return false
+
+  if (clip.blendMode && clip.blendMode !== 'normal') return false
+  if (hasActiveMask(clip)) return false
+  if (clip.chromaKey?.enabled || clip.autoMatte?.enabled || clip.customMatte?.enabled) return false
+  if (clip.stroke?.enabled && clip.stroke.style !== 'none' && clip.stroke.width > 0) return false
+
+  const sampled = sampleClipAt(clip, Math.max(0, timeInClip))
+  if (sampled.opacity < 100 - COVER_TOLERANCE) return false
+
+  // Fades to black or white lower the clip's own opacity near its ends.
+  const fadesIn = clip.transitionIn && clip.transitionIn.duration > 0 &&
+    (clip.transitionIn.type === 'fade-to-black' || clip.transitionIn.type === 'fade-to-white')
+  if (fadesIn && timeInClip < clip.transitionIn.duration) return false
+  const fadesOut = clip.transitionOut && clip.transitionOut.duration > 0 &&
+    (clip.transitionOut.type === 'fade-to-black' || clip.transitionOut.type === 'fade-to-white')
+  if (fadesOut && clip.duration - timeInClip < clip.transitionOut.duration) return false
+
+  const transform = clip.transform
+  if (transform && (transform.cropTop || transform.cropRight || transform.cropBottom || transform.cropLeft)) return false
+  if (Math.abs(sampled.rotation % 360) > 0.01) return false
+  if (Math.abs(sampled.positionX) > 0.01 || Math.abs(sampled.positionY) > 0.01) return false
+
+  // The frame is `frameAspect` wide and 1 high; the picture is fitted inside it.
+  const pictureAspect = width / height
+  const fittedWidth = pictureAspect >= frameAspect ? frameAspect : pictureAspect
+  const fittedHeight = pictureAspect >= frameAspect ? frameAspect / pictureAspect : 1
+  const scaleX = (sampled.scaleX ?? sampled.scale) / 100
+  const scaleY = (sampled.scaleY ?? sampled.scale) / 100
+  return fittedWidth * scaleX >= frameAspect * (1 - COVER_TOLERANCE) &&
+    fittedHeight * scaleY >= 1 - COVER_TOLERANCE
+}
+
+/**
+ * The layers drawn under the active clip, lowest first.
+ *
+ * Top down, each layer hides what is under it: once a layer covers the whole frame nothing below
+ * it can be seen, so nothing below it is drawn. That is also what keeps the layers under an
+ * overlay from showing for a moment while the overlay is still getting its picture.
+ *
+ * During a transition the active clip is fading, so it covers nothing. And when the frame's
+ * shape is not known, a clip is judged by `isNonOpaqueClip` alone, as it always was.
+ */
+export function getCompositingStack(
+  mediaClips: TimelineClip[],
+  tracks: Track[],
+  activeClip: TimelineClip | null,
+  time: number,
+  options: { frameAspect?: number; inTransition?: boolean } = {},
+): TimelineClip[] {
+  if (!activeClip) return []
+  const { frameAspect, inTransition = false } = options
+
+  const hidesWhatIsUnder = (clip: TimelineClip): boolean => {
+    if (inTransition && clip.id === activeClip.id) return false
+    return frameAspect
+      ? clipCoversFrame(clip, frameAspect, time - clip.startTime)
+      : !isNonOpaqueClip(clip)
+  }
+  if (hidesWhatIsUnder(activeClip)) return []
+
+  const below = mediaClips
     .filter(clip =>
       clip.id !== activeClip.id &&
       tracks[clip.trackIndex]?.enabled !== false &&
@@ -369,7 +484,14 @@ export function getCompositingStack(mediaClips: TimelineClip[], tracks: Track[],
       time >= clip.startTime &&
       time < clip.startTime + clip.duration
     )
-    .sort((a, b) => a.trackIndex - b.trackIndex)
+    .sort((a, b) => b.trackIndex - a.trackIndex)
+
+  const stack: TimelineClip[] = []
+  for (const clip of below) {
+    stack.push(clip)
+    if (hidesWhatIsUnder(clip)) break
+  }
+  return stack.reverse()
 }
 
 export function getStyleOpacity(style: React.CSSProperties): number {
@@ -511,13 +633,24 @@ export function deriveFrameRenderState(cache: FrameRenderCache, tracks: Track[],
     sampleTime = Math.max(0, maxEnd - 0.001)
   }
 
-  const dissolve = getTransitionAtTime(cache.mediaClips, cache.transitions, tracks, sampleTime)
+  const topClip = getTopVisibleClipAtTime(cache.mediaClips, tracks, sampleTime)
+  const transitionHere = getTransitionAtTime(cache.mediaClips, cache.transitions, tracks, sampleTime)
+  // A transition belongs to its own track. A clip on a track above it that fills the frame hides
+  // the whole thing, as it hides every layer under it: the transition is not drawn at all.
+  const dissolve = transitionHere && topClip &&
+    topClip.trackIndex > transitionHere.pair.outgoing.trackIndex &&
+    clipCoversFrame(topClip, cache.frameAspect, sampleTime - topClip.startTime)
+    ? null
+    : transitionHere
   // Inside a transition the pair decides the two layers, not "topmost clip".
   // The clips genuinely overlap now, so the plain test picks the *incoming*
   // one as active — and the outgoing clip, which the effect is supposed to
   // reveal from under, would never get drawn at all.
-  const activeClip = dissolve?.pair.outgoing ?? getTopVisibleClipAtTime(cache.mediaClips, tracks, sampleTime)
-  const compositingStack = getCompositingStack(cache.mediaClips, tracks, activeClip, sampleTime)
+  const activeClip = dissolve?.pair.outgoing ?? topClip
+  const compositingStack = getCompositingStack(cache.mediaClips, tracks, activeClip, sampleTime, {
+    frameAspect: cache.frameAspect,
+    inTransition: Boolean(dissolve),
+  })
   const adjustmentSources = cache.adjustmentClips.filter(clip =>
     tracks[clip.trackIndex]?.enabled !== false && clip.filter,
   )
@@ -650,7 +783,11 @@ export function sameClipVisualProperties(a: TimelineClip | null, b: TimelineClip
     a.stroke?.gap === b.stroke?.gap &&
     a.stroke?.seed === b.stroke?.seed &&
     a.filter?.id === b.filter?.id &&
-    a.filter?.intensity === b.filter?.intensity
+    a.filter?.intensity === b.filter?.intensity &&
+    // Masks are replaced, never edited in place, so a changed mask is a new object. Leaving them
+    // out kept the monitor on the clip as it was before the mask was added or moved.
+    a.mask === b.mask &&
+    a.masks === b.masks
   )
 }
 

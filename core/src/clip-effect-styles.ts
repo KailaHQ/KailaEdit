@@ -1,5 +1,6 @@
 import type { TimelineClip, Track, TransitionType, ClipMask, ClipEffect } from './project-model'
-import { DEFAULT_CLIP_TRANSFORM, DEFAULT_COLOR_CORRECTION } from './project-model'
+import { DEFAULT_CLIP_TRANSFORM, DEFAULT_COLOR_CORRECTION, getClipMasks } from './project-model'
+import { heartOutline, starOutline } from './mask-shapes'
 import { cssMixBlendModeFor } from './blend-modes'
 import { sampleClipAt, hasKeyframesForProperty } from './keyframes'
 
@@ -124,6 +125,29 @@ export interface ClipEffectStyleOptions {
    * Defaults to true, for the elements that have no canvas behind them.
    */
   lutApproximation?: boolean
+  /**
+   * The frame's width over its height. With it the mask is laid over the picture as it is fitted
+   * inside the frame; without it the picture is taken to fill the frame.
+   */
+  frameAspect?: number
+  /** Leave the clip's masks off: the editor shows them as a dimmed overlay while they are edited. */
+  ignoreMask?: boolean
+}
+
+/**
+ * The picture's proportions, and the CSS size of the box it fills inside the frame, which is
+ * what a clip's masks are laid over. Without the sizes of both, the picture fills the frame.
+ */
+export function maskPictureBox(clip: TimelineClip, frameAspect?: number): { aspect: number; size: string } {
+  const width = clip.asset?.width
+  const height = clip.asset?.height
+  const known = !!width && !!height && width > 0 && height > 0
+  const frame = frameAspect && Number.isFinite(frameAspect) && frameAspect > 0 ? frameAspect : undefined
+  const aspect = known ? width! / height! : (frame ?? 1)
+  if (!frame) return { aspect, size: '100% 100%' }
+  const fittedWidth = Math.min(1, aspect / frame)
+  const fittedHeight = Math.min(1, frame / aspect)
+  return { aspect, size: `${(fittedWidth * 100).toFixed(3)}% ${(fittedHeight * 100).toFixed(3)}%` }
 }
 
 /** Build CSS filter + transform strings from clip effects */
@@ -310,13 +334,15 @@ export function getClipEffectStyles(
   if (opacity < 1) style.opacity = opacity
   if (clipPath) style.clipPath = clipPath
 
-  if (clip.mask && clip.mask.enabled !== false) {
-    const svg = buildClipMaskSvg(clip.mask)
+  const masks = options.ignoreMask ? [] : getClipMasks(clip).filter(mask => mask.enabled !== false)
+  if (masks.length > 0) {
+    const { aspect, size } = maskPictureBox(clip, options.frameAspect)
+    const svg = buildClipMaskSvg(masks, aspect)
     const encoded = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
     style.maskImage = `url("${encoded}")`
     style.WebkitMaskImage = `url("${encoded}")`
-    style.maskSize = '100% 100%'
-    style.WebkitMaskSize = '100% 100%'
+    style.maskSize = size
+    style.WebkitMaskSize = size
     style.maskRepeat = 'no-repeat'
     style.WebkitMaskRepeat = 'no-repeat'
     style.maskPosition = 'center'
@@ -330,49 +356,107 @@ export function getClipEffectStyles(
   return style
 }
 
-export function buildClipMaskSvg(mask: ClipMask): string {
-  const { shape, x, y, width, height, rotation, feather, invert } = mask
-  const rot = rotation ?? 0
-  const featherStdDev = (feather ?? 0) * 0.25
-
-  let shapeElement = ''
-  if (shape === 'rectangle') {
-    const rx = Math.max(-100, x - width / 2)
-    const ry = Math.max(-100, y - height / 2)
-    shapeElement = `<rect x="${rx.toFixed(2)}" y="${ry.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" transform="rotate(${rot} ${x} ${y})" />`
-  } else if (shape === 'ellipse') {
-    const rx = width / 2
-    const ry = height / 2
-    shapeElement = `<ellipse cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" transform="rotate(${rot} ${x} ${y})" />`
-  } else if (shape === 'linear') {
-    shapeElement = `<rect x="-150" y="${y.toFixed(2)}" width="400" height="400" transform="rotate(${rot} ${x} ${y})" />`
+/**
+ * Masks are drawn in a box 100 units high and `aspect * 100` wide, the picture's own proportions,
+ * so a rotation turns a shape the way it looks on screen instead of shearing it. Positions and
+ * sizes are still percentages of the picture's width and height.
+ */
+function maskUnits(mask: ClipMask, aspect: number) {
+  const unitsWide = aspect * 100
+  return {
+    x: (mask.x / 100) * unitsWide,
+    y: mask.y,
+    width: (mask.width / 100) * unitsWide,
+    height: mask.height,
+    unitsWide,
   }
+}
 
-  const filterDef = featherStdDev > 0
-    ? `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${featherStdDev.toFixed(2)}" /></filter>`
-    : ''
-  const filterAttr = featherStdDev > 0 ? 'filter="url(#f)"' : ''
+function polygonPoints(outline: ReadonlyArray<readonly [number, number]>, box: ReturnType<typeof maskUnits>): string {
+  return outline
+    .map(([ux, uy]) => `${(box.x + ux * (box.width / 2)).toFixed(2)},${(box.y + uy * (box.height / 2)).toFixed(2)}`)
+    .join(' ')
+}
 
-  let content = ''
-  if (invert) {
-    content = `
-      <defs>
-        ${filterDef}
-        <mask id="inv">
-          <rect width="100" height="100" fill="white" />
-          ${shapeElement.replace('/>', ` fill="black" ${filterAttr} />`)}
-        </mask>
-      </defs>
-      <rect width="100" height="100" fill="white" mask="url(#inv)" />
-    `
-  } else {
-    content = `
-      <defs>${filterDef}</defs>
-      ${shapeElement.replace('/>', ` fill="white" ${filterAttr} />`)}
-    `
+/** The shape of one mask as an SVG element without its fill. */
+function maskShapeElement(mask: ClipMask, aspect: number): string {
+  const box = maskUnits(mask, aspect)
+  const { x, y, width, height, unitsWide } = box
+  const rot = mask.rotation ?? 0
+  const turn = `transform="rotate(${rot} ${x.toFixed(2)} ${y.toFixed(2)})"`
+  const reach = unitsWide * 3
+  if (mask.shape === 'rectangle') {
+    const radius = (Math.max(0, Math.min(100, mask.roundCorners ?? 0)) / 100) * (Math.min(width, height) / 2)
+    const corners = radius > 0 ? ` rx="${radius.toFixed(2)}" ry="${radius.toFixed(2)}"` : ''
+    return `<rect x="${(x - width / 2).toFixed(2)}" y="${(y - height / 2).toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}"${corners} ${turn} />`
   }
+  if (mask.shape === 'ellipse') {
+    return `<ellipse cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" rx="${(width / 2).toFixed(2)}" ry="${(height / 2).toFixed(2)}" ${turn} />`
+  }
+  if (mask.shape === 'linear') {
+    return `<rect x="${(-reach).toFixed(2)}" y="${y.toFixed(2)}" width="${(reach * 2 + unitsWide).toFixed(2)}" height="400" ${turn} />`
+  }
+  if (mask.shape === 'mirror') {
+    return `<rect x="${(-reach).toFixed(2)}" y="${(y - height / 2).toFixed(2)}" width="${(reach * 2 + unitsWide).toFixed(2)}" height="${height.toFixed(2)}" ${turn} />`
+  }
+  const outline = mask.shape === 'star' ? starOutline() : heartOutline()
+  return `<polygon points="${polygonPoints(outline, box)}" ${turn} />`
+}
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">${content.trim()}</svg>`
+/** The defs and drawing of a list of masks, every shape painted in one colour. */
+function maskContent(list: readonly ClipMask[], aspect: number, paint: 'white' | 'black') {
+  const defs: string[] = []
+  const body: string[] = []
+  const unitsWide = (aspect * 100).toFixed(2)
+  list.forEach((mask, index) => {
+    // The first mask keeps the plain ids so a single mask draws exactly what it always did.
+    const suffix = index === 0 ? '' : String(index)
+    const featherStdDev = (mask.feather ?? 0) * 0.25
+    const filterId = `f${suffix}`
+    const maskId = `inv${suffix}`
+    const filterAttr = featherStdDev > 0 ? ` filter="url(#${filterId})"` : ''
+    if (featherStdDev > 0) {
+      defs.push(`<filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${featherStdDev.toFixed(2)}" /></filter>`)
+    }
+    const element = maskShapeElement(mask, aspect)
+    if (mask.invert) {
+      defs.push(`<mask id="${maskId}"><rect width="${unitsWide}" height="100" fill="white" />${element.replace('/>', `fill="black"${filterAttr} />`)}</mask>`)
+      body.push(`<rect width="${unitsWide}" height="100" fill="${paint}" mask="url(#${maskId})" />`)
+    } else {
+      body.push(element.replace('/>', `fill="${paint}"${filterAttr} />`))
+    }
+  })
+  return { defs, body }
+}
+
+function maskSvgShell(aspect: number, inner: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${(aspect * 100).toFixed(2)} 100" preserveAspectRatio="none">${inner}</svg>`
+}
+
+/**
+ * The picture's alpha mask as an SVG: white where it shows. With several masks it shows wherever
+ * any one of them covers it, each mask having applied its own invert and feather first.
+ * `aspect` is the picture's width over its height.
+ */
+export function buildClipMaskSvg(masks: ClipMask | readonly ClipMask[], aspect = 1): string {
+  const list = Array.isArray(masks) ? masks : [masks as ClipMask]
+  const { defs, body } = maskContent(list, aspect, 'white')
+  const defsMarkup = defs.length > 0 ? `<defs>${defs.join('')}</defs>` : '<defs></defs>'
+  return maskSvgShell(aspect, `${defsMarkup}${body.join('')}`)
+}
+
+/**
+ * What the editor lays over the picture while a mask is being edited: the part the masks hide
+ * painted solid black and the part they keep left clear, so the cut reads as it will in the result.
+ */
+export function buildMaskDimSvg(masks: readonly ClipMask[], aspect = 1, dim = 1): string {
+  const { defs, body } = maskContent(masks, aspect, 'black')
+  const unitsWide = (aspect * 100).toFixed(2)
+  const dimMask = `<mask id="dim"><rect width="${unitsWide}" height="100" fill="white" />${body.join('')}</mask>`
+  return maskSvgShell(
+    aspect,
+    `<defs>${defs.join('')}${dimMask}</defs><rect width="${unitsWide}" height="100" fill="black" fill-opacity="${dim}" mask="url(#dim)" />`,
+  )
 }
 
 /** Get the CSS filter string for a single effect */

@@ -1,5 +1,6 @@
 import { effectiveTimelineBackground } from '../../core/src/project-model'
 import type { TimelineBackground, ClipMask, ChromaKey } from '../../core/src/project-model'
+import { HEART_BOX, STAR_BOX, STAR_EDGE } from '../../core/src/mask-shapes'
 import type { ExportClip } from './timeline'
 import { autoMatteBakeOffset, autoMattePlaybackRate } from '../../core/src/auto-matte'
 import { matteAlphaBand, matteFeatherSigma, hasMatteClean, hasMatteFeather } from '../../core/src/matte-edge'
@@ -169,13 +170,11 @@ function buildTransitionChain(clip: ExportClip, visibleDuration: number): string
 }
 
 /**
- * Build FFmpeg geq filter for clip mask (rectangle, ellipse, linear) with rotation, feather, and invert.
- * Applies directly onto the alpha channel (a='...') in yuva420p format.
+ * The part of the picture one mask lets through at a pixel, as an ffmpeg expression from 0 to 1
+ * (the mask's invert already applied), or '' for a mask with no shape.
  */
-export function buildMaskChain(mask: ClipMask | undefined): string {
-  if (!mask || mask.enabled === false) return ''
-
-  const { shape, x, y, width, height, rotation = 0, feather = 0, invert = false } = mask
+function maskCoverageExpr(mask: ClipMask): string {
+  const { shape, x, y, width, height, rotation = 0, feather = 0, invert = false, roundCorners = 0 } = mask
   const rotRad = (rotation * Math.PI) / 180
   const cosRot = Math.cos(rotRad).toFixed(6)
   const sinRot = Math.sin(rotRad).toFixed(6)
@@ -185,7 +184,9 @@ export function buildMaskChain(mask: ClipMask | undefined): string {
   const cy = (y / 100).toFixed(6)
 
   // Half-extents in normalized 0..1 coordinates
-  const hw = Math.max(0.001, (width / 200)).toFixed(6)
+  // Distances are measured in picture heights, so a rotation turns a shape as it looks on screen;
+  // widths and x offsets are scaled by the picture's aspect (W/H) at run time.
+  const hw = `(${Math.max(0.001, (width / 200)).toFixed(6)}*W/H)`
   const hh = Math.max(0.001, (height / 200)).toFixed(6)
 
   // Feather softness in normalized units (feather / 100 * 0.25)
@@ -195,7 +196,7 @@ export function buildMaskChain(mask: ClipMask | undefined): string {
   // dx = (X/W - cx), dy = (Y/H - cy)
   // rx = dx * cos - dy * sin
   // ry = dx * sin + dy * cos
-  const dxExpr = `(X/W-${cx})`
+  const dxExpr = `((X/W-${cx})*W/H)`
   const dyExpr = `(Y/H-${cy})`
   const rxExpr = `(${dxExpr}*${cosRot}-${dyExpr}*${sinRot})`
   const ryExpr = `(${dxExpr}*${sinRot}+${dyExpr}*${cosRot})`
@@ -203,7 +204,16 @@ export function buildMaskChain(mask: ClipMask | undefined): string {
   let alphaExpr = ''
 
   if (shape === 'rectangle') {
-    if (feather > 0) {
+    if (roundCorners > 0) {
+      // Signed distance to a rounded box: negative inside, zero on the edge.
+      const radius = `(${Math.min(1, roundCorners / 100).toFixed(6)}*min(${hw},${hh}))`
+      const qx = `(abs(${rxExpr})-${hw}+${radius})`
+      const qy = `(abs(${ryExpr})-${hh}+${radius})`
+      const dist = `(hypot(max(${qx},0),max(${qy},0))+min(max(${qx},${qy}),0)-${radius})`
+      alphaExpr = feather > 0
+        ? `255*clip(-${dist}/${f},0,1)`
+        : `if(lte(${dist},0),255,0)`
+    } else if (feather > 0) {
       // Smooth distance from box edges
       const distX = `(${hw}-abs(${rxExpr}))`
       const distY = `(${hh}-abs(${ryExpr}))`
@@ -228,17 +238,53 @@ export function buildMaskChain(mask: ClipMask | undefined): string {
     } else {
       alphaExpr = `if(gte(${ryExpr},0),255,0)`
     }
+  } else if (shape === 'mirror') {
+    // A band across the whole picture, as tall as the mask.
+    alphaExpr = feather > 0
+      ? `255*clip((${hh}-abs(${ryExpr}))/${f},0,1)`
+      : `if(lte(abs(${ryExpr}),${hh}),255,0)`
+  } else if (shape === 'star') {
+    // Fit the mask's box to the star's own, then compare the pixel's distance from the centre
+    // with the star's edge at its angle within the sector it falls in.
+    const ux = `(${rxExpr}/${hw}*${STAR_BOX.halfWidth.toFixed(6)}+${STAR_BOX.centerX.toFixed(6)})`
+    const uy = `(${ryExpr}/${hh}*${STAR_BOX.halfHeight.toFixed(6)}+${STAR_BOX.centerY.toFixed(6)})`
+    const sector = STAR_EDGE.sector.toFixed(6)
+    // Angle from the nearest outer point (which is straight up), 0..half a sector.
+    const phi = `abs(mod(atan2(${uy},${ux})+${(Math.PI / 2 + STAR_EDGE.sector / 2).toFixed(6)},${sector})-${(STAR_EDGE.sector / 2).toFixed(6)})`
+    const edge = `(${STAR_EDGE.distance.toFixed(6)}/cos(${phi}-${STAR_EDGE.tilt.toFixed(6)}))`
+    const gap = `(${edge}-hypot(${ux},${uy}))`
+    alphaExpr = feather > 0
+      ? `255*clip(${gap}*${hw}/${f},0,1)`
+      : `if(gte(${gap},0),255,0)`
+  } else if (shape === 'heart') {
+    // The implicit heart curve, positive inside; its box is fitted to the mask's.
+    const hx = `(${rxExpr}/${hw}*${HEART_BOX.halfWidth.toFixed(6)}+${HEART_BOX.centerX.toFixed(6)})`
+    const hy = `(-(${ryExpr}/${hh}*${HEART_BOX.halfHeight.toFixed(6)}+${HEART_BOX.centerY.toFixed(6)}))`
+    const sum = `(${hx}*${hx}+${hy}*${hy}-1)`
+    const field = `(${hx}*${hx}*${hy}*${hy}*${hy}-${sum}*${sum}*${sum})`
+    alphaExpr = feather > 0
+      ? `255*clip(${field}*${(1 / Math.max(0.0001, feather / 100)).toFixed(4)}*4,0,1)`
+      : `if(gte(${field},0),255,0)`
   }
 
   if (!alphaExpr) return ''
+  return invert ? `(1-(${alphaExpr})/255)` : `((${alphaExpr})/255)`
+}
 
-  // Combine with existing alpha: alpha = alpha * (mask_alpha / 255)
-  // If inverted: mask_alpha = 255 - mask_alpha
-  const finalAlpha = invert
-    ? `alpha(X,Y)*(1-(${alphaExpr})/255)`
-    : `alpha(X,Y)*((${alphaExpr})/255)`
+/**
+ * Build FFmpeg geq filter for the clip's masks (rectangle, circle, split, filmstrip, star, heart)
+ * with rotation, feather, round corners and invert. The picture stays visible where any mask
+ * covers it. Applies directly onto the alpha channel (a='...') in yuva420p format.
+ */
+export function buildMaskChain(masks: ClipMask | readonly ClipMask[] | undefined): string {
+  if (!masks) return ''
+  const list = (Array.isArray(masks) ? masks : [masks as ClipMask]).filter(mask => mask.enabled !== false)
+  const coverages = list.map(maskCoverageExpr).filter(expr => expr !== '')
+  if (coverages.length === 0) return ''
 
-  return `,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='${finalAlpha}'`
+  // Combine with existing alpha: alpha = alpha * coverage, the widest coverage of all the masks.
+  const coverage = coverages.reduce((widest, next) => `max(${widest},${next})`)
+  return `,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*${coverage}'`
 }
 
 /**
@@ -488,7 +534,7 @@ export function buildVideoFilterGraph(
       }
 
       chain += buildChromaKeyChain(clip.chromaKey)
-      chain += buildMaskChain(clip.mask)
+      chain += buildMaskChain(clip.masks ?? clip.mask)
 
       const hasStroke = Boolean(
         clip.stroke?.enabled &&

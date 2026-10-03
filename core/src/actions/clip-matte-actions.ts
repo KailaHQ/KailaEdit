@@ -1,5 +1,6 @@
 import type {
   ClipMask,
+  ClipMaskShape,
   ChromaKey,
   AutoMatte,
   CustomMatte,
@@ -12,15 +13,19 @@ import type {
 } from '../project-model'
 import {
   DEFAULT_CLIP_MASK,
+  getClipMasks,
   DEFAULT_CHROMA_KEY,
   DEFAULT_AUTO_MATTE,
   DEFAULT_CUSTOM_MATTE,
   DEFAULT_CLIP_STROKE,
   DEFAULT_CLIP_STABILIZATION,
 } from '../project-model'
+import { makeId } from '../id-generator'
 import { clampStabilizationSmoothing } from '../stabilization'
 import type { EditorState } from '../editor-state'
-import { selectClipById } from '../editor-selectors'
+import { selectActiveTimeline, selectClipById } from '../editor-selectors'
+import { defaultMaskSize } from '../mask-shapes'
+import { getEffectiveTimelineDimensions } from '../video-resolution'
 import { updateSession } from './action-helpers'
 import { updateClip } from './clip-core-actions'
 
@@ -84,16 +89,94 @@ export function setCustomMatteBrushSize(state: EditorState, size: number): Edito
   }))
 }
 
-export function setClipMask(state: EditorState, clipId: string, mask: Partial<ClipMask> | null): EditorState {
-  if (!mask) return updateClip(state, clipId, { mask: undefined })
+/** Which of the selected clip's masks the panel and the canvas handles are editing. */
+export function setActiveMaskId(state: EditorState, maskId: string | null): EditorState {
+  return updateSession(state, session => ({
+    ...session,
+    ui: { ...session.ui, activeMaskId: maskId },
+  }))
+}
+
+/** The mask being edited: the picked one, else the first. */
+function pickMask(state: EditorState, masks: ClipMask[]): ClipMask | undefined {
+  const activeId = state.session.ui.activeMaskId
+  return masks.find(mask => mask.id === activeId) ?? masks[0]
+}
+
+function writeMasks(state: EditorState, clipId: string, masks: ClipMask[]): EditorState {
+  // The single-mask field is retired once the clip is edited; masks live in the list from here on.
+  return updateClip(state, clipId, { mask: undefined, masks: masks.length > 0 ? masks : undefined })
+}
+
+/** The picture's width over its height: the clip's own, else the timeline's frame. */
+function pictureAspect(state: EditorState, clip: { asset?: { width?: number; height?: number } | null }): number {
+  const width = clip.asset?.width
+  const height = clip.asset?.height
+  if (width && height && width > 0 && height > 0) return width / height
+  return getEffectiveTimelineDimensions(selectActiveTimeline(state)).aspectRatio || 1
+}
+
+/** Adds a mask of the given shape, sized to look right on this picture, and makes it the one being edited. */
+export function addClipMask(state: EditorState, clipId: string, shape: ClipMaskShape = 'rectangle'): EditorState {
   const clip = selectClipById(state, clipId)
-  const currentMask = clip?.mask || DEFAULT_CLIP_MASK
-  return updateClip(state, clipId, {
-    mask: {
-      ...currentMask,
-      ...mask,
-    },
-  })
+  if (!clip) return state
+  const id = makeId('mask')
+  const next = writeMasks(state, clipId, [
+    ...getClipMasks(clip),
+    { ...DEFAULT_CLIP_MASK, ...defaultMaskSize(shape, pictureAspect(state, clip)), id, shape, enabled: true },
+  ])
+  return setActiveMaskId(next, id)
+}
+
+/** Takes one mask off the clip; the one before it (or the first left) becomes the edited one. */
+export function removeClipMask(state: EditorState, clipId: string, maskId: string): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip) return state
+  const masks = getClipMasks(clip)
+  const index = masks.findIndex(mask => mask.id === maskId)
+  if (index < 0) return state
+  const remaining = masks.filter(mask => mask.id !== maskId)
+  const next = writeMasks(state, clipId, remaining)
+  return setActiveMaskId(next, remaining[Math.max(0, index - 1)]?.id ?? null)
+}
+
+/**
+ * Gives a mask another shape. The size goes back to what a new mask of that shape starts with,
+ * because the old width and height only suited the old shape: carried over, a circle taken from
+ * a wide rectangle comes out an oval. Position, turn, feather and invert stay.
+ */
+export function setClipMaskShape(state: EditorState, clipId: string, maskId: string, shape: ClipMaskShape): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip) return state
+  const current = getClipMasks(clip).find(mask => mask.id === maskId)
+  if (!current) return state
+  if (current.shape === shape) return updateClipMask(state, clipId, maskId, { enabled: true })
+  return updateClipMask(state, clipId, maskId, { shape, enabled: true, ...defaultMaskSize(shape, pictureAspect(state, clip)) })
+}
+
+/** Changes one mask by id: its shape, size, feather and so on. */
+export function updateClipMask(state: EditorState, clipId: string, maskId: string, patch: Partial<ClipMask>): EditorState {
+  const clip = selectClipById(state, clipId)
+  if (!clip) return state
+  const masks = getClipMasks(clip)
+  if (!masks.some(mask => mask.id === maskId)) return state
+  return writeMasks(state, clipId, masks.map(mask => (mask.id === maskId ? { ...mask, ...patch, id: maskId } : mask)))
+}
+
+/**
+ * Changes the mask being edited, adding one if the clip has none; null removes every mask.
+ * The canvas handles and the patch operations speak to the clip this way.
+ */
+export function setClipMask(state: EditorState, clipId: string, mask: Partial<ClipMask> | null): EditorState {
+  if (!mask) return setActiveMaskId(updateClip(state, clipId, { mask: undefined, masks: undefined }), null)
+  const clip = selectClipById(state, clipId)
+  if (!clip) return state
+  const target = pickMask(state, getClipMasks(clip))
+  if (!target) {
+    const id = makeId('mask')
+    return setActiveMaskId(writeMasks(state, clipId, [{ ...DEFAULT_CLIP_MASK, ...mask, id }]), id)
+  }
+  return updateClipMask(state, clipId, target.id!, mask)
 }
 
 export function setClipChromaKey(state: EditorState, clipId: string, chromaKey: Partial<ChromaKey> | null): EditorState {

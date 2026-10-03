@@ -242,10 +242,13 @@ class RenderQueueManager {
     }
     this.jobs.set(jobId, job)
 
-    // Execute job asynchronously without blocking return
+    // Execute job asynchronously without blocking return. With the clips as resolved above: the
+    // executor reads `params.clips`, so handing it the raw params sent ffmpeg `stickers/fire.png`
+    // while everything here had checked the real file — every render containing a sticker or a
+    // sound effect failed with "Error opening input file".
     executeRenderJob(
       job,
-      params,
+      { ...params, clips },
       ffmpegPath,
       timelineDuration,
       tmpDir,

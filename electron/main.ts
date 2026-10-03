@@ -87,7 +87,11 @@ if (!gotLock) {
     setTimeout(() => {
       try {
         const p = findFfmpegPath()
-        if (p) detectHardwareEncoders(p)
+        if (p) {
+          detectHardwareEncoders(p).catch((err) => {
+            logger.warn(`[main] Failed to probe hardware encoders on startup: ${String(err)}`)
+          })
+        }
       } catch (err) {
         logger.warn(`[main] Failed to probe hardware encoders on startup: ${String(err)}`)
       }

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Folder, MoreVertical, Trash2, Pencil, Settings as SettingsIcon } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
+import { prepareProjectFirstFrame } from './editor/preview/first-frame-prefetch'
 import { useView } from '../contexts/ViewContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useTranslation } from '../i18n/I18nContext'
@@ -23,9 +24,11 @@ function formatDate(timestamp: number): string {
   })
 }
 
-function ProjectCard({ project, onOpen, onDelete, onRename, renameLabel, deleteLabel }: {
+function ProjectCard({ project, onOpen, onHover, onDelete, onRename, renameLabel, deleteLabel }: {
   project: Project
   onOpen: () => void
+  /** The pointer is over the card: the project is probably about to be opened. */
+  onHover: () => void
   onDelete: () => void
   onRename: () => void
   renameLabel: string
@@ -47,6 +50,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename, renameLabel, deleteL
     <div
       className="group relative bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
       onClick={onOpen}
+      onMouseEnter={onHover}
     >
       {/* Thumbnail */}
       <div className="aspect-video bg-zinc-800 flex items-center justify-center relative overflow-hidden">
@@ -132,7 +136,7 @@ function ProjectCard({ project, onOpen, onDelete, onRename, renameLabel, deleteL
 
 export function Home() {
   const { t } = useTranslation()
-  const { openSettings } = useSettings()
+  const { openSettings, settings } = useSettings()
   const { projectIds, getProject, createProject, deleteProject, renameProject } = useProjects()
   const { openProject } = useView()
   const { migrationStatus, migrateProjects } = useProjectReferencesMigration()
@@ -169,6 +173,21 @@ export function Home() {
       .map(projectId => getProject(projectId))
       .filter((project): project is Project => project !== null)
   ), [getProject, projectIds])
+
+  // The first frame of a project is decoded before it is opened, so the monitor has its picture
+  // the moment the editor appears: for the most recent project as soon as this screen is up,
+  // and for any project the pointer settles on.
+  const proxyEnabled = settings.proxyEnabled
+  const prepareProject = useCallback(
+    (project: Project) => prepareProjectFirstFrame(project, proxyEnabled),
+    [proxyEnabled],
+  )
+  const mostRecentProject = projects[0]
+  useEffect(() => {
+    if (!mostRecentProject) return
+    const timer = window.setTimeout(() => prepareProject(mostRecentProject), 400)
+    return () => window.clearTimeout(timer)
+  }, [mostRecentProject, prepareProject])
 
   const handleCreateProject = () => {
     if (newProjectName.trim()) {
@@ -238,6 +257,7 @@ export function Home() {
                   <button
                     key={project.id}
                     onClick={() => openProject(project.id)}
+                    onMouseEnter={() => prepareProject(project)}
                     className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors truncate"
                   >
                     <Folder className="h-4 w-4 flex-shrink-0" />
@@ -324,6 +344,7 @@ export function Home() {
                   key={project.id}
                   project={project}
                   onOpen={() => openProject(project.id)}
+                  onHover={() => prepareProject(project)}
                   onDelete={() => {
                     if (confirm(t('home.deleteProjectConfirm'))) {
                       deleteProject(project.id)

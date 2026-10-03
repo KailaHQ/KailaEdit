@@ -58,6 +58,13 @@ export async function executeMatteBakePipeline(
     intraOpNumThreads,
   })
 
+  // Cancelled while the worker was starting: `cancelJob` found no host to stop, so this one
+  // has to be stopped here, or the whole bake would run on after being cancelled.
+  if (job.cancelled) {
+    workerHost.terminate()
+    return
+  }
+
   job.workerHost = workerHost
   const provider = workerHost.getProvider()
   onnxSessionManager.setActiveProvider(provider)

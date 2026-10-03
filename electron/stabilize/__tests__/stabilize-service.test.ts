@@ -174,7 +174,7 @@ describe.skipIf(!hasVidstab)('StabilizeService with ffmpeg', () => {
   })
 
   it('bakes a stabilized copy of the range, then serves it from cache', async () => {
-    expect(service.start(params())).toEqual({ started: true })
+    expect(await service.start(params())).toEqual({ started: true })
     const done = await finished('job-1')
     expect(done.phase).toBe('done')
 
@@ -207,7 +207,7 @@ describe.skipIf(!hasVidstab)('StabilizeService with ffmpeg', () => {
     )
 
     // The same request is answered from disk without running ffmpeg again.
-    const again = service.start(params({ jobId: 'job-2', assetId: 'asset-9' }))
+    const again = await service.start(params({ jobId: 'job-2', assetId: 'asset-9' }))
     expect(again.cached).toBe(true)
     expect(again.bake?.path).toBe(bake.path)
     expect(again.bake?.assetKey).toBe('asset-9')
@@ -223,7 +223,7 @@ describe.skipIf(!hasVidstab)('StabilizeService with ffmpeg', () => {
   }, 60_000)
 
   it('cancels a running job and leaves no partial file', async () => {
-    service.start(params({ jobId: 'c' }))
+    await service.start(params({ jobId: 'c' }))
     expect(service.cancel('c')).toBe(true)
     const end = await finished('c')
     expect(end.phase).toBe('cancelled')
@@ -232,9 +232,17 @@ describe.skipIf(!hasVidstab)('StabilizeService with ffmpeg', () => {
     expect(fs.readdirSync(cacheDir).filter(n => n.endsWith('.mp4'))).toEqual([])
   }, 30_000)
 
-  it('refuses a range with nothing in it, or a missing file', () => {
-    expect(service.start(params({ sourceSpan: 0 })).started).toBe(false)
-    expect(service.start(params({ filePath: path.join(fixtureDir, 'nope.mp4') })).error).toMatch(/not found/)
+  it('cancels a job whose source is still being probed, before it ever runs', async () => {
+    const starting = service.start(params({ jobId: 'early' }))
+    expect(service.cancel('early')).toBe(true)
+    expect(await starting).toEqual({ started: false, error: 'Cancelled' })
+    expect(events.filter(e => e.jobId === 'early').map(e => e.phase)).toEqual(['cancelled'])
+    expect(service.status('early').status).not.toBe('running')
+  })
+
+  it('refuses a range with nothing in it, or a missing file', async () => {
+    expect((await service.start(params({ sourceSpan: 0 }))).started).toBe(false)
+    expect((await service.start(params({ filePath: path.join(fixtureDir, 'nope.mp4') }))).error).toMatch(/not found/)
   })
 
   it.each(['sdr', 'hevc'] as const)('bakes an HLG source with hdrOutput=%s', async hdrOutput => {

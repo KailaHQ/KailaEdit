@@ -1,4 +1,4 @@
-import { extractVideoFrameToFile } from '../export/ffmpeg-utils'
+import { extractVideoFrameToFileAsync } from '../export/ffmpeg-utils'
 import { extractAudioPeaks } from '../export/audio-peaks'
 import { observeLoudness, observeSilence } from '../media-analyzer'
 import { proxyManager } from '../export/proxy-manager'
@@ -37,7 +37,7 @@ export function registerVideoProcessingHandlers(): void {
 
   handle('extractVideoFrame', async ({ videoPath, seekTime, width, quality }) => {
     return {
-      path: extractVideoFrameToFile({
+      path: await extractVideoFrameToFileAsync({
         videoPath,
         seekTime,
         width,

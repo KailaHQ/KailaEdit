@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { removeEntry } from './remove-entry'
-import { extractVideoFrameToFile } from '../export/ffmpeg-utils'
+import { extractVideoFrameToFileAsync } from '../export/ffmpeg-utils'
 import {
   TEMPLATE_FILE_EXTENSION,
   TEMPLATE_FILE_EXTENSIONS,
@@ -222,12 +222,35 @@ export interface TemplateCoverSource {
 
 export const TEMPLATE_COVER_NAME = 'cover.jpg'
 
+type WriteTemplateResult = { success: true; fileName: string; path: string } | { success: false; error: string }
+
+let templateWriteQueue: Promise<unknown> = Promise.resolve()
+
+/**
+ * Saves a template, one save at a time.
+ *
+ * The media copy and the cover frame are awaited rather than run with copyFileSync and
+ * spawnSync: done synchronously they froze the whole browser process — preview included —
+ * for as long as ffmpeg and the copy took. Being async, two saves of the same template could
+ * now interleave over its one `.staging` folder, so saves queue behind each other.
+ */
 export function writeTemplate(
   templatesDir: string,
   template: KomfyTemplate,
   media: ReadonlyArray<TemplateMediaRef> = [],
   cover?: TemplateCoverSource,
-): { success: true; fileName: string; path: string } | { success: false; error: string } {
+): Promise<WriteTemplateResult> {
+  const result = templateWriteQueue.then(() => writeTemplateNow(templatesDir, template, media, cover))
+  templateWriteQueue = result.catch(() => {})
+  return result
+}
+
+async function writeTemplateNow(
+  templatesDir: string,
+  template: KomfyTemplate,
+  media: ReadonlyArray<TemplateMediaRef>,
+  cover: TemplateCoverSource | undefined,
+): Promise<WriteTemplateResult> {
   const parsed = komfyTemplateSchema.safeParse(template)
   if (!parsed.success) {
     return { success: false, error: `TEMPLATE_INVALID: ${parsed.error.issues[0]?.message ?? ''}` }
@@ -256,7 +279,7 @@ export function writeTemplate(
     fs.mkdirSync(path.join(stagingPath, TEMPLATE_MEDIA_DIR), { recursive: true })
 
     for (const entry of media) {
-      fs.copyFileSync(entry.sourcePath, path.join(stagingPath, TEMPLATE_MEDIA_DIR, entry.fileName))
+      await fs.promises.copyFile(entry.sourcePath, path.join(stagingPath, TEMPLATE_MEDIA_DIR, entry.fileName))
     }
     /*
      * The cover is a real frame of the edit as it stood when it was saved —
@@ -267,7 +290,7 @@ export function writeTemplate(
     let document = parsed.data
     if (cover) {
       try {
-        extractVideoFrameToFile({
+        await extractVideoFrameToFileAsync({
           videoPath: cover.videoPath,
           seekTime: Math.max(0, cover.seekTime),
           outputPath: path.join(stagingPath, TEMPLATE_COVER_NAME),

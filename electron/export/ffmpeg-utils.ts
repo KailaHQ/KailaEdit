@@ -1,4 +1,4 @@
-import { spawn, spawnSync, ChildProcess, execSync } from 'child_process'
+import { spawn, ChildProcess } from 'child_process'
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
@@ -22,12 +22,31 @@ function resolveFfmpegPath(): string | null {
     if (fs.existsSync(bundled)) return bundled
   }
 
-  try {
-    execSync('ffmpeg -version', { stdio: 'ignore' })
-    return 'ffmpeg'
-  } catch {
-    return null
+  return ffmpegOnPath() ? 'ffmpeg' : null
+}
+
+/**
+ * Whether an `ffmpeg` executable sits in one of the PATH folders.
+ *
+ * Looked up on disk rather than by running `ffmpeg -version` through execSync: that
+ * started a process and blocked the main process until it exited, and the answer — is
+ * there an ffmpeg to run — is a question about files.
+ */
+function ffmpegOnPath(): boolean {
+  const names = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean).map(ext => `ffmpeg${ext.toLowerCase()}`)
+    : ['ffmpeg']
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue
+    for (const name of names) {
+      try {
+        if (fs.statSync(path.join(dir.replace(/^"|"$/g, ''), name)).isFile()) return true
+      } catch {
+        // Not here.
+      }
+    }
   }
+  return false
 }
 
 export function findFfmpegPath(): string | null {
@@ -41,8 +60,8 @@ export function findFfmpegPath(): string | null {
 }
 
 /** Check if a video file contains an audio stream using ffprobe/ffmpeg */
-export function fileHasAudio(ffmpegPath: string, filePath: string): boolean {
-  return probeAudioStream(ffmpegPath, filePath).hasAudio
+export async function fileHasAudio(ffmpegPath: string, filePath: string): Promise<boolean> {
+  return (await probeAudioStream(ffmpegPath, filePath)).hasAudio
 }
 
 const SPLIT_NL = /\r?\n/
@@ -58,13 +77,10 @@ export interface AudioStreamInfo {
  * mono-to-stereo conversion is power-preserving and drops the level by 3 dB;
  * the mixer compensates by copying the channel explicitly instead.
  */
-export function probeAudioStream(ffmpegPath: string, filePath: string): AudioStreamInfo {
+export async function probeAudioStream(ffmpegPath: string, filePath: string): Promise<AudioStreamInfo> {
   try {
-    const result = spawnSync(ffmpegPath, ['-i', filePath, '-hide_banner'], {
-      encoding: 'utf8',
-      timeout: 5000,
-    })
-    const output = (result.stdout || '') + (result.stderr || '')
+    const result = await runFfmpegCapture(ffmpegPath, ['-i', filePath, '-hide_banner'], 5000)
+    const output = result.stdout + result.stderr
     const line = output.split(SPLIT_NL).find(candidate => candidate.includes('Audio:'))
     if (!line) return { hasAudio: false, channels: 0 }
 
@@ -123,7 +139,10 @@ export function runFfmpegWithProgress(
       if (key === 'frame') progress.frame = Number(val)
       if (key === 'fps') progress.fps = Number(val)
       if (key === 'out_time_us') progress.outTimeUs = Number(val)
-      if (key === 'out_time_ms') progress.outTimeUs = Number(val) * 1000
+      // Despite its name ffmpeg prints out_time_ms in MICROseconds, the same number as
+      // out_time_us on the line before. Scaling it by 1000 put every progress bar driven
+      // from here at its 99% cap a moment after starting.
+      if (key === 'out_time_ms') progress.outTimeUs = Number(val)
       if (key === 'speed') {
         const speedNum = parseFloat(val?.replace('x', '') || '')
         if (!isNaN(speedNum)) progress.speed = speedNum
@@ -172,29 +191,100 @@ export function runFfmpegWithProgress(
   }
 }
 
-function runFfmpegSyncOrThrow(ffmpegPath: string, args: string[], timeoutMs = 30000): void {
-  logger.info(`[ffmpeg-sync] spawn: ${args.join(' ').slice(0, 400)}`)
-  const result = spawnSync(ffmpegPath, args, { timeout: timeoutMs })
-  if (result.status === 0) return
-  const stderr = (result.stderr?.toString() || '').split('\n').filter(Boolean).slice(-5).join('\n')
-  throw new Error(`FFmpeg failed (code ${result.status}): ${stderr.slice(0, 300)}`)
+/**
+ * spawnSync's result shape, without blocking the main process while ffmpeg runs.
+ *
+ * Every synchronous ffmpeg call in an IPC handler froze the browser process for as long as
+ * ffmpeg took — and the renderer's <video> stalls with it, not just IPC. Rejects only when
+ * ffmpeg cannot start or runs past `timeoutMs`; a non-zero exit is the caller's to judge
+ * (`ffmpeg -i` with no output exits 1 yet prints exactly what a probe wants).
+ */
+export async function runFfmpegCapture(
+  ffmpegPath: string,
+  args: string[],
+  timeoutMs = 30000,
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  const result = await runFfmpegCaptureBinary(ffmpegPath, args, { timeoutMs })
+  return { ...result, stdout: result.stdout.toString() }
 }
 
-export function extractVideoFrameToFile({
-  videoPath,
-  seekTime,
-  width,
-  quality,
-  outputPath,
-  timeoutMs = 10000,
-}: {
+/**
+ * runFfmpegCapture for output that is data, not text — raw pixels piped to stdout, say.
+ * Decoding those bytes as a string would corrupt them. `maxStdoutBytes` plays spawnSync's
+ * `maxBuffer`: past it ffmpeg is killed and the call rejects.
+ */
+export function runFfmpegCaptureBinary(
+  ffmpegPath: string,
+  args: string[],
+  { timeoutMs = 30000, maxStdoutBytes = Infinity }: { timeoutMs?: number; maxStdoutBytes?: number } = {},
+): Promise<{ status: number | null; stdout: Buffer; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    quietChildStdio(proc, 'ffmpeg')
+    const stdoutChunks: Buffer[] = []
+    let stdoutBytes = 0
+    let stderr = ''
+    let settled = false
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { proc.kill('SIGTERM') } catch {}
+      reject(error)
+    }
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length
+      if (stdoutBytes > maxStdoutBytes) {
+        fail(new Error(`FFmpeg output exceeded ${maxStdoutBytes} bytes`))
+        return
+      }
+      stdoutChunks.push(chunk)
+    })
+    proc.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+    const timer = setTimeout(() => fail(new Error(`FFmpeg timed out after ${timeoutMs}ms`)), timeoutMs)
+    proc.on('error', (err) => fail(new Error(`Failed to start ffmpeg: ${err.message}`)))
+    proc.on('close', (status) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ status, stdout: Buffer.concat(stdoutChunks), stderr })
+    })
+  })
+}
+
+async function runFfmpegAsyncOrThrow(ffmpegPath: string, args: string[], timeoutMs = 30000): Promise<void> {
+  logger.info(`[ffmpeg-async] spawn: ${args.join(' ').slice(0, 400)}`)
+  const { status, stderr } = await runFfmpegCapture(ffmpegPath, args, timeoutMs)
+  if (status === 0) return
+  const tail = stderr.split('\n').filter(Boolean).slice(-5).join('\n')
+  throw new Error(`FFmpeg failed (code ${status}): ${tail.slice(0, 300)}`)
+}
+
+interface ExtractVideoFrameOptions {
   videoPath: string
   seekTime: number
   width?: number
   quality?: number
   outputPath?: string
   timeoutMs?: number
-}): string {
+}
+
+/**
+ * Grabs one frame of a video into an image file, without blocking the main process.
+ *
+ * The timeline asks for a thumbnail per clip as soon as a project opens. Run through
+ * spawnSync, each one froze the browser process for about half a second, and the
+ * preview's <video> could not deliver its first frame until all of them were done: the
+ * monitor sat black for ~3 s after opening a project on a freshly started app.
+ */
+export async function extractVideoFrameToFileAsync({
+  videoPath,
+  seekTime,
+  width,
+  quality,
+  outputPath,
+  timeoutMs = 10000,
+}: ExtractVideoFrameOptions): Promise<string> {
   const ffmpegPath = findFfmpegPath()
   if (!ffmpegPath) {
     throw new Error('ffmpeg not found')
@@ -220,7 +310,7 @@ export function extractVideoFrameToFile({
   ]
 
   logger.info(`[extract-frame] ${args.join(' ').slice(0, 300)}`)
-  runFfmpegSyncOrThrow(ffmpegPath, args, timeoutMs)
+  await runFfmpegAsyncOrThrow(ffmpegPath, args, timeoutMs)
 
   if (!fs.existsSync(resolvedOutputPath)) {
     throw new Error('ffmpeg produced no output file')
@@ -272,7 +362,7 @@ export function parseDisplayDimensions(ffmpegOutput: string): { width: number; h
   return swapped ? { width: height, height: width } : { width, height }
 }
 
-export function getVideoDimensions(videoPath: string): { width: number; height: number } {
+export async function getVideoDimensions(videoPath: string): Promise<{ width: number; height: number }> {
   const ffmpegPath = findFfmpegPath()
   if (!ffmpegPath) {
     throw new Error('ffmpeg not found')
@@ -281,11 +371,8 @@ export function getVideoDimensions(videoPath: string): { width: number; height: 
     throw new Error(`Video file not found: ${videoPath}`)
   }
 
-  const result = spawnSync(ffmpegPath, ['-hide_banner', '-i', videoPath], {
-    encoding: 'utf8',
-    timeout: 10000,
-  })
-  const output = `${result.stdout || ''}\n${result.stderr || ''}`
+  const result = await runFfmpegCapture(ffmpegPath, ['-hide_banner', '-i', videoPath], 10000)
+  const output = `${result.stdout}\n${result.stderr}`
   const dimensions = parseDisplayDimensions(output)
 
   if (!dimensions) {

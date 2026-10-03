@@ -12,6 +12,30 @@ A release with no section here is refused by CI before anything is built.
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-10-03
+
+### Added
+- **Several masks on one clip.** The Mask tab now works like a mask stack: add as many masks as you like with the **+** button, click a tab ("Mask1 Circle", "Mask2 Rectangle"…) to pick the one to edit, and change its shape at any time. The picture shows wherever any mask covers it, and each mask keeps its own feather and invert. Projects with a single mask from before open as before.
+- **New mask shapes and Round corners.** Split, Filmstrip, Circle, Rectangle, Stars and Heart, plus a Round corners slider for rectangles. Preview and export cut them the same way.
+- **Mask panel laid out like the reference.** Collapsible Mask, Mask settings and Track mask sections, a shape picker with the name under each tile, Position (centred on 0,0) and Size in pixels with a proportion lock, Rotation with a dial, and Feather / Round corners sliders with value boxes. Text, Brush, Pen, keyframes and Track are shown but not available yet.
+- **See the cut while you edit a mask.** With the Mask tab open the picture stays whole and everything the masks hide turns solid black, so you see the result before you leave the tab. A split mask gets a line across the whole picture with round end handles to turn it, a rotate handle on the line, and a feather handle above it that widens the soft edge as you drag. Moving, turning and feathering show live while you drag.
+- **Instant first picture when a project opens.** The monitor shows the frame at the playhead straight away, wherever the clip was cut from in its source file, instead of a black picture for a moment.
+
+### Changed
+- **Masks start in proportion.** A new Circle, Rectangle, Star or Heart mask starts as a true square on screen (half the picture's shorter side), whatever the picture's shape, and changing a mask's shape resizes it to suit the new shape while keeping its position, turn, feather and invert.
+- **Smoother app while it works.** Importing media, probing the hardware encoder, template thumbnails and audio analysis no longer freeze the editor, and background removal runs off the main thread.
+
+### Fixed
+- **Remove Background could close the whole app.** Cancelling a background removal (or switching away while it ran) could crash KailaEdit. The cutout engine is now asked to finish and release the GPU before it is stopped, and a job cancelled while still starting up now stops properly.
+- **Stickers made every preview render and export fail.** Projects with a sticker could never finish a render ("Error opening input file stickers/…"); the preview cache stayed empty and exports failed. Stickers and sound effects that ship with the app are now found.
+- **Mask changes did not show in the preview.** Adding or moving a mask only appeared after the playhead moved, so it looked as if the mask did nothing or was a step behind. The monitor now redraws as soon as a mask changes.
+- **Masks were distorted when turned, and sat on the wrong area.** A rotated mask on a portrait or wide picture used to shear, and its handles did not match what was cut; masks were also laid over the whole frame instead of over the picture. Masks now follow the picture's proportions in the preview and the export, and a rotated rectangle stays a rectangle.
+- **Mask scale handle used the wrong distance.** Dragging a corner of a mask box scaled by an incorrect measure and could jump.
+- **Stale or swapped transitions after editing.** After cutting, dropping and deleting clips on the main track, an old transition could stay behind (and could not be selected) and hide the layers above it. Transitions are now cleaned up on every edit, and projects already affected are repaired when they open.
+- **Layers flashing under the top layer.** Where several full-frame clips start at one instant, the lower layers no longer flash for a few frames; a layer that covers the whole frame now hides everything under it, from the top down.
+- **Flicker while playing.** The preview no longer flickers or re-seeks the playing video several times a second.
+- **Frame shifting when a project opens.** The first picture no longer jumps down slightly before settling.
+
 ## [1.0.10] - 2026-09-30
 
 ### Fixed

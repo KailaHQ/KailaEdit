@@ -155,6 +155,7 @@ export function ExportModal({ projectName }: ExportModalProps) {
           } : undefined,
           keyframes: clip.keyframes,
           mask: clip.mask,
+          masks: clip.masks,
           chromaKey: clip.chromaKey,
           blendMode: clip.blendMode,
           autoMatte: clip.autoMatte,

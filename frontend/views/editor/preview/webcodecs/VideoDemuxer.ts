@@ -1,7 +1,7 @@
 import * as MP4Box from 'mp4box'
 import type { DemuxedVideoMetadata, VideoDemuxTrackInfo, VideoSampleRecord } from './types'
 
-function extractTrackDescription(file: any, trackId: number): Uint8Array | undefined {
+export function extractTrackDescription(file: any, trackId: number): Uint8Array | undefined {
   try {
     const trak = file.getTrackById
       ? file.getTrackById(trackId)
@@ -102,7 +102,7 @@ export function fileUrlToPath(fileUrl: string): string {
  * For a pure rotation the angle is `atan2(b, a)`. Phone-recorded portrait
  * video typically stores `rotation = 90` (or equivalently `-270`).
  */
-function extractRotationDegrees(matrix: number[] | undefined): number {
+export function extractRotationDegrees(matrix: number[] | undefined): number {
   if (!matrix || matrix.length < 6) return 0
 
   // matrix layout (row-major, fixed-point 16.16 in the file but MP4Box

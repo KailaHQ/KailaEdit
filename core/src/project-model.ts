@@ -253,7 +253,10 @@ const baseTimelineClipSchema = z.object({
     /** What the keyframes were built from (length, position, size, words); when it changes they are rebuilt. */
     stamp: z.string().optional(),
   }).optional(),
+  /** The clip's only mask in projects saved before there could be several; read it through `getClipMasks`. */
   mask: clipMaskSchema.optional(),
+  /** The masks the clip shows through. The picture stays visible where any of them covers it. */
+  masks: z.array(clipMaskSchema).optional(),
   chromaKey: chromaKeySchema.optional(),
   autoMatte: autoMatteSchema.optional(),
   customMatte: customMatteSchema.optional(),

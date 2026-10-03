@@ -26,6 +26,9 @@ const BAR_CLEARANCE_PX = 7
 const ARROW_HALF_HEIGHT = 2.75
 const ARROW_HALF_WIDTH = 2.25
 const DOT_RADIUS = 1.6
+const ARROW_STROKE = 1.2
+/** Width of the bar that marks a curve point. */
+const BAR_WIDTH = 3
 
 interface Marker {
   x: number
@@ -95,22 +98,25 @@ export function SpeedCurveMarkers({ clip, clipWidthPx }: SpeedCurveMarkersProps)
         {geometry.dots.map((x, index) => (
           <circle key={`d${index}`} cx={x} cy={LINE_Y} r={DOT_RADIUS} opacity={0.9} />
         ))}
+      </g>
+      {/* Chevrons, drawn as strokes: the tip is the second point. */}
+      <g fill="none" stroke={INK} strokeWidth={ARROW_STROKE} strokeLinecap="round" strokeLinejoin="round">
         {geometry.arrows.map(x => (
-          <polygon
+          <polyline
             key={x}
             data-speed-curve-arrow
-            points={`${x - ARROW_HALF_WIDTH},${LINE_Y - ARROW_HALF_HEIGHT} ${x + ARROW_HALF_WIDTH},${LINE_Y} ${x - ARROW_HALF_WIDTH},${LINE_Y + ARROW_HALF_HEIGHT}`}
+            points={`${x - ARROW_HALF_WIDTH},${LINE_Y - ARROW_HALF_HEIGHT} ${x},${LINE_Y} ${x - ARROW_HALF_WIDTH},${LINE_Y + ARROW_HALF_HEIGHT}`}
             opacity={0.95}
           />
         ))}
       </g>
       {geometry.markers.map((marker, index) => {
         // End bars sit inside the clip's edge so they are not clipped by it.
-        const x = marker.isEnd ? Math.min(clipWidthPx - 2, Math.max(2, marker.x)) : marker.x
+        const x = marker.isEnd ? Math.min(clipWidthPx - BAR_WIDTH / 2, Math.max(BAR_WIDTH / 2, marker.x)) : marker.x
         return (
           <g key={index} data-speed-curve-marker={index}>
             <title>{formatClipSpeed(marker.v)}</title>
-            <rect x={x - 2} y={1} width={4} height={BAND_HEIGHT - 2} rx={2} fill={INK} />
+            <rect x={x - BAR_WIDTH / 2} y={1} width={BAR_WIDTH} height={BAND_HEIGHT - 2} rx={BAR_WIDTH / 2} fill={INK} />
           </g>
         )
       })}

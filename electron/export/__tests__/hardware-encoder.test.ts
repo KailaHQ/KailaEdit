@@ -60,10 +60,10 @@ describe('hardware-encoder', () => {
     expect(amfArgs).toContain('cqp')
   })
 
-  it('probes and caches hardware capabilities', () => {
+  it('probes and caches hardware capabilities', async () => {
     const mockProbe = (_: string, enc: string) => enc === 'h264_nvenc'
 
-    const caps = detectHardwareEncoders('mock-ffmpeg', true, mockProbe)
+    const caps = await detectHardwareEncoders('mock-ffmpeg', true, mockProbe)
     expect(caps.hardwareAccelerationSupported).toBe(true)
     expect(caps.preferredEncoder).toBe('h264_nvenc')
     expect(caps.availableEncoders).toEqual(['h264_nvenc'])
@@ -73,12 +73,36 @@ describe('hardware-encoder', () => {
     expect(cached).toBe(caps)
   })
 
-  it('handles scenario when no hardware encoder is operational', () => {
+  it('handles scenario when no hardware encoder is operational', async () => {
     const mockProbe = () => false
 
-    const caps = detectHardwareEncoders('mock-ffmpeg', true, mockProbe)
+    const caps = await detectHardwareEncoders('mock-ffmpeg', true, mockProbe)
     expect(caps.hardwareAccelerationSupported).toBe(false)
     expect(caps.preferredEncoder).toBeNull()
     expect(caps.availableEncoders).toEqual([])
+  })
+
+  it('keeps candidate order as preference even when a later probe finishes first', async () => {
+    const candidates = getHardwareEncoderCandidates()
+    const [first, second] = candidates
+    // The first candidate answers last.
+    const mockProbe = (_: string, enc: string) =>
+      new Promise<boolean>(resolve => setTimeout(() => resolve(enc === first || enc === second), enc === first ? 20 : 0))
+
+    const caps = await detectHardwareEncoders('mock-ffmpeg', true, mockProbe)
+    expect(caps.preferredEncoder).toBe(first)
+    expect(caps.availableEncoders).toEqual([first, second])
+  })
+
+  it('shares one in-flight probe between callers', async () => {
+    setCachedHardwareCapabilitiesForTest(null)
+    let probes = 0
+    const mockProbe = async () => { probes++; return false }
+
+    const a = detectHardwareEncoders('mock-ffmpeg', false, mockProbe)
+    const b = detectHardwareEncoders('mock-ffmpeg', false, mockProbe)
+    expect(b).toBe(a)
+    await a
+    expect(probes).toBe(getHardwareEncoderCandidates().length)
   })
 })

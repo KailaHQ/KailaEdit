@@ -7,7 +7,7 @@ import { logger } from '../logger'
 import { getMainWindow } from '../window'
 import { validatePath, approvePath } from '../path-validation'
 import { getProjectAssetsPath, setProjectAssetsPath } from '../app-state'
-import { extractVideoFrameToFile, getVideoDimensions } from '../export/ffmpeg-utils'
+import { extractVideoFrameToFileAsync, getVideoDimensions } from '../export/ffmpeg-utils'
 import { createDownsampledThumbnail, getImageDimensions, getThumbnailPaths } from './image-utils'
 import { handle } from './typed-handle'
 
@@ -113,18 +113,31 @@ function getUniqueDestinationPath(destDir: string, fileName: string): string {
   return candidate
 }
 
-function copyToProjectAssetDirectory(srcPath: string, projectId: string): string {
+async function copyToProjectAssetDirectory(srcPath: string, projectId: string): Promise<string> {
   const assetsRoot = getProjectAssetsPath()
   const destDir = path.join(assetsRoot, projectId)
-  fs.mkdirSync(destDir, { recursive: true })
+  await fs.promises.mkdir(destDir, { recursive: true })
   const fileName = path.basename(srcPath)
-  const destPath = getUniqueDestinationPath(destDir, fileName)
-  fs.copyFileSync(srcPath, destPath)
-  return destPath
+  // The copy no longer blocks, so two imports of the same name can both pick the same free
+  // name. COPYFILE_EXCL makes the loser fail instead of overwriting; it then takes the next.
+  for (;;) {
+    const destPath = getUniqueDestinationPath(destDir, fileName)
+    try {
+      await fs.promises.copyFile(srcPath, destPath, fs.constants.COPYFILE_EXCL)
+      return destPath
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
 }
 
-function createVideoBigThumbnail(videoPath: string, bigThumbnailPath: string): void {
-  extractVideoFrameToFile({
+/**
+ * Everything an import runs through ffmpeg is awaited, never spawnSync: a synchronous
+ * call here froze the whole browser process — preview playback included — for as long
+ * as ffmpeg took, once per imported file.
+ */
+async function createVideoBigThumbnail(videoPath: string, bigThumbnailPath: string): Promise<void> {
+  await extractVideoFrameToFileAsync({
     videoPath,
     seekTime: 0,
     outputPath: bigThumbnailPath,
@@ -132,14 +145,14 @@ function createVideoBigThumbnail(videoPath: string, bigThumbnailPath: string): v
   })
 }
 
-function createVisualThumbnails(assetPath: string, type: 'video' | 'image'): { bigThumbnailPath: string; smallThumbnailPath: string } {
+async function createVisualThumbnails(assetPath: string, type: 'video' | 'image'): Promise<{ bigThumbnailPath: string; smallThumbnailPath: string }> {
   const { bigThumbnailPath: generatedBigThumbnailPath, smallThumbnailPath } = getThumbnailPaths(assetPath)
   let bigThumbnailPath: string
 
   switch (type) {
     case 'video':
       bigThumbnailPath = generatedBigThumbnailPath
-      createVideoBigThumbnail(assetPath, bigThumbnailPath)
+      await createVideoBigThumbnail(assetPath, bigThumbnailPath)
       break
     case 'image':
       bigThumbnailPath = assetPath
@@ -150,11 +163,11 @@ function createVisualThumbnails(assetPath: string, type: 'video' | 'image'): { b
     }
   }
 
-  createDownsampledThumbnail(bigThumbnailPath, smallThumbnailPath)
+  await createDownsampledThumbnail(bigThumbnailPath, smallThumbnailPath)
   return { bigThumbnailPath, smallThumbnailPath }
 }
 
-function getVisualAssetDimensions(assetPath: string, type: 'video' | 'image'): { width: number; height: number } {
+function getVisualAssetDimensions(assetPath: string, type: 'video' | 'image'): Promise<{ width: number; height: number }> {
   switch (type) {
     case 'video':
       return getVideoDimensions(assetPath)
@@ -321,12 +334,12 @@ export function registerFileHandlers(): void {
     return searchDirectoryForFilesImpl(directory, filenames)
   })
 
-  handle('addVisualAssetToProject', ({ srcPath, projectId, type }) => {
+  handle('addVisualAssetToProject', async ({ srcPath, projectId, type }) => {
     try {
       const resolvedSrc = resolveLocalSourcePath(srcPath)
-      const destPath = copyToProjectAssetDirectory(resolvedSrc, projectId)
-      const { bigThumbnailPath, smallThumbnailPath } = createVisualThumbnails(destPath, type)
-      const { width, height } = getVisualAssetDimensions(destPath, type)
+      const destPath = await copyToProjectAssetDirectory(resolvedSrc, projectId)
+      const { bigThumbnailPath, smallThumbnailPath } = await createVisualThumbnails(destPath, type)
+      const { width, height } = await getVisualAssetDimensions(destPath, type)
 
       return {
         success: true,
@@ -342,10 +355,10 @@ export function registerFileHandlers(): void {
     }
   })
 
-  handle('addGenericAssetToProject', ({ srcPath, projectId }) => {
+  handle('addGenericAssetToProject', async ({ srcPath, projectId }) => {
     try {
       const resolvedSrc = resolveLocalSourcePath(srcPath)
-      const destPath = copyToProjectAssetDirectory(resolvedSrc, projectId)
+      const destPath = await copyToProjectAssetDirectory(resolvedSrc, projectId)
       return { success: true, path: destPath }
     } catch (error) {
       logger.error(`Error copying file to project assets: ${error}`)
@@ -353,10 +366,10 @@ export function registerFileHandlers(): void {
     }
   })
 
-  handle('makeThumbnailsForProjectAsset', ({ path: assetPath, type }) => {
+  handle('makeThumbnailsForProjectAsset', async ({ path: assetPath, type }) => {
     try {
       const resolvedAssetPath = resolveLocalSourcePath(assetPath)
-      const { bigThumbnailPath, smallThumbnailPath } = createVisualThumbnails(resolvedAssetPath, type)
+      const { bigThumbnailPath, smallThumbnailPath } = await createVisualThumbnails(resolvedAssetPath, type)
 
       return {
         success: true,
@@ -369,10 +382,10 @@ export function registerFileHandlers(): void {
     }
   })
 
-  handle('makeDimensionsForProjectAsset', ({ path: assetPath, type }) => {
+  handle('makeDimensionsForProjectAsset', async ({ path: assetPath, type }) => {
     try {
       const resolvedAssetPath = resolveLocalSourcePath(assetPath)
-      const { width, height } = getVisualAssetDimensions(resolvedAssetPath, type)
+      const { width, height } = await getVisualAssetDimensions(resolvedAssetPath, type)
 
       return {
         success: true,

@@ -6,6 +6,7 @@ import {
 import {
   DEFAULT_SUBTITLE_STYLE,
   DEFAULT_TRACKS,
+  getClipMasks,
 } from './project-model'
 import type {
   Asset,
@@ -466,9 +467,21 @@ export function selectCustomMatteBrushSize(state: EditorState): number {
   return state.session.ui.customMatteBrushSize ?? 5
 }
 
-export function selectClipMask(state: EditorState, clipId: string): ClipMask | undefined {
+export function selectClipMasks(state: EditorState, clipId: string): ClipMask[] {
   const timeline = selectActiveTimeline(state)
-  return timeline?.clips.find(c => c.id === clipId)?.mask
+  const clip = timeline?.clips.find(c => c.id === clipId)
+  return clip ? getClipMasks(clip) : []
+}
+
+export function selectActiveMaskId(state: EditorState): string | null {
+  return state.session.ui.activeMaskId ?? null
+}
+
+/** The mask being edited on a clip: the picked one, else the first. */
+export function selectClipMask(state: EditorState, clipId: string): ClipMask | undefined {
+  const masks = selectClipMasks(state, clipId)
+  const activeId = selectActiveMaskId(state)
+  return masks.find(mask => mask.id === activeId) ?? masks[0]
 }
 
 export function selectClipChromaKey(state: EditorState, clipId: string): ChromaKey | undefined {

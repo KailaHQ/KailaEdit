@@ -71,7 +71,7 @@ export function registerTemplateHandlers(): void {
       : { success: false, error: result.error }
   })
 
-  handle('templateSave', ({ presetsDir, template, media, cover }) => {
+  handle('templateSave', async ({ presetsDir, template, media, cover }) => {
     const roots = getAllowedRoots()
     for (const entry of media) {
       validatePath(entry.sourcePath, roots)
@@ -80,7 +80,7 @@ export function registerTemplateHandlers(): void {
       }
     }
     if (cover) validatePath(cover.videoPath, roots)
-    const result = writeTemplate(resolveTemplatesDir(presetsDir), template, media, cover)
+    const result = await writeTemplate(resolveTemplatesDir(presetsDir), template, media, cover)
     return result.success
       ? { success: true, fileName: result.fileName, path: result.path }
       : { success: false, error: result.error }

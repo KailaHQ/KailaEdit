@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { logger } from '../logger'
-import { probeAudioStream } from './ffmpeg-utils'
+import { probeAudioStream, type AudioStreamInfo } from './ffmpeg-utils'
 import { applyLookaheadLimiter } from './audio-limiter'
 import type { ExportClip } from './timeline'
 import { computePreInputSeek } from './video-filter'
@@ -129,13 +129,13 @@ export async function mixAudioToPcm(
   ffmpegPath: string,
 ): Promise<{ pcmBuffer: Buffer; sampleRate: number; channels: number }> {
   // Collect audio sources from ORIGINAL clips
-  const audioProbeCache = new Map<string, ReturnType<typeof probeAudioStream>>()
+  const audioProbeCache = new Map<string, AudioStreamInfo>()
   const audioSources: AudioSource[] = []
 
-  const probe = (filePath: string) => {
+  const probe = async (filePath: string) => {
     const cached = audioProbeCache.get(filePath)
     if (cached) return cached
-    const info = probeAudioStream(ffmpegPath, filePath)
+    const info = await probeAudioStream(ffmpegPath, filePath)
     audioProbeCache.set(filePath, info)
     return info
   }
@@ -158,7 +158,7 @@ export async function mixAudioToPcm(
     if (c.type !== 'audio' && c.type !== 'video') continue
     if (c.type === 'video' && hasLinkedAudioClip(c)) continue
 
-    const info = probe(fp)
+    const info = await probe(fp)
     if (!info.hasAudio) continue
 
     const speed = typeof c.speed === 'number' && Number.isFinite(c.speed) && c.speed > 0 ? c.speed : 1

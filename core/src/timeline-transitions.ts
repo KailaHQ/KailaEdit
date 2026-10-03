@@ -76,6 +76,28 @@ export function resolveCut(
   return { ok: true, placement: { leftClip, rightClip } }
 }
 
+/**
+ * How long `left` genuinely dissolves into `right`, in seconds; 0 when they do not.
+ *
+ * A transition is an overlap with a direction: the left clip must start first and end first,
+ * the right clip must start before the left one ends, and both must be on one track. The sum
+ * `left.end - right.start` alone is not enough. Once the two clips swapped places (the right
+ * one now sits wholly before the left one) it still comes out positive — 12 s in a real
+ * project — and a pair like that made the preview treat that whole stretch as one dissolve.
+ */
+export function transitionOverlap(
+  left: Pick<TimelineClip, 'trackIndex' | 'startTime' | 'duration'>,
+  right: Pick<TimelineClip, 'trackIndex' | 'startTime' | 'duration'>,
+): number {
+  if (left.trackIndex !== right.trackIndex) return 0
+  if (!(left.startTime + ADJACENCY_EPSILON < right.startTime)) return 0
+  const leftEnd = left.startTime + left.duration
+  const rightEnd = right.startTime + right.duration
+  if (!(leftEnd + ADJACENCY_EPSILON < rightEnd)) return 0
+  const overlap = leftEnd - right.startTime
+  return overlap > ADJACENCY_EPSILON ? overlap : 0
+}
+
 export function findTransitionAtCut(
   timeline: Pick<Timeline, 'transitions'>,
   leftClipId: string,
@@ -408,7 +430,8 @@ export function removeTransitionById(timeline: Timeline, transitionId: string): 
  *    0.72s wipe sat on two stills that met exactly.
  *
  * Clips that have ended up on different tracks count as not overlapping: a
- * transition only ever means something within one track.
+ * transition only ever means something within one track. Nor do two clips that have
+ * swapped places: see `transitionOverlap`.
  *
  * This does NOT ripple, in either case. The overlap it would have given back
  * is already gone — whatever removed it took that time with it, and pushing
@@ -425,9 +448,7 @@ export function pruneOrphanTransitions(timeline: Timeline): Timeline {
     const leftClip = clipsById.get(transition.leftClipId)
     const rightClip = clipsById.get(transition.rightClipId)
     if (!leftClip || !rightClip) return false
-    if (leftClip.trackIndex !== rightClip.trackIndex) return false
-    const overlap = (leftClip.startTime + leftClip.duration) - rightClip.startTime
-    return overlap > ADJACENCY_EPSILON
+    return transitionOverlap(leftClip, rightClip) > 0
   })
   return kept.length === transitions.length ? timeline : { ...timeline, transitions: kept }
 }

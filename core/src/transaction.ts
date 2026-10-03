@@ -2,6 +2,7 @@ import type { EditorState, EditorTransactionState } from './editor-state'
 import { getUndoSnapshot, equalUndoSnapshot, MAX_UNDO_HISTORY } from './editor-state'
 import { validateTimeline, type ValidationError } from './validator'
 import { makeId } from './id-generator'
+import { pruneOrphanTransitions } from './timeline-transitions'
 
 export interface TransactionCommitSuccess {
   success: true
@@ -69,12 +70,23 @@ export function rollbackTransaction(state: EditorState): EditorState {
  * 3. If validation succeeds, pushes exactly ONE undo snapshot (from base state) to undoStack
  *    and clears the transaction.
  */
-export function commitTransaction(state: EditorState): TransactionCommitResult {
-  if (!state.transaction) {
+export function commitTransaction(uncommitted: EditorState): TransactionCommitResult {
+  if (!uncommitted.transaction) {
     throw new Error('No active transaction to commit')
   }
+  const { baseState, baseSnapshot } = uncommitted.transaction
 
-  const { baseState, baseSnapshot } = state.transaction
+  // Edits inside a transaction do not drop transitions their clips no longer support (see
+  // replaceActiveTimeline); whatever is still dangling when it commits goes now.
+  let reconciled = false
+  const timelines = uncommitted.editorModel.timelines.map(timeline => {
+    const pruned = pruneOrphanTransitions(timeline)
+    if (pruned !== timeline) reconciled = true
+    return pruned
+  })
+  const state: EditorState = reconciled
+    ? { ...uncommitted, editorModel: { ...uncommitted.editorModel, timelines } }
+    : uncommitted
 
   // Validate active timeline (and any modified timelines)
   const activeTimeline = state.editorModel.timelines.find(

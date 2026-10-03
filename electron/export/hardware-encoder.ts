@@ -1,6 +1,6 @@
-import { spawnSync } from 'child_process'
 import os from 'os'
 import { logger } from '../logger'
+import { runFfmpegCapture } from './ffmpeg-utils'
 
 export interface HardwareEncoderCapabilities {
   availableEncoders: string[]
@@ -22,18 +22,14 @@ export function getHardwareEncoderCandidates(platform = os.platform()): string[]
   return ['h264_nvenc', 'h264_qsv', 'h264_vaapi']
 }
 
-export function testEncoderAvailable(ffmpegPath: string, encoder: string): boolean {
+export async function testEncoderAvailable(ffmpegPath: string, encoder: string): Promise<boolean> {
   try {
     // Note: NVIDIA NVENC requires a minimum resolution (usually >= 144x144).
     // Using 256x256 ensures hardware encoders initialize without "Frame Dimension less than minimum supported value" errors.
-    const result = spawnSync(
+    const result = await runFfmpegCapture(
       ffmpegPath,
       ['-hide_banner', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.04', '-c:v', encoder, '-f', 'null', '-'],
-      {
-        encoding: 'utf8',
-        timeout: 4000,
-        windowsHide: true,
-      },
+      4000,
     )
     return result.status === 0
   } catch (err) {
@@ -42,43 +38,64 @@ export function testEncoderAvailable(ffmpegPath: string, encoder: string): boole
   }
 }
 
+let probeInFlight: Promise<HardwareEncoderCapabilities> | null = null
+
+/**
+ * Finds the hardware encoders that actually work on this machine.
+ *
+ * Async because it runs at startup: through spawnSync, up to three ffmpeg probes (4 s
+ * timeout each) froze the main process — the window included — right as the app opened.
+ * The candidates are probed together; their order still decides which one is preferred.
+ * An export that asks while the startup probe is running waits for that probe instead of
+ * starting a second one.
+ */
 export function detectHardwareEncoders(
   ffmpegPath: string,
   forceRecheck = false,
-  probeFn: (ffmpegPath: string, encoder: string) => boolean = testEncoderAvailable,
-): HardwareEncoderCapabilities {
+  probeFn: (ffmpegPath: string, encoder: string) => Promise<boolean> | boolean = testEncoderAvailable,
+): Promise<HardwareEncoderCapabilities> {
   if (cachedCapabilities && !forceRecheck) {
-    return cachedCapabilities
+    return Promise.resolve(cachedCapabilities)
+  }
+  if (probeInFlight && !forceRecheck) {
+    return probeInFlight
   }
 
-  logger.info('[hardware-encoder] Probing available hardware encoders...')
-  const candidates = getHardwareEncoderCandidates()
-  const availableEncoders: string[] = []
-
-  for (const candidate of candidates) {
-    if (probeFn(ffmpegPath, candidate)) {
-      availableEncoders.push(candidate)
-      logger.info(`[hardware-encoder] Hardware encoder confirmed available: ${candidate}`)
+  const probe = (async () => {
+    logger.info('[hardware-encoder] Probing available hardware encoders...')
+    const candidates = getHardwareEncoderCandidates()
+    const results = await Promise.all(candidates.map(candidate => probeFn(ffmpegPath, candidate)))
+    const availableEncoders = candidates.filter((_, index) => results[index])
+    for (const encoder of availableEncoders) {
+      logger.info(`[hardware-encoder] Hardware encoder confirmed available: ${encoder}`)
     }
-  }
 
-  const preferredEncoder = availableEncoders.length > 0 ? availableEncoders[0] : null
-  const hardwareAccelerationSupported = preferredEncoder !== null
+    const preferredEncoder = availableEncoders.length > 0 ? availableEncoders[0] : null
+    const hardwareAccelerationSupported = preferredEncoder !== null
 
-  cachedCapabilities = {
-    availableEncoders,
-    preferredEncoder,
-    hardwareAccelerationSupported,
-    probedAt: Date.now(),
-  }
+    const capabilities: HardwareEncoderCapabilities = {
+      availableEncoders,
+      preferredEncoder,
+      hardwareAccelerationSupported,
+      probedAt: Date.now(),
+    }
+    cachedCapabilities = capabilities
 
-  if (hardwareAccelerationSupported) {
-    logger.info(`[hardware-encoder] Hardware acceleration enabled with encoder: ${preferredEncoder}`)
-  } else {
-    logger.info('[hardware-encoder] No operational hardware encoder found. Defaulting to libx264 (CPU).')
-  }
+    if (hardwareAccelerationSupported) {
+      logger.info(`[hardware-encoder] Hardware acceleration enabled with encoder: ${preferredEncoder}`)
+    } else {
+      logger.info('[hardware-encoder] No operational hardware encoder found. Defaulting to libx264 (CPU).')
+    }
 
-  return cachedCapabilities
+    return capabilities
+  })()
+
+  probeInFlight = probe
+  // Only the latest probe clears the slot; a forced recheck may have replaced it meanwhile.
+  probe.finally(() => {
+    if (probeInFlight === probe) probeInFlight = null
+  }).catch(() => {}) // the caller handles a failed probe; this chain only clears the slot
+  return probe
 }
 
 export function getCachedHardwareCapabilities(): HardwareEncoderCapabilities | null {

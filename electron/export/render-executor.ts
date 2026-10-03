@@ -99,7 +99,7 @@ export async function executeRenderJob(
       filterFile = path.join(tmpDir, `komfy-filter-v-${fileId}.txt`)
       fs.writeFileSync(filterFile, filterScript, 'utf8')
 
-      const hwCaps = detectHardwareEncoders(ffmpegPath)
+      const hwCaps = await detectHardwareEncoders(ffmpegPath)
       const useHw = params.hardwareAcceleration !== false && hwCaps.hardwareAccelerationSupported && hwCaps.preferredEncoder !== null
       let activeEncoder = useHw ? hwCaps.preferredEncoder! : 'libx264'
       let activeEncoderArgs = getEncoderArgs(activeEncoder, 16, 'fast')
@@ -374,7 +374,7 @@ export async function executeRenderJob(
     let step3HwEncoder: string | null = null
 
     if (codec === 'h264' || codec === 'libx264') {
-      const hwCaps = detectHardwareEncoders(ffmpegPath)
+      const hwCaps = await detectHardwareEncoders(ffmpegPath)
       const useHw = params.hardwareAcceleration !== false && hwCaps.hardwareAccelerationSupported && hwCaps.preferredEncoder !== null
       step3HwEncoder = useHw ? hwCaps.preferredEncoder : null
       const encoder = step3HwEncoder || 'libx264'

@@ -3,8 +3,7 @@ import fs from 'fs'
 import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
-import { spawnSync } from 'child_process'
-import { findFfmpegPath, runFfmpegWithProgress, type FfmpegProcessHandle } from './ffmpeg-utils'
+import { findFfmpegPath, runFfmpegCapture, runFfmpegWithProgress, type FfmpegProcessHandle } from './ffmpeg-utils'
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
 import { removeEntry } from '../storage/remove-entry'
@@ -28,6 +27,12 @@ interface QueuedProxyJob {
 export class ProxyManager {
   private customDir?: string
   private queue: QueuedProxyJob[] = []
+  /**
+   * The job between leaving the queue and its ffmpeg starting, while its duration is probed.
+   * Awaiting that probe left a moment where the job was neither queued nor active: a cancel
+   * then was lost, and a second processNext could start another job alongside it.
+   */
+  private probingJob: { assetId: string; resolve: QueuedProxyJob['resolve']; cancelled: boolean } | null = null
   private activeJob: {
     assetId: string
     filePath: string
@@ -178,7 +183,7 @@ export class ProxyManager {
   }
 
   private processNext(): void {
-    if (this.activeJob || this.queue.length === 0) {
+    if (this.activeJob || this.probingJob || this.queue.length === 0) {
       return
     }
 
@@ -197,22 +202,31 @@ export class ProxyManager {
       return
     }
 
-    const partPath = this.getPartPath(assetId)
-    const finalPath = this.getProxyPath(assetId)
-
     // Remove any stale .part file before starting
+    const partPath = this.getPartPath(assetId)
     try {
       if (fs.existsSync(partPath)) fs.unlinkSync(partPath)
     } catch {}
 
-    // Probe media duration to calculate progress percentage
+    const probing = { assetId, resolve, cancelled: false }
+    this.probingJob = probing
+    void this.probeDuration(ffmpegPath, filePath).then((duration) => {
+      this.probingJob = null
+      if (probing.cancelled) {
+        // cancelProxy already answered the caller.
+        this.processNext()
+        return
+      }
+      this.startJob(job, ffmpegPath, duration)
+    })
+  }
+
+  /** Media duration for the progress percentage; a guess when it cannot be read. */
+  private async probeDuration(ffmpegPath: string, filePath: string): Promise<number> {
     let duration = 0
     try {
-      const probeRes = spawnSync(ffmpegPath, ['-hide_banner', '-i', filePath], {
-        encoding: 'utf8',
-        timeout: 10000,
-      })
-      const probeOut = (probeRes.stdout || '') + (probeRes.stderr || '')
+      const probeRes = await runFfmpegCapture(ffmpegPath, ['-hide_banner', '-i', filePath], 10000)
+      const probeOut = probeRes.stdout + probeRes.stderr
       const durMatch = probeOut.match(/Duration:\s*(\d+):(\d+):([0-9.]+)/)
       if (durMatch) {
         duration = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3])
@@ -224,6 +238,13 @@ export class ProxyManager {
     if (duration <= 0) {
       duration = 10 // fallback duration estimate
     }
+    return duration
+  }
+
+  private startJob(job: QueuedProxyJob, ffmpegPath: string, duration: number): void {
+    const { assetId, filePath, resolve } = job
+    const partPath = this.getPartPath(assetId)
+    const finalPath = this.getProxyPath(assetId)
 
     // 540p H.264 proxy command:
     // Scale preserving aspect ratio: landscape -> 960x540, portrait -> 540x960
@@ -319,6 +340,12 @@ export class ProxyManager {
       removed?.resolve({ success: false, error: 'Cancelled' })
     }
 
+    // If its duration is still being probed, it never starts
+    if (this.probingJob && this.probingJob.assetId === assetId && !this.probingJob.cancelled) {
+      this.probingJob.cancelled = true
+      this.probingJob.resolve({ success: false, error: 'Cancelled' })
+    }
+
     // If active, kill it
     if (this.activeJob && this.activeJob.assetId === assetId) {
       this.activeJob.handle.kill()
@@ -334,6 +361,11 @@ export class ProxyManager {
   }
 
   cancelAll(): void {
+    if (this.probingJob && !this.probingJob.cancelled) {
+      this.probingJob.cancelled = true
+      this.probingJob.resolve({ success: false, error: 'Cancelled' })
+    }
+
     if (this.activeJob) {
       this.activeJob.handle.kill()
       const partPath = this.getPartPath(this.activeJob.assetId)

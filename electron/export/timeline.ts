@@ -41,6 +41,7 @@ export interface ExportClip {
   textStyle?: ExportTextStyle;
   keyframes?: KeyframeTrack[];
   mask?: ClipMask;
+  masks?: ClipMask[];
   chromaKey?: ChromaKey;
   blendMode?: ClipBlendMode;
   autoMatte?: AutoMatte;

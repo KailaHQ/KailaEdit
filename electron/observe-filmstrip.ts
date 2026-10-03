@@ -1,9 +1,9 @@
-import { spawn, spawnSync } from 'child_process'
+import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { Resvg } from '@resvg/resvg-js'
-import { findFfmpegPath, probeAudioStream } from './export/ffmpeg-utils'
+import { findFfmpegPath, probeAudioStream, runFfmpegCapture } from './export/ffmpeg-utils'
 import { extractAudioPeaks } from './export/audio-peaks'
 import { logger } from './logger'
 
@@ -44,10 +44,10 @@ export interface FilmstripResult {
   fileSizeBytes: number
 }
 
-function probeDuration(ffmpegPath: string, mediaPath: string): number {
+async function probeDuration(ffmpegPath: string, mediaPath: string): Promise<number> {
   try {
-    const res = spawnSync(ffmpegPath, ['-i', mediaPath], { encoding: 'utf8' })
-    const output = (res.stdout || '') + (res.stderr || '')
+    const res = await runFfmpegCapture(ffmpegPath, ['-i', mediaPath], 10000)
+    const output = res.stdout + res.stderr
     const match = output.match(/Duration:\s*(\d+):(\d+):([0-9.]+)/)
     if (match) {
       return parseFloat(match[1]) * 3600 + parseFloat(match[2]) * 60 + parseFloat(match[3])
@@ -145,7 +145,7 @@ export async function observeFilmstrip(options: FilmstripOptions): Promise<Films
   }
 
   if (mediaPath) {
-    const fileDuration = probeDuration(ffmpegPath, mediaPath)
+    const fileDuration = await probeDuration(ffmpegPath, mediaPath)
     if (totalDuration === 0) {
       totalDuration = fileDuration
     }
@@ -190,7 +190,7 @@ export async function observeFilmstrip(options: FilmstripOptions): Promise<Films
   let audioPeaks: number[] = []
   const peaksPromise = (async () => {
     if (mediaPath && fs.existsSync(mediaPath)) {
-      const hasAudio = probeAudioStream(ffmpegPath, mediaPath).hasAudio
+      const hasAudio = (await probeAudioStream(ffmpegPath, mediaPath)).hasAudio
       if (hasAudio) {
         try {
           const fullPeaks = await extractAudioPeaks(mediaPath, 600)

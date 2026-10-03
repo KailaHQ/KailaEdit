@@ -132,13 +132,14 @@ describe('replaceClipMedia', () => {
   })
 
   it('keeps the transitions that name the clip', () => {
+    // A transition is the overlap: the right clip starts 0.5 s before the left one ends.
     const left = createMockClip({ id: 'left', trackIndex: 0, startTime: 0, duration: 5, assetId: OLD.id, asset: OLD })
-    const right = createMockClip({ id: 'right', trackIndex: 0, startTime: 5, duration: 5, assetId: OLD.id, asset: OLD })
+    const right = createMockClip({ id: 'right', trackIndex: 0, startTime: 4.5, duration: 5, assetId: OLD.id, asset: OLD })
     const transition = { id: 't', trackIndex: 0, leftClipId: 'left', rightClipId: 'right', type: 'dissolve', duration: 0.5 }
     const next = replaceClipMedia(stateWith([left, right], [transition]), 'right', 'photo')
     const timeline = next.editorModel.timelines[0]
     expect(timeline.transitions).toEqual([transition])
-    expect(selectClips(next).map(c => [c.id, c.startTime, c.duration])).toEqual([['left', 0, 5], ['right', 5, 5]])
+    expect(selectClips(next).map(c => [c.id, c.startTime, c.duration])).toEqual([['left', 0, 5], ['right', 4.5, 5]])
   })
 
   it('does nothing when the replacement is refused', () => {

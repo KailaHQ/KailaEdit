@@ -118,6 +118,25 @@ export function resolveOverlaps(
     const movedStart = moved.startTime
     const movedEnd = moved.startTime + moved.duration
 
+    // On the magnetic main track the clips a dropped clip lands on are pushed out of its way.
+    // They move TOGETHER, by one distance: pushing each to the dropped clip's end gave two
+    // overlapped clips the very same start, and the packing that follows then ordered them by
+    // chance — dropping a clip in front of 1 and 2 could put 2 in front of 1.
+    let pushShift = 0
+    if (moved.trackIndex === mainTrackIndex) {
+      let earliest = Infinity
+      for (const c of result) {
+        if (movedIds.has(c.id) || c.trackIndex !== moved.trackIndex) continue
+        const connected = transitions.some(t =>
+          (t.leftClipId === moved.id && t.rightClipId === c.id) ||
+          (t.leftClipId === c.id && t.rightClipId === moved.id))
+        if (connected) continue
+        if (c.startTime + c.duration <= movedStart || c.startTime >= movedEnd) continue
+        if (movedStart < c.startTime + c.duration / 2) earliest = Math.min(earliest, c.startTime)
+      }
+      if (earliest !== Infinity) pushShift = Math.max(0, movedEnd - earliest)
+    }
+
     const next: TimelineClip[] = []
 
     for (const c of result) {
@@ -144,7 +163,7 @@ export function resolveOverlaps(
       if (moved.trackIndex === mainTrackIndex) {
         const cMid = cStart + c.duration / 2
         if (movedStart < cMid) {
-          next.push({ ...c, startTime: Math.max(cStart, movedEnd) })
+          next.push({ ...c, startTime: cStart + pushShift })
         } else {
           next.push(c)
           if (moved.startTime < cEnd) {
@@ -208,15 +227,28 @@ export function packTrack1(
   mainTrackIndex: number = 0,
   transitions: ReadonlyArray<{ leftClipId: string; rightClipId: string; duration: number }> = [],
 ): TimelineClip[] {
+  // Clips that start together (a clip dropped onto the start of the track, say) are ordered by
+  // the transition that joins them, left clip first, and otherwise keep the order they had.
+  const leadsTo = (a: TimelineClip, b: TimelineClip) =>
+    transitions.some(t => t.leftClipId === a.id && t.rightClipId === b.id)
   const track1Clips = allClips
     .filter(c => c.trackIndex === mainTrackIndex)
-    .sort((a, b) => a.startTime - b.startTime)
+    .sort((a, b) => {
+      const byStart = a.startTime - b.startTime
+      if (Math.abs(byStart) > 1e-9) return byStart
+      if (leadsTo(a, b)) return -1
+      if (leadsTo(b, a)) return 1
+      return 0
+    })
 
   if (track1Clips.length === 0) return allClips
 
-  const overlapAfter = new Map<string, number>()
+  // A transition overlaps its left clip with the clip that FOLLOWS it, and only if that clip
+  // is the transition's right one. Applied to whichever clip happens to come next, a record
+  // left behind by a reorder or a delete squeezed two unrelated clips into each other.
+  const overlapAfter = new Map<string, { rightClipId: string; duration: number }>()
   for (const transition of transitions) {
-    overlapAfter.set(transition.leftClipId, transition.duration)
+    overlapAfter.set(transition.leftClipId, { rightClipId: transition.rightClipId, duration: transition.duration })
   }
 
   const clipDeltas = new Map<string, number>()
@@ -224,7 +256,8 @@ export function packTrack1(
   let moved = false
 
   const remappedTrack1 = new Map<string, TimelineClip>()
-  for (const c of track1Clips) {
+  for (let i = 0; i < track1Clips.length; i += 1) {
+    const c = track1Clips[i]
     const delta = currentCursor - c.startTime
     if (delta !== 0) moved = true
     clipDeltas.set(c.id, delta)
@@ -233,7 +266,10 @@ export function packTrack1(
       startTime: currentCursor,
     })
     // The next clip starts early by the length of the transition out of this one.
-    const overlap = Math.min(overlapAfter.get(c.id) ?? 0, c.duration)
+    const joined = overlapAfter.get(c.id)
+    const overlap = joined && joined.rightClipId === track1Clips[i + 1]?.id
+      ? Math.min(joined.duration, c.duration)
+      : 0
     currentCursor += c.duration - overlap
   }
 

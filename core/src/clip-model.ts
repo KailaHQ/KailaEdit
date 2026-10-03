@@ -114,11 +114,17 @@ export const DEFAULT_EFFECT_MASK = effectMaskSchema.parse({
   rotation: 0,
 })
 
-export const clipMaskShapeValues = ['rectangle', 'ellipse', 'linear'] as const
+/**
+ * 'linear' is the split line, 'ellipse' the circle, 'mirror' a band across the picture (the
+ * filmstrip); the rest are closed shapes drawn inside the mask's width and height.
+ */
+export const clipMaskShapeValues = ['rectangle', 'ellipse', 'linear', 'mirror', 'star', 'heart'] as const
 export const clipMaskShapeSchema = z.enum(clipMaskShapeValues)
 export type ClipMaskShape = typeof clipMaskShapeValues[number]
 
 export const clipMaskSchema = z.object({
+  /** Names the mask among its clip's masks; masks saved before there could be several have none. */
+  id: z.string().optional(),
   enabled: z.boolean().default(true),
   shape: clipMaskShapeSchema.default('rectangle'),
   x: z.number().min(0).max(100).default(50),
@@ -127,6 +133,8 @@ export const clipMaskSchema = z.object({
   height: z.number().min(1).max(200).default(50),
   rotation: z.number().default(0),
   feather: z.number().min(0).max(100).default(0),
+  /** Rounds a rectangle's corners, 0 (square) to 100 (as round as the shorter side allows). */
+  roundCorners: z.number().min(0).max(100).optional(),
   invert: z.boolean().default(false),
 })
 
@@ -141,7 +149,22 @@ export const DEFAULT_CLIP_MASK: ClipMask = {
   height: 50,
   rotation: 0,
   feather: 0,
+  roundCorners: 0,
   invert: false,
+}
+
+/**
+ * The masks a clip shows through. A clip saved before there could be several keeps its one in
+ * `mask`; it is given the id `mask-1` here so it can be picked like the others.
+ */
+export function getClipMasks(clip: { mask?: ClipMask; masks?: ClipMask[] }): ClipMask[] {
+  if (clip.masks) return clip.masks
+  return clip.mask ? [{ ...clip.mask, id: clip.mask.id ?? 'mask-1' }] : []
+}
+
+/** True when the clip has at least one mask that is switched on. */
+export function hasActiveMask(clip: { mask?: ClipMask; masks?: ClipMask[] }): boolean {
+  return getClipMasks(clip).some(mask => mask.enabled !== false)
 }
 
 export const chromaKeySchema = z.object({

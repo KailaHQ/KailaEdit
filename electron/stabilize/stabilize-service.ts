@@ -1,8 +1,7 @@
 import path from 'path'
 import fs from 'fs'
 import { createRequire } from 'module'
-import { spawnSync } from 'child_process'
-import { findFfmpegPath, runFfmpegWithProgress, type FfmpegProcessHandle } from '../export/ffmpeg-utils'
+import { findFfmpegPath, runFfmpegCapture, runFfmpegWithProgress, type FfmpegProcessHandle } from '../export/ffmpeg-utils'
 import { parseFfmpegProbeOutput } from '../media/probe'
 import { emitToRenderer } from '../ipc/event-emitter'
 import { logger } from '../logger'
@@ -203,6 +202,8 @@ export class StabilizeService {
   private active: JobRecord | null = null
   /** Job id -> record, for events and status. */
   private jobs = new Map<string, JobRecord>()
+  /** Jobs whose source is still being probed, with whether they were cancelled meanwhile. */
+  private probing = new Map<string, boolean>()
   private finishedOrder: string[] = []
   private initialized = false
 
@@ -265,7 +266,7 @@ export class StabilizeService {
     return path.join(this.getCacheDir(), `${mediaTag}_${fingerprint}_${color}.mp4`)
   }
 
-  start(params: StabilizeStartParams): StabilizeStartResult {
+  async start(params: StabilizeStartParams): Promise<StabilizeStartResult> {
     this.init()
     if (!(params.sourceSpan > 0)) return { started: false, error: 'Empty source range' }
     if (!fs.existsSync(params.filePath)) {
@@ -274,7 +275,13 @@ export class StabilizeService {
     const ffmpegPath = findFfmpegPath()
     if (!ffmpegPath) return { started: false, error: 'ffmpeg binary not found' }
 
-    const source = probeSource(ffmpegPath, params.filePath)
+    // The probe is awaited, so the job exists for a moment before it is queued. A cancel in
+    // that window is remembered here and honoured once the probe returns.
+    this.probing.set(params.jobId, false)
+    const source = await probeSource(ffmpegPath, params.filePath) // never rejects
+    const cancelledWhileProbing = this.probing.get(params.jobId) === true
+    this.probing.delete(params.jobId)
+    if (cancelledWhileProbing) return { started: false, error: 'Cancelled' }
     const color = outputColorFor(source, params.hdrOutput ?? 'sdr')
     const outputPath = this.outputPathFor(params, color)
 
@@ -313,6 +320,11 @@ export class StabilizeService {
    * on it — two clips over the same range share one bake.
    */
   cancel(jobId: string): boolean {
+    if (this.probing.has(jobId)) {
+      this.probing.set(jobId, true)
+      emitToRenderer('stabilize:progress', { jobId, percent: 0, phase: 'cancelled' })
+      return true
+    }
     const record = this.jobs.get(jobId)
     if (!record || record.status === 'done' || record.status === 'error' || record.status === 'cancelled') {
       return false
@@ -331,7 +343,7 @@ export class StabilizeService {
   }
 
   cancelAll(): void {
-    for (const jobId of [...this.jobs.keys()]) this.cancel(jobId)
+    for (const jobId of [...this.probing.keys(), ...this.jobs.keys()]) this.cancel(jobId)
   }
 
   status(jobId: string): StabilizeStatusResult {
@@ -507,10 +519,10 @@ function normalizePath(filePath: string): string {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
-function probeSource(ffmpegPath: string, filePath: string): SourceInfo {
+async function probeSource(ffmpegPath: string, filePath: string): Promise<SourceInfo> {
   try {
-    const res = spawnSync(ffmpegPath, ['-hide_banner', '-i', filePath], { encoding: 'utf8', timeout: 10000, windowsHide: true })
-    return parseSourceInfo((res.stdout || '') + (res.stderr || ''))
+    const res = await runFfmpegCapture(ffmpegPath, ['-hide_banner', '-i', filePath], 10000)
+    return parseSourceInfo(res.stdout + res.stderr)
   } catch (err) {
     logger.warn(`[stabilize] probe failed for ${filePath}: ${String(err)}`)
     return { width: 1920, height: 1080, fps: 30, duration: 0, hdrTransfer: null }
